@@ -25,6 +25,8 @@ std::unique_ptr<BackwashProcessor> makeProc (int nch, double sr, int preset, flo
     if (sh >= 0)
         setParam (p->getShimmerParameter(), (float) sh);
     setParam (p->getAmountParameter(), amount);
+    setParam (p->getLiveParameter(), 0.0f); // the 2 s mode (LIVE is on by default)
+    setParam (p->getLockParameter(), 0.0f);
     p->prepareToPlay (sr, block);
     return p;
 }
@@ -372,8 +374,8 @@ TEST_CASE ("BW 8. State round trip, preset chip defaults", "[bw][state]")
     CHECK_FALSE (c.getLongParameter().get());
     CHECK (c.getShimmerParameter().get());
     CHECK (c.getPresetParameter().isMetaParameter());
-    const char* ids[] { "amount", "preset", "long", "shimmer", "live", "lock", "bypass" };
-    for (int i = 0; i < 7; ++i)
+    const char* ids[] { "amount", "preset", "long", "shimmer", "live", "lock", "swell", "hits", "bypass" };
+    for (int i = 0; i < 9; ++i)
         CHECK (dynamic_cast<juce::RangedAudioParameter*> (c.getParameters()[i])->getParameterID() == ids[i]);
 }
 
@@ -651,6 +653,91 @@ TEST_CASE ("BW 17. LIVE on / off while playing: latency follows, no NaN, no jump
         }
     CHECK (finite);
     CHECK (peak <= 1.0f);
+}
+
+TEST_CASE ("BW 18. Defaults: LIVE and LOCK on; LOCK on an empty memory records the first whole bar, then freezes", "[bw][live]")
+{
+    BackwashProcessor fresh;
+    CHECK (fresh.getLiveParameter().get());
+    CHECK (fresh.getLockParameter().get());
+    CHECK (fresh.getSwellLengthParameter().getIndex() == 0);
+    CHECK (fresh.getHitsParameter().getIndex() == 0);
+
+    const double sr = 44100.0, bpm = 120.0;
+    const int bar = (int) std::round (2.0 * sr);
+    auto p = makeLive (sr, 0, 0.8f, true, true);
+    auto loop = tiledLoop (sr, bpm, 6);
+    for (int ch = 0; ch < 2; ++ch)
+        loop.clear (ch, 3 * bar, 3 * bar); // the drums stop after 3 bars
+    const auto out = runAt (*p, loop, sr, bpm, 512);
+    CHECK (p->getBackwashDsp().getTelemetry().liveMemoryComplete.load());
+    std::vector<float> wet ((size_t) loop.getNumSamples());
+    for (int i = 0; i < loop.getNumSamples(); ++i)
+        wet[(size_t) i] = out.getSample (0, i) - loop.getSample (0, i);
+    const double during = energy (wet, bar, 3 * bar), after = energy (wet, 4 * bar, 6 * bar);
+    INFO ("wet energy while playing " << during << ", over the silent bars " << after);
+    CHECK (during > 1.0);
+    CHECK (after > 0.5 * during); // the swells keep coming, about as strong
+}
+
+TEST_CASE ("BW 19. SWELL length: 1/16 .. 1 bar, at the host tempo", "[bw][timing]")
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const std::pair<int, double> cases[] { { 1, 0.125 }, { 2, 0.25 }, { 3, 0.5 }, { 4, 1.0 }, { 5, 1.95 } };
+    for (const auto& [index, seconds] : cases)
+    {
+        auto p = makeProc (2, sr, 0, 0.8f, 0, 0);
+        setParam (p->getSwellLengthParameter(), (float) index);
+        Buffer in (2, 4096);
+        in.clear();
+        runAt (*p, in, sr, bpm, 512);
+        const int swell = p->getBackwashDsp().getTelemetry().swellSamples.load();
+        INFO ("choice " << index << ": " << swell << " samples");
+        if (index == 5)
+        {
+            CHECK (swell <= (int) (2.0 * sr)); // 1 bar = 2 s at 120 BPM: clamped just below the lookahead
+            CHECK (swell > (int) (1.9 * sr));
+        }
+        else
+            CHECK (std::abs (swell - (int) std::round (seconds * sr)) <= 1);
+    }
+}
+
+TEST_CASE ("BW 20. HITS: only the chosen beats get a swell", "[bw][timing]")
+{
+    const double sr = 44100.0, bpm = 120.0;
+    const int bar = (int) std::round (2.0 * sr), beat = bar / 4;
+    for (bool live : { false, true })
+        for (int hits : { 0, 2, 3 })
+        {
+            auto p = makeLive (sr, 2, 0.8f, live); // Clap Rewind: half-beat swells
+            setParam (p->getHitsParameter(), (float) hits);
+            const auto in = tiledLoop (sr, bpm, 6);
+            const auto out = runAt (*p, in, sr, bpm, 512);
+            const int L = live ? 0 : (int) std::round (2.0 * sr);
+            std::vector<float> wet ((size_t) in.getNumSamples(), 0.0f);
+            for (int i = L; i < in.getNumSamples(); ++i)
+                wet[(size_t) (i - L)] = out.getSample (0, i) - in.getSample (0, i - L); // indexed by musical position
+            // swell energy in the 1/4 beat before each beat, bars 3-4
+            std::array<double, 4> e {};
+            for (int b = 3; b < 5; ++b)
+                for (int k = 0; k < 4; ++k)
+                    e[(size_t) k] += energy (wet, b * bar + k * beat - beat / 4, b * bar + k * beat);
+            INFO ((live ? "LIVE" : "2 s") << ", hits " << hits << ": " << e[0] << " " << e[1] << " " << e[2] << " " << e[3]);
+            if (hits == 0)
+                CHECK (juce::jmin (e[1], e[3]) > 0.3 * juce::jmax (e[0], e[2]));
+            else if (hits == 2)
+            {
+                CHECK (e[1] > 1.0);
+                CHECK (e[3] > 1.0);
+                CHECK (juce::jmax (e[0], e[2]) < 0.05 * juce::jmin (e[1], e[3]));
+            }
+            else
+            {
+                CHECK (e[3] > 1.0);
+                CHECK (juce::jmax (e[0], e[1], e[2]) < 0.05 * e[3]);
+            }
+        }
 }
 
 //==============================================================================

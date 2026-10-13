@@ -54,6 +54,7 @@ private:
     std::unique_ptr<PresetBar> presetBar;
     std::unique_ptr<PresetTags> presetTags;
     std::unique_ptr<ToggleChips> toggleChips, switchChips;
+    std::unique_ptr<ChoiceChips> choiceChips;
     int shownPreset = -1, shownSide = -2;
     std::unique_ptr<PowerButton> power;
     std::unique_ptr<juce::ButtonParameterAttachment> powerAttachment;

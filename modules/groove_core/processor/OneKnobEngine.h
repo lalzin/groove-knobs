@@ -54,6 +54,10 @@ public:
         latency. Audio thread (and prepare). */
     virtual void setSwitches (const bool* on, int numSwitches) { juce::ignoreUnused (on, numSwitches); }
 
+    /** Plugins with choices (OneKnobConfig::choices): their current indices,
+        before every block. Audio thread. */
+    virtual void setChoices (const int* indices, int numChoices) { juce::ignoreUnused (indices, numChoices); }
+
     /** Largest latency the switches can give (sizes the dry path). */
     virtual int getMaxLatencySamples() const { return getLatencySamples(); }
 

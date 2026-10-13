@@ -69,7 +69,7 @@ public:
         return false;
     }
 
-    struct Request { int preset = -1; bool longSwell = false; double bpm = 120.0; };
+    struct Request { int preset = -1; bool longSwell = false; double bpm = 120.0; double beats = 1.0; };
 
     /** Audio thread: lock-free (atomics). A request superseded while being
         built is simply rebuilt: the serial number moves on. */
@@ -78,6 +78,7 @@ public:
         pendingPreset.store (r.preset, std::memory_order_relaxed);
         pendingLong.store (r.longSwell, std::memory_order_relaxed);
         pendingBpm.store (r.bpm, std::memory_order_relaxed);
+        pendingBeats.store (r.beats, std::memory_order_relaxed);
         requestSerial.fetch_add (1, std::memory_order_release);
         wake.signal();
     }
@@ -124,17 +125,19 @@ public:
                     const auto& mem = dsp.memoryBuffers[(size_t) dsp.memoryActive.load()];
                     auto c = BackwashDsp::renderWetCycle (mem.data(), len, dsp.memoryCycleBeatsShared.load(), *ir,
                                                           dsp.presets[(size_t) juce::jmax (0, ir->preset)], dsp.sampleRate, dsp.lookahead,
-                                                          dsp.partitionSize);
+                                                          dsp.partitionSize, dsp.targetShared.load(), dsp.beatsPerBarShared.load());
                     delete readyCycle.exchange (c.release());
                 }
             }
 
             const int serial = requestSerial.load (std::memory_order_acquire);
             Request r { pendingPreset.load (std::memory_order_relaxed), pendingLong.load (std::memory_order_relaxed),
-                        pendingBpm.load (std::memory_order_relaxed) };
+                        pendingBpm.load (std::memory_order_relaxed), pendingBeats.load (std::memory_order_relaxed) };
             if (serial == built || r.preset < 0)
                 continue;
-            auto ir = std::make_unique<BackwashIr> (BackwashDsp::buildIr (dsp.presets[(size_t) r.preset], r.preset, r.longSwell, r.bpm,
+            auto preset = dsp.presets[(size_t) r.preset];
+            preset.beats = (float) r.beats;
+            auto ir = std::make_unique<BackwashIr> (BackwashDsp::buildIr (preset, r.preset, r.longSwell, r.bpm,
                                                                           dsp.sampleRate, dsp.lookahead, dsp.partitionSize));
             built = serial;
             delete ready.exchange (ir.release());
@@ -146,7 +149,7 @@ private:
     juce::WaitableEvent wake;
     std::atomic<int> pendingPreset { -1 }, requestSerial { 0 };
     std::atomic<bool> pendingLong { false };
-    std::atomic<double> pendingBpm { 120.0 };
+    std::atomic<double> pendingBpm { 120.0 }, pendingBeats { 1.0 };
     std::atomic<BackwashIr*> ready { nullptr };
     std::array<std::atomic<BackwashIr*>, 8> graveyard {};
     std::atomic<int> renderSerial { 0 };
@@ -213,6 +216,8 @@ void BackwashDsp::takePendingMemory()
         auto& dst = memoryBuffers[(size_t) memoryActive.load()];
         resampleInto (m->data(), (int) m->size(), dst.data(), len);
         memoryHasContent = true;
+        memoryComplete = true;
+        telemetry.liveMemoryComplete.store (true);
         renderWanted = true;
         telemetry.liveMemoryReady.store (true);
     }
@@ -235,6 +240,19 @@ int BackwashDsp::cycleIndex (double cyclePosition, int length) noexcept
     // would jitter by one sample
     const int q = (int) ((cyclePosition - std::floor (cyclePosition)) * length + 0.5);
     return q >= length ? q - length : q;
+}
+
+double BackwashDsp::swellBeatsFor (const BackwashPreset& p, int lengthIndex, double beatsPerBar) noexcept
+{
+    switch (lengthIndex)
+    {
+        case 1: return 0.25;
+        case 2: return 0.5;
+        case 3: return 1.0;
+        case 4: return 2.0;
+        case 5: return juce::jmax (0.25, beatsPerBar);
+        default: return p.beats; // PRESET
+    }
 }
 
 void BackwashDsp::retireCycle (std::unique_ptr<BackwashWetCycle> c)
@@ -267,7 +285,8 @@ void BackwashDsp::requestRender()
         // Offline / tests: render now, deterministic
         if (currentIr != nullptr && memoryLength.load() > 0)
             installCycle (renderWetCycle (memoryBuffers[(size_t) memoryActive.load()].data(), memoryLength.load(), memoryCycleBeats, *currentIr,
-                                          presets[(size_t) juce::jmax (0, currentIr->preset)], sampleRate, lookahead, partitionSize));
+                                          presets[(size_t) juce::jmax (0, currentIr->preset)], sampleRate, lookahead, partitionSize,
+                                          targetIndex, beatsPerBarShared.load()));
         return;
     }
     builder->requestRender();
@@ -276,7 +295,7 @@ void BackwashDsp::requestRender()
 void BackwashDsp::updateMemoryLength (const gk::BlockTiming& timing)
 {
     // One bar (halved while longer than the capacity), at the settled tempo
-    double cycleBeats = juce::jmax (0.25, timing.beatsPerBar);
+    double cycleBeats = juce::jmax (0.25, timing.beatsPerBar) * (targetIndex == targetEveryTwoBars ? 2.0 : 1.0);
     const double bpm = juce::jmax (20.0, activeBpm);
     auto lengthFor = [&] (double beats) { return (int) std::round (beats * 60.0 / bpm * sampleRate); };
     while (lengthFor (cycleBeats) > memoryCapacity && cycleBeats > 0.25)
@@ -388,8 +407,40 @@ BackwashIr BackwashDsp::buildIr (const BackwashPreset& p, int presetIndex, bool 
     return ir;
 }
 
+float BackwashDsp::targetGate (double beats, double beatsPerBar, int target) noexcept
+{
+    // Which hits get a swell, by musical position: a window from 1/8 beat
+    // before the target beat (early claps, swing) to 3/8 after (the attack and
+    // its body), soft edges
+    if (target <= targetAll)
+        return 1.0f;
+    const double bar = juce::jmax (0.25, beatsPerBar);
+    const double cycle = target == targetEveryTwoBars ? 2.0 * bar : bar;
+    double pos = std::fmod (beats, cycle);
+    if (pos < 0.0)
+        pos += cycle;
+    auto window = [&] (double beat)
+    {
+        double d = pos - beat;
+        if (d > 0.5 * cycle)
+            d -= cycle;
+        else if (d < -0.5 * cycle)
+            d += cycle;
+        return smoothstep (-0.16f, -0.125f, (float) d) * (1.0f - smoothstep (0.375f, 0.41f, (float) d));
+    };
+    switch (target)
+    {
+        case targetOne:
+        case targetEveryTwoBars: return window (0.0);
+        case targetTwoFour: return juce::jmax (window (1.0), bar > 3.0 ? window (3.0) : 0.0f);
+        case targetLast: return window (bar - 1.0);
+        default: return 1.0f;
+    }
+}
+
 std::unique_ptr<BackwashWetCycle> BackwashDsp::renderWetCycle (const float* memory, int M, double cycleBeats, const BackwashIr& ir,
-                                                               const BackwashPreset& p, double sr, int lookahead, int P)
+                                                               const BackwashPreset& p, double sr, int lookahead, int P, int target,
+                                                               double beatsPerBar)
 {
     auto out = std::make_unique<BackwashWetCycle>();
     out->length = M;
@@ -416,7 +467,7 @@ std::unique_ptr<BackwashWetCycle> BackwashDsp::renderWetCycle (const float* memo
         for (int pass = 0; pass < 2; ++pass)
             for (int i = 0; i < M; ++i)
             {
-                const float x = memory[i];
+                const float x = memory[i] * targetGate ((double) i / M * cycleBeats, beatsPerBar, target);
                 rect += (std::abs (x) - rect) * rc;
                 const float a = fe.process (rect), b = se.process (rect);
                 const float g = smoothstep (0.35f, 0.75f, (a - b) / juce::jmax (1.0e-6f, a));
@@ -520,7 +571,9 @@ void BackwashDsp::prepare (double newSampleRate, int maxBlockSize, int newNumCha
         memoryActive.store (0);
         memoryCycleBeats = 0.0;
         memoryHasContent = false;
+        memoryComplete = cycleStarted = false;
         telemetry.liveMemoryReady.store (false);
+        telemetry.liveMemoryComplete.store (false);
         if (! kept.empty() && pendingMemory.load() == nullptr)
             loadMemory (std::move (kept));
     }
@@ -547,8 +600,12 @@ void BackwashDsp::prepare (double newSampleRate, int maxBlockSize, int newNumCha
     wantedPreset = presetIndex;
     wantedLong = false;
     activeBpm = candidateBpm = gk::HostSync::fallbackBpm;
-    currentIr = std::make_unique<BackwashIr> (buildIr (presets[(size_t) presetIndex], presetIndex, wantedLong, activeBpm, sampleRate, lookahead,
-                                                       partitionSize));
+    wantedBeats = swellBeatsFor (presets[(size_t) presetIndex], lengthIndex, 4.0);
+    {
+        auto p0 = presets[(size_t) presetIndex];
+        p0.beats = (float) wantedBeats;
+        currentIr = std::make_unique<BackwashIr> (buildIr (p0, presetIndex, wantedLong, activeBpm, sampleRate, lookahead, partitionSize));
+    }
     previousIr.reset();
     convolver.setKernel (currentIr->kernel.get());
     renderIr.store (currentIr.get());
@@ -636,16 +693,17 @@ void BackwashDsp::installIr (std::unique_ptr<BackwashIr> ir, bool fade)
     }
 }
 
-void BackwashDsp::requestIr (int preset, bool longSwell, double bpm)
+void BackwashDsp::requestIr (int preset, bool longSwell, double bpm, double beats)
 {
     if (nonRealtime.load() || builder == nullptr)
     {
         // Offline / tests: build now, deterministic
-        installIr (std::make_unique<BackwashIr> (buildIr (presets[(size_t) preset], preset, longSwell, bpm, sampleRate, lookahead, partitionSize)),
-                   true);
+        auto p = presets[(size_t) preset];
+        p.beats = (float) beats;
+        installIr (std::make_unique<BackwashIr> (buildIr (p, preset, longSwell, bpm, sampleRate, lookahead, partitionSize)), true);
         return;
     }
-    builder->request ({ preset, longSwell, bpm });
+    builder->request ({ preset, longSwell, bpm, beats });
 }
 
 void BackwashDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, const float* amount, const gk::BlockTiming& timing)
@@ -670,13 +728,22 @@ void BackwashDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
     }
     const bool tempoSettled = nonRealtime.load() || (double) (sampleClock - candidateSince) >= tempoDebounceSeconds * sampleRate;
     const bool tempoChanged = std::abs (candidateBpm - activeBpm) > 0.5 && tempoSettled;
-    if (presetIndex != wantedPreset || longNow != wantedLong || tempoChanged)
+    const double beatsNow = swellBeatsFor (presets[(size_t) presetIndex], lengthIndex, timing.beatsPerBar);
+    if (presetIndex != wantedPreset || longNow != wantedLong || tempoChanged || std::abs (beatsNow - wantedBeats) > 1.0e-6)
     {
         wantedPreset = presetIndex;
         wantedLong = longNow;
+        wantedBeats = beatsNow;
         if (tempoChanged)
             activeBpm = candidateBpm;
-        requestIr (wantedPreset, wantedLong, activeBpm);
+        requestIr (wantedPreset, wantedLong, activeBpm, wantedBeats);
+    }
+    if (std::abs (timing.beatsPerBar - beatsPerBarShared.load()) > 1.0e-9 || targetIndex != renderedTarget)
+    {
+        beatsPerBarShared.store (timing.beatsPerBar);
+        targetShared.store (targetIndex);
+        renderedTarget = targetIndex;
+        renderWanted = true;
     }
     sampleClock += numSamples;
 
@@ -691,7 +758,9 @@ void BackwashDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
     takePendingMemory();
     const int memLen = memoryLength.load();
     float* memory = memoryBuffers[(size_t) memoryActive.load()].data();
-    const bool recording = timing.isPlaying && ! locked;
+    // LOCK freezes the memory, but an empty memory (LOCK on from the start)
+    // first records one whole cycle: the "listen" pass
+    const bool recording = timing.isPlaying && (! locked || ! memoryComplete);
     const double lookaheadBeats = lookahead * timing.beatsPerSample;
 
     // --- Dry path: delayed by the lookahead (LIVE: as is) -------------------
@@ -748,13 +817,18 @@ void BackwashDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             if (liveMode)
             {
                 // What will be heard `lookahead` from now: drives the UI breath
-                const float remembered = memory[cycleIndex ((beats + lookaheadBeats) / memoryCycleBeats, memLen)];
+                const double ahead = beats + lookaheadBeats;
+                const float remembered = memory[cycleIndex (ahead / memoryCycleBeats, memLen)];
                 if (recording)
                     memory[w] = x;
-                x = timing.isPlaying ? remembered : 0.0f;
+                x = timing.isPlaying ? remembered * targetGate (ahead, timing.beatsPerBar, targetIndex) : 0.0f;
             }
-            else if (recording)
-                memory[w] = x;
+            else
+            {
+                if (recording)
+                    memory[w] = x;
+                x *= targetGate (beats, timing.beatsPerBar, targetIndex); // only the targeted hits get a swell
+            }
             if (recording)
             {
                 if (! memoryHasContent && std::abs (memory[w]) > 1.0e-5f)
@@ -763,7 +837,15 @@ void BackwashDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
                     telemetry.liveMemoryReady.store (true, std::memory_order_relaxed);
                 }
                 if (w < lastWrite - memLen / 2)
+                {
                     renderWanted = true; // a whole cycle was recorded: render it
+                    if (memoryHasContent && cycleStarted && ! memoryComplete)
+                    {
+                        memoryComplete = true;
+                        telemetry.liveMemoryComplete.store (true, std::memory_order_relaxed);
+                    }
+                    cycleStarted = true;
+                }
                 lastWrite = w;
             }
         }

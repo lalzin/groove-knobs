@@ -38,6 +38,12 @@ OneKnobProcessor::OneKnobProcessor (OneKnobConfig cfg, std::unique_ptr<OneKnobEn
         switchValues.push_back (apvts.getRawParameterValue (t.id));
         jassert (switchParams.back() != nullptr);
     }
+    for (const auto& c : config.choices)
+    {
+        choiceParams.push_back (dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (c.id)));
+        choiceValues.push_back (apvts.getRawParameterValue (c.id));
+        jassert (choiceParams.back() != nullptr);
+    }
     if (! config.toggles.empty())
     {
         // Changing the preset applies its toggle defaults (not when a state
@@ -150,7 +156,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { t.id, 1 }, t.name, def));
     }
     for (const auto& t : cfg.switches)
-        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { t.id, 1 }, t.name, false));
+        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { t.id, 1 }, t.name, t.defaultOn));
+    for (const auto& c : cfg.choices)
+        layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { c.id, 1 }, c.name, c.options, c.defaultIndex));
     layout.add (std::make_unique<juce::AudioParameterBool> (bypassId, "Bypass", false));
     return layout;
 }
@@ -314,6 +322,14 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
 
     if (! switchParams.empty())
         updateSwitches (snapToggles);
+    if (! choiceParams.empty())
+    {
+        std::array<int, 8> idx {};
+        const int n = juce::jmin ((int) choiceParams.size(), (int) idx.size());
+        for (int c = 0; c < n; ++c)
+            idx[(size_t) c] = juce::roundToInt (choiceValues[(size_t) c]->load());
+        engine->setChoices (idx.data(), n);
+    }
 
     if (! config.featuresFromOutput)
         featureExtractor.process (buffer, 0, numSamples, features);
@@ -543,6 +559,8 @@ void OneKnobProcessor::getStateInformation (juce::MemoryBlock& destData)
         state.setProperty (config.toggles[t].id, toggleParams[t]->get(), nullptr);
     for (size_t t = 0; t < switchParams.size(); ++t)
         state.setProperty (config.switches[t].id, switchParams[t]->get(), nullptr);
+    for (size_t c = 0; c < choiceParams.size(); ++c)
+        state.setProperty (config.choices[c].id, choiceParams[c]->getCurrentChoiceName(), nullptr);
     state.setProperty ("editorScale", editorScale.load(), nullptr);
     saveExtraState (state);
 
@@ -598,7 +616,13 @@ void OneKnobProcessor::setStateInformation (const void* data, int sizeInBytes)
     }
 
     for (size_t t = 0; t < switchParams.size(); ++t)
-        setParam (*switchParams[t], (bool) state.getProperty (config.switches[t].id, false) ? 1.0f : 0.0f);
+        setParam (*switchParams[t], (bool) state.getProperty (config.switches[t].id, config.switches[t].defaultOn) ? 1.0f : 0.0f);
+    for (size_t c = 0; c < choiceParams.size(); ++c)
+    {
+        // Saved by name (options may be reordered later)
+        const int idx = config.choices[c].options.indexOf (state.getProperty (config.choices[c].id).toString());
+        setParam (*choiceParams[c], (float) (idx >= 0 ? idx : config.choices[c].defaultIndex));
+    }
     loadExtraState (state);
 
     setParam (*bypassParam, (bool) state.getProperty ("bypass", false) ? 1.0f : 0.0f);

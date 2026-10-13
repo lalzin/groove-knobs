@@ -7,6 +7,16 @@ namespace gk
 struct ToggleSpec
 {
     juce::String id, name, chipLabel;
+    bool defaultOn = false; // switches only (toggles take their preset's default)
+};
+
+/** A global multiple-choice parameter (not part of the presets), shown as a
+    small selector with its caption (e.g. SWELL: 1/4). */
+struct ChoiceSpec
+{
+    juce::String id, name, caption;
+    juce::StringArray options;
+    int defaultIndex = 0;
 };
 
 /** Static description of a Groove Knobs plugin. */
@@ -36,6 +46,10 @@ struct OneKnobConfig
         output then fades out, the latency changes, and it fades back in. */
     std::vector<ToggleSpec> switches;
     double switchFadeSeconds = 0.010;
+
+    /** Global multiple-choice parameters, after the switches; the engine gets
+        their indices every block (OneKnobEngine::setChoices). */
+    std::vector<ChoiceSpec> choices;
 
     /** Also accept a mono input with a stereo output (mono is duplicated). */
     bool allowMonoToStereo = false;
@@ -118,6 +132,8 @@ public:
     juce::AudioParameterBool& getToggleParameter (int index) noexcept { return *toggleParams[(size_t) index]; }
     int getNumSwitches() const noexcept { return (int) switchParams.size(); }
     juce::AudioParameterBool& getSwitchParameter (int index) noexcept { return *switchParams[(size_t) index]; }
+    int getNumChoices() const noexcept { return (int) choiceParams.size(); }
+    juce::AudioParameterChoice& getChoiceParameter (int index) noexcept { return *choiceParams[(size_t) index]; }
 
     /** A preset's default value for toggle `index` (from its JSON). */
     bool presetToggleDefault (int presetIndex, int toggleIndex) const;
@@ -174,6 +190,8 @@ private:
     std::atomic<int> presetForToggles { -1 }; // last preset whose toggle defaults were applied
     std::vector<juce::AudioParameterBool*> switchParams;
     std::vector<std::atomic<float>*> switchValues;
+    std::vector<juce::AudioParameterChoice*> choiceParams;
+    std::vector<std::atomic<float>*> choiceValues;
     LinearSmoother switchGain;  // output fade around a latency change
     bool latencySwitchPending = false;
     std::atomic<int> pendingLatency { -1 }; // reported to the host on the message thread

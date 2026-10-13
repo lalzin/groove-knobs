@@ -42,7 +42,8 @@ struct BackwashTelemetry
     std::atomic<float> nextHitStrength { 0.0f };
     std::atomic<int> swellSamples { 0 };
     std::atomic<bool> swellClamped { false };
-    std::atomic<bool> liveMemoryReady { false }; // LIVE: something has been captured
+    std::atomic<bool> liveMemoryReady { false };    // LIVE: something has been captured
+    std::atomic<bool> liveMemoryComplete { false }; // a whole cycle is in (LOCK can freeze it)
 };
 
 /** Backwash: a real-time reverse reverb, locked to the tempo.
@@ -65,6 +66,13 @@ public:
     static constexpr double tempoDebounceSeconds = 0.200;
     static constexpr int longToggle = 0, shimmerToggle = 1;
     static constexpr int liveSwitch = 0, lockSwitch = 1;
+    static constexpr int lengthChoice = 0, targetChoice = 1;
+    static constexpr int targetAll = 0, targetOne = 1, targetTwoFour = 2, targetLast = 3, targetEveryTwoBars = 4;
+
+    /** Swell length in beats: the preset's, or the SWELL choice (1/16 .. 1 bar). */
+    static double swellBeatsFor (const BackwashPreset& p, int lengthIndex, double beatsPerBar) noexcept;
+    /** 0..1: does a hit at this musical position get a swell (HITS choice)? */
+    static float targetGate (double beats, double beatsPerBar, int target) noexcept;
     /** LIVE memory: up to this long (one bar; half bars below ~30 BPM in 4/4). */
     static constexpr double memoryMaxSeconds = 8.0;
 
@@ -79,7 +87,8 @@ public:
         input, looped) through the same send chain and IR as the real-time
         path, aligned so the swell of a hit ends on that hit. Allocates. */
     static std::unique_ptr<BackwashWetCycle> renderWetCycle (const float* memory, int length, double cycleBeats, const BackwashIr& ir,
-                                                             const BackwashPreset& p, double sampleRate, int lookahead, int partitionSize);
+                                                             const BackwashPreset& p, double sampleRate, int lookahead, int partitionSize,
+                                                             int target = targetAll, double beatsPerBar = 4.0);
 
     /** Partition size used at a sample rate (latency of the convolver). */
     static int partitionSizeFor (double sampleRate);
@@ -101,6 +110,11 @@ public:
         locked = n > lockSwitch && on[lockSwitch];
     }
     bool isLiveMode() const noexcept { return liveMode; }
+    void setChoices (const int* idx, int n) override
+    {
+        lengthIndex = n > lengthChoice ? idx[lengthChoice] : 0;
+        targetIndex = n > targetChoice ? idx[targetChoice] : 0;
+    }
 
     /** Message thread: the LIVE memory (one cycle of the mono input, by
         musical position), empty if nothing was captured. */
@@ -118,7 +132,7 @@ public:
 
 private:
     class Builder;
-    void requestIr (int preset, bool longSwell, double bpm);
+    void requestIr (int preset, bool longSwell, double bpm, double beats);
     void installIr (std::unique_ptr<BackwashIr> ir, bool fade);
     void retire (std::unique_ptr<BackwashIr> ir);
     void updateHits (int numSamples);
@@ -175,7 +189,11 @@ private:
     // LIVE mode (zero latency): the wet path is fed from a memory of the last
     // cycle (one bar), read `lookahead` ahead of the musical position, so each
     // swell lands on the same hit one cycle later. LOCK stops the recording.
-    bool liveMode = false, locked = false, memoryHasContent = false;
+    bool liveMode = false, locked = false, memoryHasContent = false, memoryComplete = false, cycleStarted = false;
+    int lengthIndex = 0, targetIndex = 0, renderedTarget = -1;
+    double wantedBeats = 1.0;
+    std::atomic<int> targetShared { 0 };
+    std::atomic<double> beatsPerBarShared { 4.0 };
     std::array<std::vector<float>, 2> memoryBuffers; // fixed capacity, swapped by index (never reallocated)
     std::atomic<int> memoryActive { 0 }, memoryLength { 0 };
     int memoryCapacity = 0;

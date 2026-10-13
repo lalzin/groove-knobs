@@ -45,7 +45,7 @@ BackwashEditor::BackwashEditor (BackwashProcessor& p)
         modes->setChipTooltip (BackwashDsp::liveSwitch,
                                juce::String::fromUTF8 ("LIVE : z\xc3\xa9ro latence. Le swell vient de la mesure pr\xc3\xa9""c\xc3\xa9""dente (id\xc3\xa9""al sur une boucle)"));
         modes->setChipTooltip (BackwashDsp::lockSwitch,
-                               juce::String::fromUTF8 ("LOCK : fige la m\xc3\xa9moire du mode LIVE (le swell continue m\xc3\xaame si la piste change)"));
+                               juce::String::fromUTF8 ("LOCK : fige la m\xc3\xa9moire du mode LIVE (le swell continue m\xc3\xaame si la piste change). M\xc3\xa9moire vide : la premi\xc3\xa8re mesure jou\xc3\xa9""e est enregistr\xc3\xa9""e d'abord"));
     }
 }
 
@@ -72,6 +72,8 @@ void BackwashEditor::editorTick (double)
         modes->setWarning (BackwashDsp::liveSwitch, live && ! tel.liveMemoryReady.load(),
                            juce::String::fromUTF8 ("M\xc3\xa9moire vide : lance la lecture, le swell arrive d\xc3\xa8s la 2e mesure"));
         modes->setChipDimmed (BackwashDsp::lockSwitch, ! live && ! proc.getLockParameter().get());
+        modes->setWarning (BackwashDsp::lockSwitch, live && proc.getLockParameter().get() && ! tel.liveMemoryComplete.load(),
+                           juce::String::fromUTF8 ("LOCK : \xc3\xa9""coute la premi\xc3\xa8re mesure compl\xc3\xa8te, puis la fige"));
     }
 }
 } // namespace bw

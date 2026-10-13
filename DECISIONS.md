@@ -216,3 +216,12 @@ Une ligne par décision : **contexte** — choix — raison.
 - **Vague** : la marche à la crête venait du flanc arrière multiplié par 0,75 sans transition → atténuation progressive ; hauteur plafonnée par un genou doux ; rouleau redessiné (un seul tracé qui part de la surface, rempli du dégradé de la vague, mousse sur le bord extérieur seulement, taille proportionnelle au curl).
 - **Swell** : une pose fixe par zone (pagaie lente d'un coup par mesure, debout, accroupi, euphorique à 100 % en permanence) ; respiration, rebond et animation rythmique de la suite divisés par 2 à 3.
 - French Filter et Boogie Trio inchangés (empreintes audio et UI identiques).
+
+## Backwash — contrôle du temps, LIVE/LOCK par défaut (2026-10-13)
+- **Demande d'Alan** : « on est toujours sur un clap sur le deuxième temps », plus de contrôle du temps. Choix d'Alan : longueur **et** cible.
+- **SWELL** (choix global) : PRESET, 1/16, 1/8, 1/4, 1/2, 1 BAR (signature de l'hôte). LONG garde son ×2 par-dessus. Changer la longueur reconstruit l'IR (fondu 50 ms, comme le tempo).
+- **HITS** (choix global) : ALL, BEAT 1, 2 + 4, LAST, 1 / 2 BARS. Réalisé en ouvrant l'envoi (avant le focus) sur une fenêtre de position musicale autour des temps visés : −1/8 à +3/8 de temps, bords doux. En LIVE, la même fenêtre est appliquée à la mémoire au rendu ; la mémoire passe à 2 mesures pour « 1 / 2 BARS ». Vérifié : avec 2 + 4, énergie de souffle avant les temps 1 et 3 nulle (< −100 dB), identique dans les deux modes.
+- **Choix globaux, pas par preset** : comme LIVE/LOCK, ils ne bougent pas quand on change de preset (on règle le temps du morceau, puis on essaie les couleurs).
+- **LIVE et LOCK cochés par défaut** (demande d'Alan). Avec LOCK sur une mémoire vide, rien ne serait jamais enregistré : LOCK enregistre donc d'abord un cycle complet (la deuxième frontière de mesure passée avec du son), puis fige — l'idée « listen » d'Alan. Point jaune sur LOCK pendant l'écoute. Les tests du mode 2 s désactivent LIVE explicitement.
+- UI : SWELL / HITS en colonne légendée à droite du knob (clic = liste, molette / flèches = pas à pas), symétrique de LIVE / LOCK. Le rouleau de la vague n'est dessiné qu'au-delà de 20 % de curl (sinon un petit point clair à la crête vers 75 %).
+- French Filter et Boogie Trio inchangés (empreintes audio et UI identiques).

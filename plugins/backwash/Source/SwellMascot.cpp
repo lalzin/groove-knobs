@@ -185,7 +185,7 @@ void SwellMascot::paintBehind (juce::Graphics& g, const State& s, juce::Rectangl
     // leaves the wave surface right of the crest, arches over it and hooks
     // down to the left; the hollow underneath goes back into the wave body,
     // so there is no seam. Only the outer edge gets the foam line.
-    if (const float curl = smoothstep (0.7f, 1.0f, amount) * awake; curl > 0.01f)
+    if (const float curl = smoothstep (0.7f, 1.0f, amount) * awake; curl > 0.2f)
     {
         const float top = surfaceY (crestX);
         const float startX = crestX + 56.0f * curl;
@@ -216,7 +216,7 @@ void SwellMascot::paintBehind (juce::Graphics& g, const State& s, juce::Rectangl
         juce::Path inner;
         inner.startNewSubPath (lip);
         inner.quadraticTo ({ lipX + 10.0f * curl, top + 12.0f * curl }, hollow);
-        g.setColour (palette (teal).withAlpha (0.55f));
+        g.setColour (palette (teal).withAlpha (0.55f * smoothstep (0.15f, 0.5f, curl)));
         g.strokePath (inner, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 

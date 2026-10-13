@@ -132,7 +132,13 @@ Une **reverb inversée en temps réel, calée sur le tempo** : chaque coup (snar
 >
 > **LIVE (zéro latence)** : Backwash garde en mémoire la dernière mesure jouée et rejoue, avant chaque coup, le souffle du même coup une mesure plus tôt (calculé en arrière-plan, lu à la position musicale). Sur une boucle, c'est identique au mode 2 s ; le premier coup après lecture a déjà son souffle, la mémoire est gardée à l'arrêt et enregistrée avec le projet. Un coup qui change d'une mesure à l'autre reçoit le souffle de l'ancien ; il faut que le transport tourne.
 >
-> **LOCK** fige la mémoire : le souffle continue sur la grille même si la piste change ou s'arrête (break, drop), jusqu'au déverrouillage.
+> **LOCK** fige la mémoire : le souffle continue sur la grille même si la piste change ou s'arrête (break, drop), jusqu'au déverrouillage. Si la mémoire est vide, LOCK écoute d'abord une mesure complète, puis la fige.
+>
+> **LIVE et LOCK sont activés par défaut** (point jaune = mémoire vide / écoute en cours) : lance la lecture, la première mesure est mémorisée, les souffles arrivent dès la suivante, et y restent.
+
+**Le temps** (à droite du knob) :
+- **SWELL** : longueur du souffle — PRESET (celle du preset), 1/16, 1/8, 1/4 (un temps), 1/2, 1 BAR ; LONG la double toujours (plafond ~1,95 s, point jaune sur LONG au-delà).
+- **HITS** : quels coups reçoivent un souffle — ALL (tous), BEAT 1, 2 + 4 (le backbeat), LAST (le dernier temps de la mesure), 1 / 2 BARS (le premier temps une mesure sur deux, pour les drops). Fenêtre de 1/8 de temps avant à 3/8 après chaque temps visé (claps en avance, swing).
 
 - Longueur du souffle = beats du preset × (2 avec **LONG**) au tempo de l'hôte (120 BPM sans tempo), bridée à ~1,95 s ; à tempo trop lent, un point s'affiche sur le chip LONG.
 - **SHIMMER** : une octave haute dans le souffle.

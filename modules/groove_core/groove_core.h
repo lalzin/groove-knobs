@@ -59,5 +59,6 @@
 #include "ui/PresetBar.h"
 #include "ui/PresetTags.h"
 #include "ui/ToggleChips.h"
+#include "ui/ChoiceChips.h"
 #include "ui/MascotComponent.h"
 #include "ui/OneKnobEditor.h"

@@ -1,6 +1,7 @@
 # Changelog
 
 ## [Unreleased] — Backwash 0.1.0 (nouveau)
+- **Temps** : SWELL (longueur 1/16 → 1 mesure, ou celle du preset) et HITS (tous / temps 1 / 2 + 4 / dernier temps / 1er temps toutes les 2 mesures), dans les deux modes ; LIVE et LOCK activés par défaut, LOCK sur mémoire vide écoute d'abord une mesure complète.
 - **LIVE** (zéro latence) et **LOCK** : mémoire de la dernière mesure, souffle rendu en arrière-plan (FFT) et lu à la position musicale ; mémoire conservée à l'arrêt et dans l'état du projet ; LOCK la fige. Commutation LIVE avec fondu de 10 ms et nouvelle latence annoncée à l'hôte.
 - UI : vague sans marche à la crête ni coupure en haut (hauteur plafonnée en douceur), rouleau redessiné sans couture ; Swell garde une pose stable par zone (euphorique en permanence à 100 %), le rythme ne fait plus que l'effleurer.
 - Reverb inversée en temps réel, calée sur le tempo, lookahead fixe de 2 s ; convolueur partitionné maison (`gk::PartitionedConvolver`) ; IR générées en arrière-plan avec fondu de 50 ms ; focus sur les attaques ; SHIMMER (octave haute) ; limiteur sur le wet seul.
@@ -14,7 +15,7 @@
 - UI « 70s sunset » et mascotte Velvet avec ses clones.
 
 ## groove_core (suite)
-- Interrupteurs globaux (`OneKnobConfig::switches`, chips en colonne), latence variable selon ces interrupteurs (`latencyForSwitches` / `setSwitches`), état additionnel par plugin (`saveExtraState` / `loadExtraState`), signature rythmique dans `BlockTiming`, `IntegerDelay` à délai variable.
+- Choix globaux (`OneKnobConfig::choices`, sélecteurs légendés `ChoiceChips`, `OneKnobEngine::setChoices`), interrupteurs activables par défaut ; interrupteurs globaux (`OneKnobConfig::switches`, chips en colonne), latence variable selon ces interrupteurs (`latencyForSwitches` / `setSwitches`), état additionnel par plugin (`saveExtraState` / `loadExtraState`), signature rythmique dans `BlockTiming`, `IntegerDelay` à délai variable.
 - Toggles avec valeurs par défaut par preset, bus mono → stéréo, makeup par combinaison de toggles, moteur toujours actif, télémétrie en sortie, mode hors temps réel, convolueur partitionné, chips cliquables, libellés d'extrémité, knob aux bandes ondulées et lueur qui « respire », hooks de mascotte, outil `gk_render` commun, `asset_prep` (fond uni, grilles irrégulières, fragments voisins).
 
 

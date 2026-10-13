@@ -17,5 +17,6 @@
 #include "ui/BigKnob.cpp"
 #include "ui/PresetBar.cpp"
 #include "ui/ToggleChips.cpp"
+#include "ui/ChoiceChips.cpp"
 #include "ui/MascotComponent.cpp"
 #include "ui/OneKnobEditor.cpp"

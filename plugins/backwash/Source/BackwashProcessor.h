@@ -21,6 +21,8 @@ public:
     juce::AudioParameterBool& getShimmerParameter() noexcept { return getToggleParameter (BackwashDsp::shimmerToggle); }
     juce::AudioParameterBool& getLiveParameter() noexcept { return getSwitchParameter (BackwashDsp::liveSwitch); }
     juce::AudioParameterBool& getLockParameter() noexcept { return getSwitchParameter (BackwashDsp::lockSwitch); }
+    juce::AudioParameterChoice& getSwellLengthParameter() noexcept { return getChoiceParameter (BackwashDsp::lengthChoice); }
+    juce::AudioParameterChoice& getHitsParameter() noexcept { return getChoiceParameter (BackwashDsp::targetChoice); }
 
     void saveExtraState (juce::ValueTree& state) override;
     void loadExtraState (const juce::ValueTree& state) override;

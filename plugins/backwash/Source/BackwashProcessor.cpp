@@ -16,7 +16,11 @@ namespace
         cfg.toggles = { { "long", "Long", "LONG" }, { "shimmer", "Shimmer", "SHIMMER" } };
         // LIVE: zero latency, the swells come from a memory of the last bar;
         // LOCK: freezes that memory. Global (a preset change keeps them).
-        cfg.switches = { { "live", "Live (zero latency)", "LIVE" }, { "lock", "Lock memory", "LOCK" } };
+        // On by default (Alan): zero latency, and the first bar heard is kept
+        cfg.switches = { { "live", "Live (zero latency)", "LIVE", true }, { "lock", "Lock memory", "LOCK", true } };
+        // Timing: swell length and which hits get one
+        cfg.choices = { { "swell", "Swell length", "SWELL", { "PRESET", "1/16", "1/8", "1/4", "1/2", "1 BAR" }, 0 },
+                        { "hits", "Swell on", "HITS", { "ALL", "BEAT 1", "2 + 4", "LAST", "1 / 2 BARS" }, 0 } };
         cfg.knobLowLabel = "CALM";
         cfg.knobHighLabel = "TSUNAMI";
         cfg.engineAlwaysRuns = true;   // 2 s of history must always be there
