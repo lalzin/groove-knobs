@@ -1,0 +1,221 @@
+{
+  "suite": {
+    "name": "Groove Knobs",
+    "by": "LALZIN",
+    "signature": "with groove and love",
+    "tagline": {
+      "fr": "Des plugins à un seul knob pour la funky house et la disco. Gratuits.",
+      "en": "One-knob plugins for funky house and disco. Free."
+    },
+    "images": {
+      "og": "groove-knobs-og.webp",
+      "banner": "groove-knobs-banner.webp"
+    }
+  },
+  "plugins": [
+    {
+      "slug": "french-filter",
+      "name": "French Filter",
+      "version": "0.1.0",
+      "mascot": "Le mime French Touch",
+      "colors": {
+        "background": "#36363c",
+        "accent": "#e63946",
+        "accent2": "#2f5bd8",
+        "cream": "#f3e9d2"
+      },
+      "tagline": {
+        "fr": "Le filtre French Touch, en un seul knob",
+        "en": "The French Touch filter, in one knob"
+      },
+      "description": {
+        "fr": "Un knob bipolaire : au centre le son reste intact, à gauche le passe-bas, à droite le passe-haut. Chaque preset a deux personnalités (growl de résonance, pump déclenché par le kick, phaser, room). Disco filtrée, funky house, montées et drops.",
+        "en": "A bipolar knob: dead centre is untouched, left is the low-pass, right is the high-pass. Every preset has two personalities (resonant growl, kick-triggered pump, phaser, room). Filtered disco, funky house, build-ups and drops."
+      },
+      "features": {
+        "fr": [
+          "Knob bipolaire LP / HP, centre transparent",
+          "9 presets à deux côtés",
+          "Pump calé sur le kick, growl, phaser",
+          "Mascotte animée qui réagit au son"
+        ],
+        "en": [
+          "Bipolar LP / HP knob, transparent centre",
+          "9 two-sided presets",
+          "Kick-locked pump, growl, phaser",
+          "Animated mascot that reacts to the sound"
+        ]
+      },
+      "presets": [
+        "Filtered Disco",
+        "Acid Disco",
+        "Lady Groove",
+        "Muffled Club",
+        "Robot Funk",
+        "Sounds Better",
+        "Space",
+        "Sunrise Sweep",
+        "Touch 98"
+      ],
+      "downloads": {
+        "macos": {
+          "file": "FrenchFilter-0.1.0-macOS.pkg",
+          "bytes": 36163850,
+          "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
+          "formats": [
+            "VST3",
+            "AU",
+            "Standalone"
+          ]
+        },
+        "windows": {
+          "file": "FrenchFilter-0.1.0-Windows-Setup.exe",
+          "bytes": null,
+          "requirements": "Windows 10/11 64-bit",
+          "formats": [
+            "VST3",
+            "Standalone"
+          ]
+        }
+      }
+    },
+    {
+      "slug": "boogie-trio",
+      "name": "Boogie Trio",
+      "version": "0.1.0",
+      "mascot": "Velvet et ses clones",
+      "colors": {
+        "background": "#36363c",
+        "accent": "#f29a38",
+        "accent2": "#e8508a",
+        "cream": "#f3e9d2",
+        "accent3": "#7a4fd0"
+      },
+      "tagline": {
+        "fr": "Le chorus triple des string machines 70s, en un knob",
+        "en": "A 70s string-machine triple chorus, in one knob"
+      },
+      "description": {
+        "fr": "À 0 % une seule voix, à 100 % un trio : trois voix modulées façon string machine, une stéréo large qui garde le centre en phase. Nappes de cordes disco, pads, Rhodes, clavinet, guitares rythmiques. Chips VINTAGE (couleur BBD) et WIDE.",
+        "en": "One voice at 0 %, a trio at 100 %: three string-machine voices, a wide stereo image that keeps the centre in phase. Disco strings, pads, Rhodes, clavinet, rhythm guitars. VINTAGE (BBD colour) and WIDE chips."
+      },
+      "features": {
+        "fr": [
+          "Chorus 3 voix, centre mono intact",
+          "8 presets (gate, phaser, trémolo, bande…)",
+          "VINTAGE et WIDE",
+          "Velvet et ses clones à l'écran"
+        ],
+        "en": [
+          "3-voice chorus, mono-safe centre",
+          "8 presets (gate, phaser, tremolo, tape…)",
+          "VINTAGE and WIDE",
+          "Velvet and his clones on screen"
+        ]
+      },
+      "presets": [
+        "Disco Strings",
+        "Disco Gate",
+        "Funk Keys",
+        "Jet Set",
+        "Lush Pad",
+        "Moon Phaser",
+        "Velvet",
+        "Warble"
+      ],
+      "downloads": {
+        "macos": {
+          "file": "BoogieTrio-0.1.0-macOS.pkg",
+          "bytes": 18252983,
+          "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
+          "formats": [
+            "VST3",
+            "AU",
+            "Standalone"
+          ]
+        },
+        "windows": {
+          "file": "BoogieTrio-0.1.0-Windows-Setup.exe",
+          "bytes": null,
+          "requirements": "Windows 10/11 64-bit",
+          "formats": [
+            "VST3",
+            "Standalone"
+          ]
+        }
+      }
+    },
+    {
+      "slug": "backwash",
+      "name": "Backwash",
+      "version": "0.1.0",
+      "mascot": "Swell le surfeur",
+      "colors": {
+        "background": "#36363c",
+        "accent": "#4fd1c5",
+        "accent2": "#ff7a59",
+        "cream": "#f3e9d2"
+      },
+      "tagline": {
+        "fr": "La reverb inversée calée sur le tempo, en un knob",
+        "en": "Tempo-synced reverse reverb, in one knob"
+      },
+      "description": {
+        "fr": "Chaque coup est précédé d'un souffle qui s'arrête pile sur lui, en lecture, sans bounce ni reverse. Mode LIVE zéro latence (il mémorise la mesure), LOCK pour figer le souffle sur un break, SWELL pour la longueur (1/16 à 1 mesure) et HITS pour choisir les temps (2 + 4, dernier temps, 1 mesure sur 2…).",
+        "en": "Every hit gets a swell that stops exactly on it, on playback, no bouncing or reversing. Zero-latency LIVE mode (it remembers the bar), LOCK to keep the swell over a break, SWELL for the length (1/16 to 1 bar) and HITS to pick the beats (2 + 4, last beat, every other bar…)."
+      },
+      "features": {
+        "fr": [
+          "Reverb inversée calée sur le tempo",
+          "LIVE zéro latence + LOCK",
+          "SWELL (longueur) et HITS (quels temps)",
+          "SHIMMER (octave) et LONG"
+        ],
+        "en": [
+          "Tempo-synced reverse reverb",
+          "Zero-latency LIVE + LOCK",
+          "SWELL (length) and HITS (which beats)",
+          "SHIMMER (octave) and LONG"
+        ]
+      },
+      "presets": [
+        "Snare Swell",
+        "Vocal Suck",
+        "Clap Rewind",
+        "Ghost Pad",
+        "Big Inhale"
+      ],
+      "downloads": {
+        "macos": {
+          "file": "Backwash-0.1.0-macOS.pkg",
+          "bytes": 18943252,
+          "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
+          "formats": [
+            "VST3",
+            "AU",
+            "Standalone"
+          ]
+        },
+        "windows": {
+          "file": "Backwash-0.1.0-Windows-Setup.exe",
+          "bytes": null,
+          "requirements": "Windows 10/11 64-bit",
+          "formats": [
+            "VST3",
+            "Standalone"
+          ]
+        }
+      }
+    }
+  ],
+  "images_per_plugin": {
+    "ui-hero.webp": "840x1040 (2x of the 420x520 window)",
+    "ui-hero@3x.webp": "1260x1560",
+    "ui-*.webp": "other states, 840x1040",
+    "mascot.webp": "transparent, hero pose",
+    "poses/*.webp": "every pose, transparent",
+    "og.webp": "1200x630 Open Graph / Twitter",
+    "card-square.webp": "1080x1080 Instagram / product grid",
+    "icon-512.webp": "512x512 rounded, transparent corners"
+  }
+}

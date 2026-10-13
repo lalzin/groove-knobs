@@ -19,6 +19,7 @@ catch_discover_tests(bw_tests
 # Editor screenshots: build/tests/backwash/bw_screenshots_artefacts/Release/bw_screenshots
 juce_add_console_app(bw_screenshots PRODUCT_NAME "bw_screenshots")
 target_sources(bw_screenshots PRIVATE BwScreenshots.cpp)
+target_include_directories(bw_screenshots PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../common)
 target_link_libraries(bw_screenshots PRIVATE BackwashCode juce::juce_recommended_config_flags)
 target_compile_definitions(bw_screenshots PRIVATE JUCE_STANDALONE_APPLICATION=1)
 gk_enable_warnings(bw_screenshots)

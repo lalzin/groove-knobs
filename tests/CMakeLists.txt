@@ -21,6 +21,7 @@ catch_discover_tests(ff_tests
 # Editor screenshots (spec §9.3): build/tests/ff_screenshots_artefacts/Release/ff_screenshots screenshots
 juce_add_console_app(ff_screenshots PRODUCT_NAME "ff_screenshots")
 target_sources(ff_screenshots PRIVATE Screenshots.cpp)
+target_include_directories(ff_screenshots PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/common)
 target_link_libraries(ff_screenshots PRIVATE FrenchFilterCode juce::juce_recommended_config_flags)
 
 # Boogie Trio

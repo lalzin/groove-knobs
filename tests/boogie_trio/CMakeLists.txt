@@ -21,6 +21,7 @@ catch_discover_tests(bt_tests
 # Editor screenshots: build/tests/boogie_trio/bt_screenshots_artefacts/Release/bt_screenshots
 juce_add_console_app(bt_screenshots PRODUCT_NAME "bt_screenshots")
 target_sources(bt_screenshots PRIVATE BtScreenshots.cpp)
+target_include_directories(bt_screenshots PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../common)
 target_link_libraries(bt_screenshots PRIVATE BoogieTrioCode juce::juce_recommended_config_flags)
 target_compile_definitions(bt_screenshots PRIVATE JUCE_STANDALONE_APPLICATION=1)
 gk_enable_warnings(bt_screenshots)

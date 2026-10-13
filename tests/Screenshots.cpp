@@ -4,6 +4,7 @@
 // Also writes contact_sheet.png (all 100 % renders on one image).
 
 #include "FrenchFilterEditor.h"
+#include "WebAssets.h"
 #include <iostream>
 
 namespace
@@ -16,11 +17,54 @@ bool writePng (const juce::Image& img, const juce::File& file)
     juce::FileOutputStream os (file);
     return os.openedOk() && juce::PNGImageFormat().writeImageToStream (img, os);
 }
+juce::File repoRoot()
+{
+    // the tools run from the repo root or from build/: walk up to the repo
+    for (auto d = juce::File::getCurrentWorkingDirectory(); d.exists() && ! d.isRoot(); d = d.getParentDirectory())
+        if (d.getChildFile ("plugins").isDirectory() && d.getChildFile ("modules/groove_core").isDirectory())
+            return d;
+    return juce::File::getCurrentWorkingDirectory();
+}
+
+// --web: visuals for lalzin.com
+int runWeb (const juce::File& out)
+{
+    ff::FrenchFilterProcessor proc;
+    auto shot = [&] (float amount, float scale, bool drop)
+    {
+        setParam (proc.getAmountParameter(), amount);
+        proc.editorScale.store (juce::jmin (2.0f, scale)); // the editor caps its zoom at 200 %
+        std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
+        auto* editor = dynamic_cast<gk::OneKnobEditor*> (ed.get());
+        if (drop)
+            editor->getMascot().triggerDrop();
+        editor->snapForSnapshot();
+        return editor->createComponentSnapshot (editor->getLocalBounds(), true, juce::jmax (1.0f, scale / 2.0f));
+    };
+    setParam (proc.getPresetParameter(), 0.0f);
+    std::vector<gkweb::Shot> shots { { "hero", shot (0.5f, 3.0f, true) }, { "hp50", shot (0.75f, 2.0f, false) },
+                                     { "lp50", shot (0.25f, 2.0f, false) }, { "centre", shot (0.5f, 2.0f, false) } };
+    gkweb::PluginInfo info;
+    info.slug = "french-filter";
+    info.name = "French Filter";
+    info.taglineFr = juce::String::fromUTF8 ("Le filtre French Touch, en un seul knob");
+    info.taglineEn = "The French Touch filter, in one knob";
+    info.palette = ff::FrenchFilterEditor::makePalette();
+    info.assetsDir = repoRoot().getChildFile ("plugins/french_filter/Assets");
+    info.framePrefix = "mascot_";
+    info.heroFrame = std::atoi (std::getenv ("GK_HERO") != nullptr ? std::getenv ("GK_HERO") : "0");
+    for (int i = 0; i < 17; ++i)
+        info.poses.push_back (i);
+    gkweb::writePlugin (info, shots, out);
+    return 0;
+}
 } // namespace
 
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
+    if (argc > 1 && juce::String (argv[1]) == "--web")
+        return runWeb (juce::File::getCurrentWorkingDirectory().getChildFile (argc > 2 ? argv[2] : "web-assets"));
     const auto outDir = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 ? argv[1] : "screenshots");
     outDir.createDirectory();
 

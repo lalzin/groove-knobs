@@ -6,6 +6,7 @@
 // Writes contact_sheet.png and breath_sheet.png for review.
 
 #include "BackwashEditor.h"
+#include "WebAssets.h"
 #include <iostream>
 
 namespace
@@ -21,12 +22,12 @@ bool writePng (const juce::Image& img, const juce::File& file)
 
 juce::Image shoot (bw::BackwashProcessor& proc, float scale, float inhale = 0.5f)
 {
-    proc.editorScale.store (scale);
+    proc.editorScale.store (juce::jmin (2.0f, scale)); // the editor caps its zoom at 200 %
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     auto* editor = dynamic_cast<bw::BackwashEditor*> (ed.get());
     editor->setInhaleOverride (proc.getAmountParameter().getValue() > 0.0f ? inhale : 0.0f);
     editor->snapForSnapshot();
-    return editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
+    return editor->createComponentSnapshot (editor->getLocalBounds(), true, juce::jmax (1.0f, scale / 2.0f));
 }
 
 juce::Image sheetOf (const std::vector<std::vector<std::pair<juce::String, juce::Image>>>& rows)
@@ -47,11 +48,56 @@ juce::Image sheetOf (const std::vector<std::vector<std::pair<juce::String, juce:
         }
     return sheet;
 }
+juce::File repoRoot()
+{
+    for (auto d = juce::File::getCurrentWorkingDirectory(); d.exists() && ! d.isRoot(); d = d.getParentDirectory())
+        if (d.getChildFile ("plugins").isDirectory() && d.getChildFile ("modules/groove_core").isDirectory())
+            return d;
+    return juce::File::getCurrentWorkingDirectory();
+}
+
+// --web: visuals for lalzin.com (run after ff_ and bt_screenshots --web for
+// the suite visuals)
+int runWeb (const juce::File& out)
+{
+    bw::BackwashProcessor proc;
+    proc.setCurrentProgram (0);
+    // a captured memory: no "empty" warning dots on the marketing shots
+    proc.getBackwashDsp().getTelemetry().liveMemoryReady.store (true);
+    proc.getBackwashDsp().getTelemetry().liveMemoryComplete.store (true);
+    auto at = [&] (float amount, float scale, float inhale)
+    {
+        setParam (proc.getAmountParameter(), amount);
+        return shoot (proc, scale, inhale);
+    };
+    setParam (proc.getShimmerParameter(), 1.0f);
+    auto hero = at (1.0f, 3.0f, 0.95f);
+    setParam (proc.getShimmerParameter(), 0.0f);
+    std::vector<gkweb::Shot> shots { { "hero", hero }, { "50", at (0.5f, 2.0f, 0.6f) }, { "75", at (0.75f, 2.0f, 0.8f) } };
+    gkweb::PluginInfo info;
+    info.slug = "backwash";
+    info.name = "Backwash";
+    info.taglineFr = juce::String::fromUTF8 ("La reverb invers\xc3\xa9""e cal\xc3\xa9""e sur le tempo, en un knob");
+    info.taglineEn = "Tempo-synced reverse reverb, in one knob";
+    info.palette = bw::BackwashEditor::makePalette();
+    info.assetsDir = repoRoot().getChildFile ("plugins/backwash/Assets");
+    info.framePrefix = "swell_";
+    info.heroFrame = std::atoi (std::getenv ("GK_HERO") != nullptr ? std::getenv ("GK_HERO") : "11");
+    for (int i = 0; i < 12; ++i)
+        info.poses.push_back (i);
+    gkweb::writePlugin (info, shots, out);
+
+    auto suitePalette = info.palette;
+    gkweb::writeSuite (out, { { "french-filter", "" }, { "boogie-trio", "" }, { "backwash", "" } }, suitePalette);
+    return 0;
+}
 } // namespace
 
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
+    if (argc > 1 && juce::String (argv[1]) == "--web")
+        return runWeb (juce::File::getCurrentWorkingDirectory().getChildFile (argc > 2 ? argv[2] : "web-assets"));
     const auto outDir = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 ? argv[1] : "screenshots/backwash");
     outDir.createDirectory();
 

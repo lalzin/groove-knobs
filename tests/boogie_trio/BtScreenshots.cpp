@@ -5,6 +5,7 @@
 // Writes contact_sheet.png and chips_sheet.png for review.
 
 #include "BoogieTrioEditor.h"
+#include "WebAssets.h"
 #include <iostream>
 
 namespace
@@ -20,11 +21,11 @@ bool writePng (const juce::Image& img, const juce::File& file)
 
 juce::Image shoot (bt::BoogieTrioProcessor& proc, float scale)
 {
-    proc.editorScale.store (scale);
+    proc.editorScale.store (juce::jmin (2.0f, scale)); // the editor caps its zoom at 200 %
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     auto* editor = dynamic_cast<gk::OneKnobEditor*> (ed.get());
     editor->snapForSnapshot();
-    return editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
+    return editor->createComponentSnapshot (editor->getLocalBounds(), true, juce::jmax (1.0f, scale / 2.0f));
 }
 
 juce::Image sheetOf (const std::vector<std::vector<std::pair<juce::String, juce::Image>>>& rows)
@@ -45,10 +46,48 @@ juce::Image sheetOf (const std::vector<std::vector<std::pair<juce::String, juce:
         }
     return sheet;
 }
+juce::File repoRoot()
+{
+    // the tools run from the repo root or from build/: walk up to the repo
+    for (auto d = juce::File::getCurrentWorkingDirectory(); d.exists() && ! d.isRoot(); d = d.getParentDirectory())
+        if (d.getChildFile ("plugins").isDirectory() && d.getChildFile ("modules/groove_core").isDirectory())
+            return d;
+    return juce::File::getCurrentWorkingDirectory();
+}
+
+int runWeb (const juce::File& out)
+{
+    bt::BoogieTrioProcessor proc;
+    proc.setCurrentProgram (0);
+    auto at = [&] (float amount, float scale)
+    {
+        setParam (proc.getAmountParameter(), amount);
+        return shoot (proc, scale);
+    };
+    std::vector<gkweb::Shot> shots { { "hero", at (0.75f, 3.0f) }, { "25", at (0.25f, 2.0f) }, { "100", at (1.0f, 2.0f) } };
+    gkweb::PluginInfo info;
+    info.slug = "boogie-trio";
+    info.name = "Boogie Trio";
+    info.taglineFr = juce::String::fromUTF8 ("Le chorus triple des string machines 70s, en un knob");
+    info.taglineEn = "A 70s string-machine triple chorus, in one knob";
+    info.palette = bt::BoogieTrioEditor::makePalette();
+    info.assetsDir = repoRoot().getChildFile ("plugins/boogie_trio/Assets");
+    info.framePrefix = "velvet_";
+    info.heroFrame = std::atoi (std::getenv ("GK_HERO") != nullptr ? std::getenv ("GK_HERO") : "0");
+    for (int i = 0; i < 11; ++i)
+        info.poses.push_back (i);
+    gkweb::writePlugin (info, shots, out);
+    return 0;
+}
 } // namespace
 
 int main (int argc, char** argv)
 {
+    if (argc > 1 && juce::String (argv[1]) == "--web")
+    {
+        juce::ScopedJuceInitialiser_GUI webInit;
+        return runWeb (juce::File::getCurrentWorkingDirectory().getChildFile (argc > 2 ? argv[2] : "web-assets"));
+    }
     juce::ScopedJuceInitialiser_GUI juceInit;
     const auto outDir = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 ? argv[1] : "screenshots/boogie_trio");
     outDir.createDirectory();
