@@ -1,0 +1,399 @@
+namespace gk
+{
+namespace
+{
+    constexpr const char* stateTag = "GrooveKnobsState";
+}
+
+OneKnobProcessor::OneKnobProcessor (OneKnobConfig cfg, std::unique_ptr<OneKnobEngine> eng)
+    : AudioProcessor (BusesProperties()
+                          .withInput ("Input", juce::AudioChannelSet::stereo(), true)
+                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      config (std::move (cfg)),
+      engine (std::move (eng)),
+      apvts (*this, nullptr, "PARAMETERS", createLayout (config))
+{
+    jassert (engine != nullptr);
+    jassert (config.presets.size() > 0);
+    engine->setPresets (config.presets);
+
+    amountParam = apvts.getParameter (amountId.getParamID());
+    presetParam = dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (presetId.getParamID()));
+    bypassParam = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (bypassId.getParamID()));
+    amountValue = apvts.getRawParameterValue (amountId.getParamID());
+    presetValue = apvts.getRawParameterValue (presetId.getParamID());
+    bypassValue = apvts.getRawParameterValue (bypassId.getParamID());
+    jassert (amountParam && presetParam && bypassParam);
+}
+
+OneKnobProcessor::~OneKnobProcessor() = default;
+
+juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayout (const OneKnobConfig& cfg)
+{
+    juce::AudioProcessorValueTreeState::ParameterLayout layout;
+
+    std::function<juce::String (float, int)> toText;
+    std::function<float (const juce::String&)> fromText;
+
+    if (cfg.bipolar)
+    {
+        // "LP 42 %" / "—" / "HP 30 %" (percent of each side's travel)
+        toText = [lo = cfg.lowSideLabel, hi = cfg.highSideLabel] (float v, int)
+        {
+            const int pct = juce::roundToInt (std::abs (v - 0.5f) * 200.0f);
+            if (pct == 0)
+                return juce::String (juce::CharPointer_UTF8 ("\xe2\x80\x94")); // em dash: centre
+            return (v < 0.5f ? lo : hi) + " " + juce::String (pct) + " %";
+        };
+        // Accepts "LP 40", "HP 20", "-40", "+20", "40" (= right), "0"
+        fromText = [lo = cfg.lowSideLabel] (const juce::String& text)
+        {
+            auto t = text.trim().toUpperCase();
+            float sign = 1.0f;
+            if (t.startsWith (lo.toUpperCase()) || t.startsWith ("-") || t.startsWith ("L"))
+                sign = -1.0f;
+            const auto digits = t.retainCharacters ("0123456789.");
+            const float pct = juce::jlimit (0.0f, 100.0f, digits.getFloatValue());
+            return juce::jlimit (0.0f, 1.0f, 0.5f + sign * pct / 200.0f);
+        };
+    }
+    else
+    {
+        toText = [] (float v, int) { return juce::String (juce::roundToInt (v * 100.0f)) + " %"; };
+        // The knob is displayed in percent, so typed numbers are percent:
+        // "50", "50 %", "50%" -> 0.5
+        fromText = [] (const juce::String& text)
+        {
+            const auto t = text.trim().trimCharactersAtEnd ("% ").trim();
+            return juce::jlimit (0.0f, 1.0f, t.getFloatValue() / 100.0f);
+        };
+    }
+
+    // "amount" first: it becomes the first mappable parameter in Ableton.
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        amountId, "Amount", juce::NormalisableRange<float> (0.0f, 1.0f), cfg.bipolar ? 0.5f : 0.0f,
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction (toText).withValueFromStringFunction (fromText)));
+
+    layout.add (std::make_unique<juce::AudioParameterChoice> (presetId, "Preset", cfg.presets.getNames(), 0));
+    layout.add (std::make_unique<juce::AudioParameterBool> (bypassId, "Bypass", false));
+    return layout;
+}
+
+float OneKnobProcessor::macroFor (float a) const noexcept
+{
+    if (! config.bipolar)
+        return a;
+    const float m = 2.0f * a - 1.0f;
+    const float mag = std::abs (m) - config.centreDeadZone;
+    if (mag <= 0.0f)
+        return 0.0f;
+    return std::copysign (juce::jmin (1.0f, mag / (1.0f - config.centreDeadZone)), m);
+}
+
+float OneKnobProcessor::amountFor (float macro) const noexcept
+{
+    if (! config.bipolar)
+        return juce::jlimit (0.0f, 1.0f, macro);
+    if (juce::exactlyEqual (macro, 0.0f))
+        return 0.5f;
+    const float mag = config.centreDeadZone + (1.0f - config.centreDeadZone) * juce::jlimit (0.0f, 1.0f, std::abs (macro));
+    return 0.5f + 0.5f * std::copysign (mag, macro);
+}
+
+bool OneKnobProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+{
+    const auto in = layouts.getMainInputChannelSet();
+    const auto out = layouts.getMainOutputChannelSet();
+    if (in != out)
+        return false;
+    return out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo();
+}
+
+void OneKnobProcessor::prepareToPlay (double newSampleRate, int samplesPerBlock)
+{
+    sampleRate = newSampleRate;
+    maxBlock = juce::jmax (1, samplesPerBlock);
+    const int numChannels = juce::jmax (1, getMainBusNumOutputChannels());
+
+    engine->prepare (sampleRate, maxBlock, numChannels);
+    latency = engine->getLatencySamples();
+    setLatencySamples (latency);
+
+    dryDelay.prepare (numChannels, latency);
+    dryBuffer.setSize (numChannels, maxBlock, false, true, false);
+    wetBuffer.setSize (numChannels, maxBlock, false, true, false);
+    amountBuffer.assign ((size_t) maxBlock, 0.0f);
+    bypassBuffer.assign ((size_t) maxBlock, 0.0f);
+    weightBuffer.assign ((size_t) maxBlock, 0.0f);
+    crossfadeMaxStep = (float) (1.0 / juce::jmax (1.0, config.crossfadeMinSeconds * sampleRate));
+
+    amountSmoother.prepare (sampleRate, config.amountRampSeconds);
+    bypassSmoother.prepare (sampleRate, config.bypassRampSeconds);
+    wetGate.prepare (sampleRate, config.wetFadeInSeconds);
+    wetInputFade.prepare (sampleRate, 0.002);
+    makeupSmoother.prepare (sampleRate, config.derivedSettleSeconds);
+
+    hostSync.prepare (sampleRate);
+    featureExtractor.prepare (sampleRate);
+    reset();
+}
+
+void OneKnobProcessor::reset()
+{
+    engine->reset();
+    dryDelay.reset();
+    featureExtractor.reset();
+    wetRunning = false;
+    warmupRemaining = 0;
+    wetGate.snap (0.0f);
+    makeupSmoother.invalidate();
+    snapRequested.store (true);
+}
+
+void OneKnobProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+{
+    processInternal (buffer, false);
+}
+
+void OneKnobProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+{
+    // Host-side bypass: keep the latency-compensated dry path and ramp.
+    processInternal (buffer, true);
+}
+
+void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool forceBypass)
+{
+    juce::ScopedNoDenormals noDenormals;
+
+    const int numSamples = buffer.getNumSamples();
+    const int numChannels = juce::jmin (buffer.getNumChannels(), dryBuffer.getNumChannels());
+    for (int ch = numChannels; ch < buffer.getNumChannels(); ++ch)
+        buffer.clear (ch, 0, numSamples);
+    if (numSamples == 0 || numChannels == 0 || maxBlock == 0)
+        return;
+
+    const auto timing = hostSync.beginBlock (getPlayHead(), numSamples);
+
+    const int presetIndex = juce::jlimit (0, config.presets.size() - 1, juce::roundToInt (presetValue->load()));
+    if (presetIndex != currentPreset)
+    {
+        engine->setPreset (presetIndex);
+        currentPreset = presetIndex;
+    }
+
+    const float amountTarget = juce::jlimit (0.0f, 1.0f, amountValue->load());
+    const float bypassTarget = (forceBypass || bypassValue->load() >= 0.5f) ? 1.0f : 0.0f;
+
+    if (snapRequested.exchange (false))
+    {
+        amountSmoother.snap (amountTarget);
+        bypassSmoother.snap (bypassTarget);
+        crossfadeWeight = macro::transparencyWeight (std::abs (macroFor (amountTarget)), config.transparencyZone);
+        makeupSmoother.invalidate();
+        engine->reset();
+        wetRunning = false;
+    }
+    amountSmoother.setTarget (amountTarget);
+    bypassSmoother.setTarget (bypassTarget);
+
+    featureExtractor.process (buffer, 0, numSamples, features);
+
+    // Hosts may send more samples than announced in prepareToPlay: split.
+    for (int start = 0; start < numSamples; start += maxBlock)
+    {
+        const int n = juce::jmin (maxBlock, numSamples - start);
+        processChunk (buffer, start, n, timing.offsetBy (start), numChannels);
+    }
+
+    features.beats.store (timing.beatsAt (numSamples), std::memory_order_relaxed);
+    features.bpm.store ((float) timing.bpm, std::memory_order_relaxed);
+    features.playing.store (timing.isPlaying, std::memory_order_relaxed);
+    features.modulationPhase.store (engine->getModulationPhase(), std::memory_order_relaxed);
+    features.amount.store (macroFor (amountSmoother.getCurrent()), std::memory_order_relaxed);
+    features.bypassMix.store (bypassSmoother.getCurrent(), std::memory_order_relaxed);
+}
+
+void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start, int n, const BlockTiming& timing, int numChannels)
+{
+    bool anyActive = false;
+    for (int i = 0; i < n; ++i)
+    {
+        const float a = macroFor (amountSmoother.next());
+        // S-shaped bypass crossfade: no slope break at either end.
+        const float b = dspmath::smoothstep (0.0f, 1.0f, bypassSmoother.next());
+
+        // Dry/wet weight of the transparency zone, slew-limited: even a very
+        // fast knob move crossfades over >= crossfadeMinSeconds (the dry and
+        // wet paths differ slightly in phase, a 1 ms crossfade would click).
+        const float target = macro::transparencyWeight (std::abs (a), config.transparencyZone);
+        if (std::abs (target - crossfadeWeight) <= crossfadeMaxStep)
+            crossfadeWeight = target;
+        else
+            crossfadeWeight += target > crossfadeWeight ? crossfadeMaxStep : -crossfadeMaxStep;
+
+        amountBuffer[(size_t) i] = a;
+        bypassBuffer[(size_t) i] = b;
+        weightBuffer[(size_t) i] = crossfadeWeight;
+        anyActive = anyActive || ((! juce::exactlyEqual (a, 0.0f) || crossfadeWeight > 0.0f) && b < 1.0f);
+    }
+
+    // Latency-aligned dry path
+    for (int ch = 0; ch < numChannels; ++ch)
+        dryDelay.process (ch, buffer.getReadPointer (ch, start), dryBuffer.getWritePointer (ch), n);
+    dryDelay.advance (n);
+
+    if (anyActive)
+    {
+        if (! wetRunning)
+        {
+            // The wet path was idle (amount == 0 or bypassed): restart it from
+            // clean states. Its first `latency` output samples are only the
+            // resampler filling up, so keep the output on the dry path until
+            // the wet signal is valid, then fade it in.
+            engine->reset();
+            makeupSmoother.invalidate();
+            warmupRemaining = latency + 16;
+            wetGate.snap (0.0f);
+            // The engine restarts from silence: fade its input in, so its
+            // filters / reverb see a soft onset instead of a step (which they
+            // would ring with after the gate opens).
+            wetInputFade.snap (0.0f);
+            wetInputFade.setTarget (1.0f);
+            wetRunning = true;
+        }
+
+        for (int ch = 0; ch < numChannels; ++ch)
+            wetBuffer.copyFrom (ch, 0, buffer, ch, start, n);
+        if (wetInputFade.isSmoothing())
+            for (int i = 0; i < n; ++i)
+            {
+                const float f = dspmath::smoothstep (0.0f, 1.0f, wetInputFade.next());
+                for (int ch = 0; ch < numChannels; ++ch)
+                    wetBuffer.getWritePointer (ch)[i] *= f;
+            }
+
+        engine->processWet (wetBuffer, n, amountBuffer.data(), timing);
+
+        const bool useMakeup = makeupEnabled.load (std::memory_order_relaxed);
+        const auto& preset = config.presets[currentPreset];
+
+        for (int i = 0; i < n; ++i)
+        {
+            const float a = amountBuffer[(size_t) i];
+            makeupSmoother.setTarget (useMakeup ? preset.makeupDbAt (a) : 0.0f);
+            const float makeup = dspmath::dbToGain (makeupSmoother.next());
+
+            if (warmupRemaining > 0)
+            {
+                if (--warmupRemaining == 0)
+                    wetGate.setTarget (1.0f);
+            }
+            const float w = dspmath::smoothstep (0.0f, 1.0f, wetGate.next()) * weightBuffer[(size_t) i];
+            const float bp = bypassBuffer[(size_t) i];
+
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                const float dry = dryBuffer.getReadPointer (ch)[i];
+                const float wet = wetBuffer.getReadPointer (ch)[i] * makeup;
+                const float mixed = SafetyClipper::process ((1.0f - w) * dry + w * wet);
+                buffer.getWritePointer (ch, start)[i] = (1.0f - bp) * mixed + bp * dry;
+            }
+        }
+    }
+    else
+    {
+        wetRunning = false;
+        for (int i = 0; i < n; ++i)
+        {
+            const float bp = bypassBuffer[(size_t) i];
+            for (int ch = 0; ch < numChannels; ++ch)
+            {
+                const float dry = dryBuffer.getReadPointer (ch)[i];
+                buffer.getWritePointer (ch, start)[i] = bp >= 1.0f ? dry : (1.0f - bp) * SafetyClipper::process (dry) + bp * dry;
+            }
+        }
+    }
+}
+
+//==============================================================================
+int OneKnobProcessor::getCurrentProgram()
+{
+    return presetParam->getIndex();
+}
+
+void OneKnobProcessor::setCurrentProgram (int index)
+{
+    if (index < 0 || index >= config.presets.size())
+        return;
+    presetParam->beginChangeGesture();
+    presetParam->setValueNotifyingHost (presetParam->convertTo0to1 ((float) index));
+    presetParam->endChangeGesture();
+}
+
+const juce::String OneKnobProcessor::getProgramName (int index)
+{
+    return juce::isPositiveAndBelow (index, config.presets.size()) ? config.presets[index].name : juce::String();
+}
+
+//==============================================================================
+void OneKnobProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    juce::ValueTree state (stateTag);
+    state.setProperty ("version", stateVersion, nullptr);
+    state.setProperty ("plugin", config.productName, nullptr);
+    state.setProperty ("amount", amountParam->convertFrom0to1 (amountParam->getValue()), nullptr);
+    const int presetIndex = presetParam->getIndex();
+    state.setProperty ("preset", config.presets[presetIndex].name, nullptr);
+    state.setProperty ("presetIndex", presetIndex, nullptr);
+    state.setProperty ("bypass", bypassParam->get(), nullptr);
+    state.setProperty ("editorScale", editorScale.load(), nullptr);
+
+    if (auto xml = state.createXml())
+        copyXmlToBinary (*xml, destData);
+}
+
+void OneKnobProcessor::migrateState (juce::ValueTree& state, int fromVersion)
+{
+    // v1 -> v2: the knob became bipolar (centre = neutral). A v1 amount was
+    // the low-pass travel 0..1: it maps onto the left half of the new knob.
+    if (fromVersion < 2 && config.bipolar && state.hasProperty ("amount"))
+    {
+        const float v1 = juce::jlimit (0.0f, 1.0f, (float) state.getProperty ("amount"));
+        state.setProperty ("amount", juce::exactlyEqual (v1, 0.0f) ? 0.5f : amountFor (-v1), nullptr);
+    }
+}
+
+void OneKnobProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    const auto xml = getXmlFromBinary (data, sizeInBytes);
+    if (xml == nullptr || ! xml->hasTagName (stateTag))
+        return;
+
+    auto state = juce::ValueTree::fromXml (*xml);
+    const int version = state.getProperty ("version", 1);
+    if (version > stateVersion)
+        return; // state written by a newer build: keep current settings
+    if (version < stateVersion)
+        migrateState (state, version);
+
+    auto setParam = [] (juce::RangedAudioParameter& p, float plainValue)
+    {
+        p.beginChangeGesture();
+        p.setValueNotifyingHost (p.convertTo0to1 (plainValue));
+        p.endChangeGesture();
+    };
+
+    if (state.hasProperty ("amount"))
+        setParam (*amountParam, juce::jlimit (0.0f, 1.0f, (float) state.getProperty ("amount")));
+
+    int presetIndex = config.presets.indexOf (state.getProperty ("preset").toString());
+    if (presetIndex < 0)
+        presetIndex = juce::jlimit (0, config.presets.size() - 1, (int) state.getProperty ("presetIndex", 0));
+    setParam (*presetParam, (float) presetIndex);
+
+    setParam (*bypassParam, (bool) state.getProperty ("bypass", false) ? 1.0f : 0.0f);
+    editorScale.store (juce::jlimit (0.75f, 2.0f, (float) state.getProperty ("editorScale", 1.0f)));
+
+    snapToTargets();
+}
+} // namespace gk

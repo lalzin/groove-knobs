@@ -1,0 +1,22 @@
+FRENCH FILTER — FREEWARE LICENSE
+Copyright (c) 2026 LALZIN. All rights reserved.
+
+French Filter ("the Software") is distributed free of charge.
+
+1. You may install and use the Software on any number of computers you own,
+   for personal and commercial music production, live performance and
+   broadcast. Audio you create with the Software is yours, with no royalty
+   or credit required.
+
+2. You may not sell, rent or sublicense the Software, include it in another
+   product or bundle, or redistribute it outside the official download page
+   without written permission from LALZIN.
+
+3. You may not reverse engineer, decompile or modify the Software, except
+   where the law expressly allows it.
+
+4. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED. IN NO EVENT SHALL LALZIN BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY ARISING FROM THE USE OF THE SOFTWARE.
+
+Third-party components are listed in THIRD_PARTY_NOTICES.txt.

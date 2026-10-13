@@ -1,0 +1,30 @@
+# Changelog
+
+## [Unreleased] — 0.1.0
+### Modifié (2026-10-13)
+- Knob bipolaire : centre neutre, gauche = passe-bas, droite = passe-haut ; presets à deux côtés ; zone morte au centre ; affichage LP / HP ; migration des sessions v1.
+- Mascotte : 17 poses (deuxième planche + poses inutilisées de la première), danse au centre, échelles d'émotions par côté, séquence du drop qui finit en lunettes de soleil.
+- Nouveau preset **Space** (façon Pioneer DJM) : reverb filtrée qui monte, signal intact.
+- Moteur : passe-haut 12 dB, filtre d'envoi de la reverb, niveau de reverb par côté.
+
+### Modifié (après les premiers tests d'Alan)
+- Moteur : résonance qui sature (growl), suiveur d'enveloppe (squelch), grain de sampler, pump déclenché par le kick, pentes 12 / 24 dB, mode passe-haut (riser), room / wash.
+- Les 8 presets refaits, chacun avec sa signature (étiquettes affichées sous le knob).
+- Mascotte : modèle d'émotions tension / relâchement (danse filtre ouvert, inquiète filtre fermé, euphorie au drop).
+- Métrique anti-zipper refaite (rafale HF sur 5 ms, seuil −80 dB) ; calibration du makeup avec garde de pic.
+
+### Ajouté
+- Monorepo CMake (JUCE 8.0.15, C++20) : French Filter en VST3 / AU / Standalone, binaire universel macOS, signature ad hoc, copie dans les dossiers système.
+- Module `groove_core` : `OneKnobProcessor` (paramètres versionnés amount / preset / bypass, état versionné, zone de transparence, makeup calibré, soft clip, bypass sans clic, télémétrie lock-free pour l'UI), `OneKnobEngine`, `PresetManager`, `HostSync`, utilitaires DSP (TPT SVF, saturation, DC blocker, phaser, lisseurs, K-weighting, signaux de test, rendu hors ligne).
+- Moteur French Filter : suréchantillonnage 2x FIR (latence entière), drive asymétrique, passe-bas 24 dB/oct (2 SVF TPT), phaser 4 étages calé sur le tempo.
+- 4 presets JSON avec tables de makeup calibrées.
+- `ff_render` : render, sweep, gen-loop, gen-pink, calibrate, measure.
+- Tests Catch2 : null test, stabilité, anti-zipper, changement de preset, tailles de bloc, état, makeup, latence.
+- UI : éditeur générique `gk::OneKnobEditor` (en-tête, mascotte, gros knob, barre de presets, On/Off), 420×520 redimensionnable de 75 à 200 %, palette et police Lilita One (OFL).
+- BigKnob : glisser vertical (250 px), réglage fin avec Shift ou Cmd/Ctrl, molette, double-clic, flèches du clavier, menu de l'hôte au clic droit, gestes d'automation, accessibilité.
+- Mascotte French Filter : 8 poses bitmap (outil `asset_prep`), animations audio et tempo, sommeil en bypass.
+- `ff_screenshots` : captures 100 % et 200 % de chaque preset, plus une planche contact.
+- 4 presets French Touch : Touch 98, Robot Funk, Sounds Better, Lady Groove (8 au total).
+- Crédit « made by LALZIN » dans l'en-tête.
+- Installateurs : `.pkg` macOS (make_installer_mac.sh), Inno Setup pour Windows (make_installer_win.ps1), workflow GitHub Actions, licence freeware et mentions tierces.
+- Scripts : build_mac.sh, build_win.ps1, run_pluginval.sh, run_auval.sh, calibrate_makeup.sh.

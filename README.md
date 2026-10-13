@@ -1,0 +1,97 @@
+# Groove Knobs — French Filter
+
+Premier plugin de la suite **Groove Knobs** (LALZIN) : un seul knob, le passe-bas « French Touch » (disco filtrée, funky house).
+VST3 / AU / Standalone, macOS (universel) et Windows.
+
+> État : DSP, presets, calibration, interface et mascotte faits (étapes 1–5). Reste la finalisation après validation des captures.
+
+## Build
+
+Prérequis : CMake ≥ 3.22, Ninja ou Xcode (macOS), Visual Studio 2022 (Windows). JUCE et Catch2 sont récupérés automatiquement (tags figés).
+
+```bash
+scripts/build_mac.sh            # universel arm64 + x86_64, tests compris → build-release/
+scripts/build_mac.sh --native   # plus rapide pour le développement → build/
+```
+
+Windows : `powershell -ExecutionPolicy Bypass -File scripts\build_win.ps1`.
+
+Le build copie le plugin dans `~/Library/Audio/Plug-Ins/VST3` et `.../Components` (signature ad hoc). Dans Ableton : Préférences → Plug-ins → Rescan.
+
+Identifiants (nom, codes, bundle ID, version) : un seul fichier, `cmake/GrooveIds.cmake`.
+
+## Installateurs (téléchargement gratuit)
+
+```bash
+scripts/make_installer_mac.sh                      # → dist/FrenchFilter-<v>-macOS.pkg (+ .zip avec les licences)
+```
+
+Windows (sur un PC avec Visual Studio 2022 et Inno Setup 6) :
+`powershell -ExecutionPolicy Bypass -File scripts\make_installer_win.ps1` → `dist\FrenchFilter-<v>-Windows-Setup.exe`.
+Sans PC, le workflow GitHub Actions (`.github/workflows/build.yml`) construit les deux installateurs dès que le dépôt est sur GitHub.
+
+**Avant de publier sur ton site :** sans signature, macOS (Gatekeeper) bloque le `.pkg` téléchargé et Windows (SmartScreen) affiche un avertissement.
+- macOS : compte Apple Developer (99 $/an), certificats « Developer ID Application » et « Developer ID Installer », puis
+  `DEV_ID_APP=... DEV_ID_INSTALLER=... NOTARY_PROFILE=... scripts/make_installer_mac.sh` (signature + notarisation + agrafage).
+- Windows : un certificat de signature de code (Authenticode), via `WIN_SIGN_CERT` / `WIN_SIGN_PASSWORD`.
+
+Licence : `installer/common/LICENSE.txt` (freeware, à relire) et `THIRD_PARTY_NOTICES.txt`.
+
+## Validation
+
+```bash
+ctest --test-dir build --output-on-failure   # ou build/tests/ff_tests_artefacts/Release/ff_tests
+scripts/run_pluginval.sh build 10            # VST3 + AU, strictness 10
+scripts/run_auval.sh                         # auval -v aufx FrFl Lalz
+```
+
+## Le son
+
+**Un knob bipolaire.** Au centre (défaut), le plugin est transparent : la sortie est l'entrée exacte, retardée de la latence. Vers la **gauche**, le côté passe-bas (LP), vers la **droite**, le côté passe-haut (HP). Chaque preset a deux personnalités, une par côté. Une zone morte de ±1 % au centre absorbe le CC 64 d'un contrôleur MIDI.
+
+Chaîne wet, suréchantillonnée 2x : drive asymétrique → grain de sampler → DC blocker → filtre (passe-bas ou passe-haut, 12 / 24 dB, résonance qui sature, cutoff poussé par un suiveur d'enveloppe) → phaser calé sur le tempo → pump déclenché par le kick → reverb (avec son propre filtre d'envoi) → makeup calibré. Les étiquettes sous le knob rappellent la signature du côté actif.
+
+| Preset | ◀ côté LP | côté HP ▶ |
+|---|---|---|
+| **Filtered Disco** (défaut) | le French Touch classique : 24 dB, résonance qui grogne, léger pump, phaser | passe-haut résonant qui grogne + phaser |
+| **Sunrise Sweep** | 12 dB doux + nappe de reverb | **riser** jusqu'à 1,4 kHz + grande reverb qui monte |
+| **Muffled Club** | très sombre (110 Hz) + petite pièce mate : « derrière le mur » | « radio » : passe-haut + grain + petite pièce |
+| **Acid Disco** | squelch (le filtre s'ouvre à chaque coup), résonance au max, drive 15 dB | squelch passe-haut, même mordant |
+| **Touch 98** | grain de sampler 9 bits / 9 kHz + pump | sampler 8 bits sur le haut du spectre + pump |
+| **Robot Funk** | filtre 12 dB qui « parle » (enveloppe +3,5 oct) + grain | passe-haut qui parle |
+| **Sounds Better** | gros pump sur le kick + phaser lent (8 mesures) | pump + phaser large, passe-haut 12 dB |
+| **Lady Groove** | 12 dB doux qui garde de l'air, phaser, un peu de pièce | passe-haut soyeux, phaser large, de l'air |
+| **Space** | façon « Space » des DJM Pioneer : le signal reste intact, une reverb sombre (filtrée en passe-bas) monte | même chose avec une reverb aérienne (filtrée en passe-haut) |
+
+## L'interface
+
+Un gros knob tricolore, un personnage à béret qui change de pose avec le knob (8 poses), une barre de presets, un bouton On/Off.
+
+- **Knob** : centre = neutre, gauche = LP, droite = HP · glisser verticalement (250 px pour toute la course, petit aimant au centre) · **Shift** ou **Cmd/Ctrl** pour un réglage ×10 plus fin · molette = 1 % par cran · **double-clic = retour au centre** · flèches du clavier · clic droit = menu de l'hôte (MIDI learn, automation). Saisie texte : `LP 40`, `HP 20`, `-40`, `+20`, `0`.
+- **Presets** : ◀ ▶ ou clic sur le nom.
+- **Fenêtre** : coin en bas à droite, de 75 à 200 % ; la taille est sauvegardée avec le projet.
+- **Mascotte** (17 poses tirées des deux planches) : au centre avec de la musique, elle **danse** (une pose par temps) ; côté LP, elle devient sceptique, puis inquiète, puis abattue quand c'est étouffé ; côté HP, elle s'excite avec la montée (poings levés) puis **se bouche les oreilles** tout au bout ; quand tu reviens vite au centre (le **drop**), elle enchaîne yeux en étoile, saut bras en l'air, doigts pistolets, puis termine avec les **lunettes de soleil**. En bypass, elle dort.
+
+Captures : `build/tests/ff_screenshots_artefacts/Release/ff_screenshots screenshots` (une planche contact est incluse).
+Assets de la mascotte : `scripts/make_mascot_frames.sh` régénère `plugins/french_filter/Assets/mascot_*.png` depuis les deux planches de `Assets/source/` (détourage, alignement, mise à l'échelle commune) ; l'ordre des frames correspond aux rôles définis dans `FrenchFilterMascot::poses()`.
+
+## ff_render
+
+```bash
+FF=build/tools/ff_render/ff_render_artefacts/Release/ff_render
+$FF sweep --out-dir renders                         # trajet centre → LP → centre → HP → centre sur 16 mesures à 124 BPM, chaque preset
+$FF render in.wav out.wav --preset "Acid Disco" --automation curve.txt --beats --bpm 124
+$FF gen-loop loop.wav --music                       # boucle de test (batterie + basse + accords)
+$FF measure                                         # niveau K-weighted vs dry, par preset
+scripts/calibrate_makeup.sh                         # régénère les tables makeupDb
+```
+
+Fichier d'automation : une paire `<temps> <amount>` par ligne (secondes, ou temps avec `--beats`), interpolation linéaire.
+
+## Structure
+
+`modules/groove_core` (code partagé de la suite) · `plugins/french_filter` (moteur, presets, assets) · `tools/ff_render` · `tests` · `scripts`. Choix et compromis : voir `DECISIONS.md`.
+
+## Licence JUCE
+
+JUCE 8 est sous double licence (AGPLv3 / commerciale). Vérifie la licence adaptée avant une distribution publique.

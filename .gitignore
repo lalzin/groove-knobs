@@ -1,0 +1,9 @@
+build/
+build-*/
+.deps/
+.scratch/
+screenshots/
+renders/
+.DS_Store
+dist/
+*.log

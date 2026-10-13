@@ -1,0 +1,23 @@
+# JUCE-like style (Allman braces, space before parens, 4-space indent).
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++20
+ColumnLimit: 140
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+BreakBeforeBraces: Allman
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: All
+AlwaysBreakTemplateDeclarations: Yes
+SpaceBeforeParens: NonEmptyParentheses
+SpaceAfterCStyleCast: true
+PointerAlignment: Left
+NamespaceIndentation: None
+FixNamespaceComments: true
+AccessModifierOffset: -4
+ConstructorInitializerIndentWidth: 4
+BreakConstructorInitializers: AfterColon
+IncludeBlocks: Preserve
+SortIncludes: Never

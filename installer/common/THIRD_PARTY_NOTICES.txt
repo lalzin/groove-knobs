@@ -1,0 +1,12 @@
+THIRD-PARTY NOTICES — French Filter
+
+JUCE (https://juce.com) — Copyright (c) Raw Material Software Limited.
+  Used under the JUCE licence agreement applicable to the publisher.
+
+Lilita One font — Copyright (c) 2011 Juan Montoreano, with Reserved Font
+  Name "Lilita". Licensed under the SIL Open Font License, Version 1.1
+  (https://openfontlicense.org). The full licence text is embedded in the
+  plug-in and reproduced in LilitaOne-OFL.txt.
+
+VST is a registered trademark of Steinberg Media Technologies GmbH.
+Audio Units is a trademark of Apple Inc.

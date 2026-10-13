@@ -1,0 +1,84 @@
+cmake_minimum_required(VERSION 3.22)
+
+include(cmake/GrooveIds.cmake)
+
+# Universal binary by default on macOS (Apple Silicon + Intel). Must be set
+# before project(). Pass -DCMAKE_OSX_ARCHITECTURES=arm64 for faster dev builds.
+if(APPLE AND NOT DEFINED CMAKE_OSX_ARCHITECTURES)
+    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
+endif()
+set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "Minimum macOS version")
+
+project(GrooveKnobs VERSION ${FF_VERSION} LANGUAGES C CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
+option(GK_BUILD_TESTS "Build the test suite and screenshot generator" ON)
+option(GK_BUILD_TOOLS "Build the offline tools (ff_render)" ON)
+option(GK_WARNINGS_AS_ERRORS "Treat warnings in our code as errors" OFF)
+# Copying into C:\Program Files\Common Files\VST3 needs an elevated shell on
+# Windows, so it is opt-in there (the installer does it instead).
+if(WIN32)
+    option(GK_COPY_PLUGINS "Copy plugins to the system folders after build" OFF)
+else()
+    option(GK_COPY_PLUGINS "Copy plugins to the system folders after build" ON)
+endif()
+
+include(cmake/GrooveWarnings.cmake)
+include(cmake/GrooveSigning.cmake)
+
+# ---------------------------------------------------------------------------
+# Dependencies (pinned). Sources are shared between build trees in .deps/.
+# ---------------------------------------------------------------------------
+include(FetchContent)
+if(NOT FETCHCONTENT_BASE_DIR OR FETCHCONTENT_BASE_DIR STREQUAL "${CMAKE_BINARY_DIR}/_deps")
+    set(FETCHCONTENT_BASE_DIR "${CMAKE_SOURCE_DIR}/.deps" CACHE PATH "" FORCE)
+endif()
+
+set(GK_JUCE_TAG   "8.0.15")
+set(GK_CATCH2_TAG "v3.16.1")
+
+FetchContent_Declare(juce
+    GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
+    GIT_TAG        ${GK_JUCE_TAG}
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(juce)
+
+# ---------------------------------------------------------------------------
+# Shared module + plugins + tools + tests
+# ---------------------------------------------------------------------------
+juce_add_module(modules/groove_core ALIAS_NAMESPACE groove)
+
+# Shared UI assets (display font + its SIL OFL licence). Consumers of
+# groove_core must link GrooveCoreAssets.
+juce_add_binary_data(GrooveCoreAssets
+    HEADER_NAME GrooveCoreAssets.h
+    NAMESPACE   GrooveAssets
+    SOURCES
+        modules/groove_core/assets/LilitaOne-Regular.ttf
+        modules/groove_core/assets/LilitaOne-OFL.txt)
+set_target_properties(GrooveCoreAssets PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_subdirectory(plugins/french_filter)
+
+if(GK_BUILD_TOOLS)
+    add_subdirectory(tools/ff_render)
+    add_subdirectory(tools/asset_prep)
+endif()
+
+if(GK_BUILD_TESTS)
+    FetchContent_Declare(catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG        ${GK_CATCH2_TAG}
+        GIT_SHALLOW    TRUE)
+    FetchContent_MakeAvailable(catch2)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

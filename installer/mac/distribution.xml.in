@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>French Filter @VERSION@</title>
+    <organization>@BUNDLE_PREFIX@</organization>
+    <domains enable_localSystem="true"/>
+    <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
+    <welcome file="welcome.html" mime-type="text/html"/>
+    <license file="LICENSE.txt" mime-type="text/plain"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+    <allowed-os-versions><os-version min="10.13"/></allowed-os-versions>
+
+    <choices-outline>
+        <line choice="vst3"/>
+        <line choice="au"/>
+        <line choice="app"/>
+    </choices-outline>
+
+    <choice id="vst3" title="VST3 plug-in" description="French Filter.vst3 → /Library/Audio/Plug-Ins/VST3">
+        <pkg-ref id="@BUNDLE_ID@.vst3"/>
+    </choice>
+    <choice id="au" title="Audio Unit plug-in" description="French Filter.component → /Library/Audio/Plug-Ins/Components (Ableton Live, Logic, GarageBand)">
+        <pkg-ref id="@BUNDLE_ID@.au"/>
+    </choice>
+    <choice id="app" title="Standalone application" description="French Filter.app → /Applications">
+        <pkg-ref id="@BUNDLE_ID@.app"/>
+    </choice>
+
+    <pkg-ref id="@BUNDLE_ID@.vst3" version="@VERSION@">vst3.pkg</pkg-ref>
+    <pkg-ref id="@BUNDLE_ID@.au" version="@VERSION@">au.pkg</pkg-ref>
+    <pkg-ref id="@BUNDLE_ID@.app" version="@VERSION@">app.pkg</pkg-ref>
+</installer-gui-script>

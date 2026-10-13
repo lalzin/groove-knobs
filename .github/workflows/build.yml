@@ -1,0 +1,37 @@
+# Builds, tests and packages French Filter on macOS and Windows.
+# Artefacts (installers) are attached to each run; push a tag "v*" to build a release.
+name: build
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, test, package
+        run: |
+          brew install ninja
+          scripts/build_mac.sh
+          scripts/make_installer_mac.sh --skip-build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FrenchFilter-macOS
+          path: dist/*
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Build, test, package
+        shell: pwsh
+        run: scripts/make_installer_win.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FrenchFilter-Windows
+          path: dist/*.exe
