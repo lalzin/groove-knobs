@@ -1,0 +1,27 @@
+{
+  "name": "Dusty Tape",
+  "toggles": {
+    "long": false,
+    "shimmer": false
+  },
+  "swell": {
+    "beats": 1,
+    "riseSharpness": 4,
+    "toneStartHz": 700,
+    "toneEndHz": 5000
+  },
+  "input": {
+    "focus": 0.8,
+    "washHpfHz": 300
+  },
+  "motion": {
+    "rewindSemitones": 3
+  },
+  "colour": {
+    "drive": 0.6,
+    "crush": 0.6
+  },
+  "level": {
+    "maxWetDb": -7
+  }
+}

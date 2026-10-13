@@ -161,21 +161,21 @@
         "en": "Tempo-synced reverse reverb, in one knob"
       },
       "description": {
-        "fr": "Chaque coup est précédé d'un souffle qui s'arrête pile sur lui, en lecture, sans bounce ni reverse. Mode LIVE zéro latence (il mémorise la mesure), LOCK pour figer le souffle sur un break, SWELL pour la longueur (1/16 à 1 mesure) et HITS pour choisir les temps (2 + 4, dernier temps, 1 mesure sur 2…).",
-        "en": "Every hit gets a swell that stops exactly on it, on playback, no bouncing or reversing. Zero-latency LIVE mode (it remembers the bar), LOCK to keep the swell over a break, SWELL for the length (1/16 to 1 bar) and HITS to pick the beats (2 + 4, last beat, every other bar…)."
+        "fr": "Chaque coup est précédé d'un souffle qui s'arrête pile sur lui, en lecture, sans bounce ni reverse. Mode LIVE zéro latence (il mémorise la mesure), LOCK pour figer le souffle sur un break, SWELL pour la longueur (1/4 de temps à 1 mesure) et HITS pour choisir les temps (tous, chaque temps, 2 + 4, dernier temps, 1 mesure sur 2…).",
+        "en": "Every hit gets a swell that stops exactly on it, on playback, no bouncing or reversing. Zero-latency LIVE mode (it remembers the bar), LOCK to keep the swell over a break, SWELL for the length (1/4 beat to 1 bar) and HITS to pick the beats (all, every beat, 2 + 4, last beat, every other bar…)."
       },
       "features": {
         "fr": [
           "Reverb inversée calée sur le tempo",
           "LIVE zéro latence + LOCK",
           "SWELL (longueur) et HITS (quels temps)",
-          "SHIMMER (octave) et LONG"
+          "8 presets : échos inversés, rembobinage, hachage, lo-fi, SHIMMER"
         ],
         "en": [
           "Tempo-synced reverse reverb",
           "Zero-latency LIVE + LOCK",
           "SWELL (length) and HITS (which beats)",
-          "SHIMMER (octave) and LONG"
+          "8 presets: reverse echoes, rewind, stutter, lo-fi, SHIMMER"
         ]
       },
       "presets": [
@@ -183,7 +183,10 @@
         "Vocal Suck",
         "Clap Rewind",
         "Ghost Pad",
-        "Big Inhale"
+        "Big Inhale",
+        "Reverse Echo",
+        "Stutter Suck",
+        "Dusty Tape"
       ],
       "downloads": {
         "macos": {

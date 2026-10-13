@@ -12,7 +12,7 @@ namespace ts = gk::testsignals;
 
 namespace
 {
-constexpr int numPresets = 5;
+constexpr int numPresets = 8;
 
 std::unique_ptr<BackwashProcessor> makeProc (int nch, double sr, int preset, float amount, int lg = -1, int sh = -1, int block = 512)
 {
@@ -142,7 +142,7 @@ TEST_CASE ("BW 2. Alignment: the swell stops at the hit (at most 1 ms after), ne
             CAPTURE (bpm, preset);
             auto p = makeProc (2, sr, preset, 1.0f, 0, 0);
             const int L = p->getLatencySamples();
-            const int at = (int) (3.0 * sr);
+            const int at = (int) std::round (6.0 * 60.0 / bpm * sr); // on the beat (the chop is on the grid)
             Buffer in (2, at + L + (int) (1.0 * sr));
             in.clear();
             in.setSample (0, at, 0.8f);
@@ -156,7 +156,11 @@ TEST_CASE ("BW 2. Alignment: the swell stops at the hit (at most 1 ms after), ne
             // Energy right before the hit, nothing after hit + 1 ms
             const int hit = at + L, after = hit + (int) (0.001 * sr);
             float before = 0.0f, late = 0.0f;
-            for (int i = hit - (int) (0.02 * sr); i < hit; ++i)
+            // the last 20 ms; with the echo texture, the last repeat is one
+            // division before the hit
+            const auto& pd = p->getBackwashDsp().getPresetData (preset);
+            const int window = (int) (0.02 * sr) + (pd.echo ? (int) (pd.echoDivision * 60.0 / bpm * sr) : 0);
+            for (int i = hit - window; i < hit; ++i)
                 before = juce::jmax (before, std::abs (wet[(size_t) i]));
             for (int i = after; i < (int) wet.size(); ++i)
                 late = juce::jmax (late, std::abs (wet[(size_t) i]));
@@ -226,7 +230,10 @@ TEST_CASE ("BW 4. Swell length follows the tempo, and is clamped at slow tempos"
             const double expected = pd.beats * (lg ? 2.0 : 1.0) * 60.0 / 124.0 * sr;
             const double measured = last - first;
             INFO ("measured " << measured / sr << " s, expected " << expected / sr << " s");
-            CHECK (measured == Catch::Approx (expected).epsilon (0.05));
+            if (pd.chopDivision > 0.0f) // the chop can close the very start or end: check the IR itself
+                CHECK (p->getBackwashDsp().getTelemetry().swellSamples.load() == Catch::Approx (expected).margin (2.0));
+            else
+                CHECK (measured == Catch::Approx (expected).epsilon (0.05));
             CHECK_FALSE (p->getBackwashDsp().getTelemetry().swellClamped.load());
         }
 
@@ -708,7 +715,7 @@ TEST_CASE ("BW 20. HITS: only the chosen beats get a swell", "[bw][timing]")
     const double sr = 44100.0, bpm = 120.0;
     const int bar = (int) std::round (2.0 * sr), beat = bar / 4;
     for (bool live : { false, true })
-        for (int hits : { 0, 2, 3 })
+        for (int hits : { 0, 1, 3, 4 })
         {
             auto p = makeLive (sr, 2, 0.8f, live); // Clap Rewind: half-beat swells
             setParam (p->getHitsParameter(), (float) hits);
@@ -724,9 +731,14 @@ TEST_CASE ("BW 20. HITS: only the chosen beats get a swell", "[bw][timing]")
                 for (int k = 0; k < 4; ++k)
                     e[(size_t) k] += energy (wet, b * bar + k * beat - beat / 4, b * bar + k * beat);
             INFO ((live ? "LIVE" : "2 s") << ", hits " << hits << ": " << e[0] << " " << e[1] << " " << e[2] << " " << e[3]);
-            if (hits == 0)
-                CHECK (juce::jmin (e[1], e[3]) > 0.3 * juce::jmax (e[0], e[2]));
-            else if (hits == 2)
+            if (hits == 0 || hits == 1)
+            {
+                // ALL / 1 2 3 4: the kicks get a swell too (the leveller
+                // brings them up), not only the claps
+                CHECK (juce::jmin (e[0], e[2]) > 0.2 * juce::jmax (e[1], e[3]));
+                CHECK (juce::jmin (e[1], e[3]) > 1.0);
+            }
+            else if (hits == 3)
             {
                 CHECK (e[1] > 1.0);
                 CHECK (e[3] > 1.0);
@@ -738,6 +750,31 @@ TEST_CASE ("BW 20. HITS: only the chosen beats get a swell", "[bw][timing]")
                 CHECK (juce::jmax (e[0], e[1], e[2]) < 0.05 * e[3]);
             }
         }
+}
+
+TEST_CASE ("BW 21. SWELL changes keep applying in LIVE (no stuck IR)", "[bw][timing][live]")
+{
+    const double sr = 48000.0, bpm = 120.0;
+    for (bool realtime : { false, true })
+    {
+        auto p = makeLive (sr, 0, 0.8f, true);
+        p->setNonRealtime (! realtime);
+        const auto in = tiledLoop (sr, bpm, 1);
+        const std::pair<int, double> steps[] { { 4, 1.0 }, { 2, 0.25 }, { 5, 1.95 }, { 3, 0.5 }, { 1, 0.125 }, { 4, 1.0 } };
+        for (const auto& [index, seconds] : steps)
+        {
+            setParam (p->getSwellLengthParameter(), (float) index);
+            for (int k = 0; k < 6; ++k)
+            {
+                runAt (*p, in, sr, bpm, 512);
+                if (realtime)
+                    juce::Thread::sleep (50); // let the builder thread work
+            }
+            const int swell = p->getBackwashDsp().getTelemetry().swellSamples.load();
+            INFO ((realtime ? "real time" : "offline") << ", choice " << index << ": " << swell << " samples");
+            CHECK (std::abs (swell - (int) std::round (juce::jmin (seconds, 1.95) * sr)) <= (index == 5 ? (int) (0.05 * sr) : 1));
+        }
+    }
 }
 
 //==============================================================================
@@ -763,5 +800,7 @@ TEST_CASE ("BW 13. CPU: cost of the convolution, stereo 48 kHz", "[bw][cpu]")
         CHECK (ms < audioMs * 0.2);
     }
 }
+
+
 
 

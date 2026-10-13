@@ -1,7 +1,23 @@
 {
   "name": "Big Inhale",
-  "toggles": {"long": false, "shimmer": true},
-  "swell": {"beats": 2, "riseSharpness": 6, "toneStartHz": 1000, "toneEndHz": 14000},
-  "input": {"focus": 0.7, "washHpfHz": 200},
-  "level": {"maxWetDb": -6}
+  "toggles": {
+    "long": false,
+    "shimmer": true
+  },
+  "swell": {
+    "beats": 2,
+    "riseSharpness": 6,
+    "toneStartHz": 1000,
+    "toneEndHz": 14000
+  },
+  "input": {
+    "focus": 0.7,
+    "washHpfHz": 200
+  },
+  "colour": {
+    "resonance": 0.6
+  },
+  "level": {
+    "maxWetDb": -6
+  }
 }

@@ -1,6 +1,9 @@
 # Changelog
 
 ## [Unreleased] — Backwash 0.1.0 (nouveau)
+- Corrigé : en LIVE, seul le premier changement de SWELL s'appliquait (le fondu du convolueur, arrêté en LIVE, mettait les IR suivantes en attente pour toujours).
+- HITS : nouvelle option « 1 2 3 4 » ; niveleur sur l'envoi (coups faibles jusqu'à +12 dB vers le plus fort) : ALL et BEAT 1 donnent enfin des souffles audibles devant les kicks. SWELL renommé en temps (1/4 BEAT … 2 BEATS, 1 BAR).
+- Presets plus contrastés et 3 nouveaux (Reverse Echo, Stutter Suck, Dusty Tape) : texture d'échos inversés, rembobinage (hauteur qui monte jusqu'au coup), hachage rythmique, filtre résonant montant, panoramique, saturation, lo-fi.
 - Installateurs : pages d'accueil macOS de Backwash et Boogie Trio corrigées (le texte de French Filter s'y était glissé) ; textes Backwash à jour (LIVE / LOCK, SWELL / HITS), note Windows idem.
 - **Temps** : SWELL (longueur 1/16 → 1 mesure, ou celle du preset) et HITS (tous / temps 1 / 2 + 4 / dernier temps / 1er temps toutes les 2 mesures), dans les deux modes ; LIVE et LOCK activés par défaut, LOCK sur mémoire vide écoute d'abord une mesure complète.
 - **LIVE** (zéro latence) et **LOCK** : mémoire de la dernière mesure, souffle rendu en arrière-plan (FFT) et lu à la position musicale ; mémoire conservée à l'arrêt et dans l'état du projet ; LOCK la fige. Commutation LIVE avec fondu de 10 ms et nouvelle latence annoncée à l'hôte.

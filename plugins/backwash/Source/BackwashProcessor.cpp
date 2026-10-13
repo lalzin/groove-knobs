@@ -19,8 +19,8 @@ namespace
         // On by default (Alan): zero latency, and the first bar heard is kept
         cfg.switches = { { "live", "Live (zero latency)", "LIVE", true }, { "lock", "Lock memory", "LOCK", true } };
         // Timing: swell length and which hits get one
-        cfg.choices = { { "swell", "Swell length", "SWELL", { "PRESET", "1/16", "1/8", "1/4", "1/2", "1 BAR" }, 0 },
-                        { "hits", "Swell on", "HITS", { "ALL", "BEAT 1", "2 + 4", "LAST", "1 / 2 BARS" }, 0 } };
+        cfg.choices = { { "swell", "Swell length", "SWELL", { "PRESET", "1/4 BEAT", "1/2 BEAT", "1 BEAT", "2 BEATS", "1 BAR" }, 0 },
+                        { "hits", "Swell on", "HITS", { "ALL", "1 2 3 4", "BEAT 1", "2 + 4", "LAST", "1 / 2 BARS" }, 0 } };
         cfg.knobLowLabel = "CALM";
         cfg.knobHighLabel = "TSUNAMI";
         cfg.engineAlwaysRuns = true;   // 2 s of history must always be there
@@ -39,6 +39,9 @@ gk::PresetManager BackwashProcessor::loadBuiltInPresets()
         { BWPresets::clap_rewind_json, BWPresets::clap_rewind_jsonSize },
         { BWPresets::ghost_pad_json, BWPresets::ghost_pad_jsonSize },
         { BWPresets::big_inhale_json, BWPresets::big_inhale_jsonSize },
+        { BWPresets::reverse_echo_json, BWPresets::reverse_echo_jsonSize },
+        { BWPresets::stutter_suck_json, BWPresets::stutter_suck_jsonSize },
+        { BWPresets::dusty_tape_json, BWPresets::dusty_tape_jsonSize },
     };
     gk::PresetManager pm;
     for (const auto& e : entries)

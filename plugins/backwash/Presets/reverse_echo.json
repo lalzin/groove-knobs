@@ -1,0 +1,24 @@
+{
+  "name": "Reverse Echo",
+  "toggles": {
+    "long": false,
+    "shimmer": false
+  },
+  "swell": {
+    "beats": 1,
+    "riseSharpness": 3,
+    "toneStartHz": 2500,
+    "toneEndHz": 12000
+  },
+  "texture": {
+    "echo": true,
+    "echoDivision": 0.25
+  },
+  "input": {
+    "focus": 0.9,
+    "washHpfHz": 250
+  },
+  "level": {
+    "maxWetDb": -4
+  }
+}

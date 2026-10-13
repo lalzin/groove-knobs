@@ -137,8 +137,8 @@ Une **reverb inversée en temps réel, calée sur le tempo** : chaque coup (snar
 > **LIVE et LOCK sont activés par défaut** (point jaune = mémoire vide / écoute en cours) : lance la lecture, la première mesure est mémorisée, les souffles arrivent dès la suivante, et y restent.
 
 **Le temps** (à droite du knob) :
-- **SWELL** : longueur du souffle — PRESET (celle du preset), 1/16, 1/8, 1/4 (un temps), 1/2, 1 BAR ; LONG la double toujours (plafond ~1,95 s, point jaune sur LONG au-delà).
-- **HITS** : quels coups reçoivent un souffle — ALL (tous), BEAT 1, 2 + 4 (le backbeat), LAST (le dernier temps de la mesure), 1 / 2 BARS (le premier temps une mesure sur deux, pour les drops). Fenêtre de 1/8 de temps avant à 3/8 après chaque temps visé (claps en avance, swing).
+- **SWELL** : longueur du souffle — PRESET (celle du preset), 1/4 BEAT, 1/2 BEAT, 1 BEAT, 2 BEATS, 1 BAR ; LONG la double toujours (plafond ~1,95 s, point jaune sur LONG au-delà).
+- **HITS** : quels coups reçoivent un souffle — ALL (tous), 1 2 3 4 (chaque temps, sans les contretemps), BEAT 1, 2 + 4 (le backbeat), LAST (le dernier temps de la mesure), 1 / 2 BARS (le premier temps une mesure sur deux, pour les drops). Fenêtre de 1/8 de temps avant à 3/8 après chaque temps visé (claps en avance, swing). Un niveleur rapproche les coups faibles (kick, hats) du plus fort, pour que chaque coup visé ait un souffle audible.
 
 - Longueur du souffle = beats du preset × (2 avec **LONG**) au tempo de l'hôte (120 BPM sans tempo), bridée à ~1,95 s ; à tempo trop lent, un point s'affiche sur le chip LONG.
 - **SHIMMER** : une octave haute dans le souffle.
@@ -148,10 +148,13 @@ Une **reverb inversée en temps réel, calée sur le tempo** : chaque coup (snar
 | Preset | Pour quoi |
 |---|---|
 | Snare Swell (défaut) | le classique : un souffle d'un temps vers chaque snare / clap |
-| Vocal Suck | la voix « aspirée » avant chaque phrase, plus doux et plus brillant |
-| Clap Rewind | court et sec (½ temps), comme une bande rembobinée juste avant le clap |
-| Ghost Pad | tout le signal s'aspire en nappe fantôme (breaks, intros) ; LONG par défaut |
-| Big Inhale | énorme et très pentu, avec SHIMMER : l'effet « avant le drop » |
+| Vocal Suck | la voix « aspirée » avant chaque phrase, qui monte un peu en hauteur et bouge dans la stéréo |
+| Clap Rewind | court (½ temps), la hauteur grimpe de 7 demi-tons comme une bande rembobinée, un peu saturé |
+| Ghost Pad | tout le signal s'aspire en nappe fantôme qui tourne lentement dans la stéréo ; LONG par défaut |
+| Big Inhale | énorme, avec SHIMMER et un filtre résonant qui monte jusqu'au coup : l'effet « avant le drop » |
+| Reverse Echo | pas de nappe : des échos inversés à la double-croche, en ping-pong, qui arrivent sur le coup |
+| Stutter Suck | souffle de 2 temps haché à la double-croche, ouvert juste avant chaque pas de la grille |
+| Dusty Tape | sombre, saturé, lo-fi (échantillonnage réduit), hauteur qui monte de 3 demi-tons |
 
 Mascotte : **Swell**, le surfeur. La vague derrière lui suit le knob et le rythme ; grâce au lookahead, il **inspire avant chaque coup**, en même temps que le vrai souffle, et l'arc du knob s'illumine pendant le souffle puis s'éteint d'un coup sur le coup.
 

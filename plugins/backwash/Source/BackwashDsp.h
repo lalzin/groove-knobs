@@ -4,11 +4,61 @@
 
 namespace bw
 {
+/** Send leveller: brings the weaker hits (a kick, a hat) closer to the
+    loudest recent one in the band the swell keeps (high-pass at the wash
+    frequency), so every targeted hit gets a swell, not only the claps.
+    Upward only (the loudest hit keeps its level: presets stay calibrated),
+    3:1, at most +12 dB; the send is read one grain (40 ms) later, so the gain
+    has already seen the hit coming. */
+struct SendLeveller
+{
+    void prepare (double sampleRate) noexcept
+    {
+        fastRelease = (float) std::exp (-1.0 / (0.150 * sampleRate));
+        slowRelease = (float) std::exp (-1.0 / (2.0 * sampleRate));
+        smoothing = (float) (1.0 - std::exp (-1.0 / (0.002 * sampleRate)));
+        reset();
+    }
+
+    void reset() noexcept
+    {
+        hp.reset();
+        env = loudest = 0.0f;
+        gain = 1.0f;
+    }
+
+    /** Gain for the send, from the (undelayed) focused send sample. */
+    float process (float x, const gk::TptSvf::Coeffs& band, float strength) noexcept
+    {
+        const float b = std::abs ((float) hp.processHighpass (x, band));
+        env = b > env ? b : env * fastRelease;
+        loudest = env > loudest ? env : loudest * slowRelease;
+        float target = 1.0f;
+        if (env > 1.0e-5f && loudest > 1.0e-4f)
+            target = juce::jlimit (1.0f, maxGain, std::pow (loudest / env, 2.0f / 3.0f));
+        target = std::pow (target, juce::jlimit (0.0f, 1.0f, strength));
+        gain += (target - gain) * smoothing;
+        return gain;
+    }
+
+    static constexpr float maxGain = 3.98f; // +12 dB
+    gk::TptSvf hp;
+    float env = 0.0f, loudest = 0.0f, gain = 1.0f, fastRelease = 0.999f, slowRelease = 0.9999f, smoothing = 0.01f;
+};
+
 /** Sound design of one Backwash preset (from its JSON). */
 struct BackwashPreset
 {
     float beats = 1.0f, riseSharpness = 4.0f, toneStartHz = 1500.0f, toneEndHz = 9000.0f;
     float focus = 0.9f, washHpfHz = 200.0f, maxWetDb = -3.0f;
+    // Character (all optional in the JSON, off by default)
+    bool echo = false;          // texture: reverse echoes (taps) instead of a noise wash
+    float echoDivision = 0.25f; //   tap spacing in beats
+    float rewindSemitones = 0.0f;               // motion: pitch rises into the hit (tape rewind)
+    float chopDivision = 0.0f, chopDepth = 1.0f; //   rhythmic chop of the swell (0 = off), beats
+    float autopan = 0.0f, autopanBeats = 4.0f;  //   stereo movement
+    float resonance = 0.0f;                     // colour: resonant filter rising with the swell
+    float drive = 0.0f, crush = 0.0f;           //   tape drive, lo-fi
 
     static BackwashPreset fromJson (const juce::var& root);
 };
@@ -67,7 +117,7 @@ public:
     static constexpr int longToggle = 0, shimmerToggle = 1;
     static constexpr int liveSwitch = 0, lockSwitch = 1;
     static constexpr int lengthChoice = 0, targetChoice = 1;
-    static constexpr int targetAll = 0, targetOne = 1, targetTwoFour = 2, targetLast = 3, targetEveryTwoBars = 4;
+    static constexpr int targetAll = 0, targetBeats = 1, targetOne = 2, targetTwoFour = 3, targetLast = 4, targetEveryTwoBars = 5;
 
     /** Swell length in beats: the preset's, or the SWELL choice (1/16 .. 1 bar). */
     static double swellBeatsFor (const BackwashPreset& p, int lengthIndex, double beatsPerBar) noexcept;
@@ -173,6 +223,15 @@ private:
     gk::TptSvf hpf;
     gk::TptSvf::Coeffs hpfCoeffs;
     gk::ModDelay shimmerLine;
+    SendLeveller leveller;
+
+    // Character, after the reverb (identical in LIVE and in the 2 s mode)
+    std::array<gk::ModDelay, 2> rewindLine;
+    gk::SmoothParam rewindAmount, chopAmount, panAmount, driveAmount, crushAmount, resonanceAmount;
+    float crushHeldL = 0.0f, crushHeldR = 0.0f, rewindMix = 0.0f;
+    int crushCounter = 0;
+    double panPhase = -1.0;
+    std::int64_t dueNext = -1, dueAfter = -1; // the next two hits heard, at the block start
     double shimmerPhase = 0.0;
     int grainSamples = 1920;
     std::array<gk::TptSvf, 2> toneLpf;

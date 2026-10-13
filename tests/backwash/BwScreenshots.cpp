@@ -172,6 +172,13 @@ int main (int argc, char** argv)
         setParam (proc.getLockParameter(), 1.0f);
         row.push_back ({ "LIVE + LOCK", shoot (proc, 1.0f, 0.5f) });
         writePng (shoot (proc, 2.0f, 0.5f), outDir.getChildFile ("live_lock@2x.png"));
+        // the longest selector labels
+        setParam (proc.getSwellLengthParameter(), 1.0f);
+        setParam (proc.getHitsParameter(), 5.0f);
+        row.push_back ({ "1/4 BEAT, 1 / 2 BARS", shoot (proc, 1.0f, 0.5f) });
+        writePng (shoot (proc, 2.0f, 0.5f), outDir.getChildFile ("selectors_long@2x.png"));
+        setParam (proc.getSwellLengthParameter(), 0.0f);
+        setParam (proc.getHitsParameter(), 0.0f);
         setParam (proc.getLiveParameter(), 0.0f);
         setParam (proc.getLockParameter(), 0.0f);
         chipRows.push_back (std::move (row));

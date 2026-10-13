@@ -1,0 +1,24 @@
+{
+  "name": "Stutter Suck",
+  "toggles": {
+    "long": false,
+    "shimmer": false
+  },
+  "swell": {
+    "beats": 2,
+    "riseSharpness": 5,
+    "toneStartHz": 1500,
+    "toneEndHz": 13000
+  },
+  "input": {
+    "focus": 0.9,
+    "washHpfHz": 250
+  },
+  "motion": {
+    "chopDivision": 0.25,
+    "chopDepth": 1.0
+  },
+  "level": {
+    "maxWetDb": -2
+  }
+}

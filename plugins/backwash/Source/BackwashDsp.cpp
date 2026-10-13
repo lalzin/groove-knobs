@@ -22,6 +22,19 @@ BackwashPreset BackwashPreset::fromJson (const juce::var& root)
     p.washHpfHz = juce::jlimit (20.0f, 2000.0f, num (input, "washHpfHz", p.washHpfHz));
     const auto level = root.getProperty ("level", {});
     p.maxWetDb = juce::jlimit (-24.0f, 6.0f, num (level, "maxWetDb", p.maxWetDb));
+    const auto texture = root.getProperty ("texture", {});
+    p.echo = (bool) texture.getProperty ("echo", false);
+    p.echoDivision = juce::jlimit (0.0625f, 2.0f, num (texture, "echoDivision", p.echoDivision));
+    const auto motion = root.getProperty ("motion", {});
+    p.rewindSemitones = juce::jlimit (0.0f, 12.0f, num (motion, "rewindSemitones", 0.0f));
+    p.chopDivision = juce::jlimit (0.0f, 2.0f, num (motion, "chopDivision", 0.0f));
+    p.chopDepth = juce::jlimit (0.0f, 1.0f, num (motion, "chopDepth", 1.0f));
+    p.autopan = juce::jlimit (0.0f, 1.0f, num (motion, "autopan", 0.0f));
+    p.autopanBeats = juce::jlimit (0.25f, 16.0f, num (motion, "autopanBeats", 4.0f));
+    const auto colour = root.getProperty ("colour", {});
+    p.resonance = juce::jlimit (0.0f, 1.0f, num (colour, "resonance", 0.0f));
+    p.drive = juce::jlimit (0.0f, 1.0f, num (colour, "drive", 0.0f));
+    p.crush = juce::jlimit (0.0f, 1.0f, num (colour, "crush", 0.0f));
     return p;
 }
 
@@ -364,6 +377,9 @@ BackwashIr BackwashDsp::buildIr (const BackwashPreset& p, int presetIndex, bool 
     const auto hpc = gk::TptSvf::Coeffs::make (p.washHpfHz, sr, 0.7071);
 
     gk::testsignals::Rng noiseL (9001u), noiseR (4242u);
+    // Echo texture: copies of the hit at every division before it (impulses
+    // in the IR), ping-pong, with a little noise for glue
+    const int tap = juce::jmax (16, (int) std::round ((double) p.echoDivision * 60.0 / juce::jmax (20.0, bpm) * sr));
     gk::TptSvf lpL, lpR;
     const int segment = juce::jmax (1, (int) (0.002 * sr));
     const int fade = juce::jmax (1, (int) (0.001 * sr));
@@ -386,8 +402,18 @@ BackwashIr BackwashDsp::buildIr (const BackwashPreset& p, int presetIndex, bool 
         const double frac = (double) (j - seg * segment) / segment;
         const auto c = gk::TptSvf::Coeffs::make (f0 * std::pow (f1 / f0, frac), sr, 0.7071);
 
-        const double l = hpL.processHighpass (lpL.processLowpass (noiseL.bipolar(), c) * env, hpc) * cut;
-        const double r = hpR.processHighpass (lpR.processLowpass (noiseR.bipolar(), c) * env, hpc) * cut;
+        double srcL = noiseL.bipolar(), srcR = noiseR.bipolar();
+        if (p.echo)
+        {
+            const int before = swell - 1 - j; // samples before the hit
+            const int tapIndex = (before + tap / 2) / tap;
+            const bool onTap = tapIndex >= 1 && before == tapIndex * tap;
+            const double pingPong = (tapIndex & 1) ? 1.0 : 0.35;
+            srcL = 0.06 * srcL + (onTap ? 18.0 * pingPong : 0.0);
+            srcR = 0.06 * srcR + (onTap ? 18.0 * (1.35 - pingPong) : 0.0);
+        }
+        const double l = hpL.processHighpass (lpL.processLowpass (srcL, c) * env, hpc) * cut;
+        const double r = hpR.processHighpass (lpR.processLowpass (srcR, c) * env, hpc) * cut;
         irL[(size_t) (start + j)] = (float) l;
         irR[(size_t) (start + j)] = (float) r;
         energy += 0.5 * (l * l + r * r);
@@ -430,6 +456,13 @@ float BackwashDsp::targetGate (double beats, double beatsPerBar, int target) noe
     };
     switch (target)
     {
+        case targetBeats:
+        {
+            float w = 0.0f;
+            for (double b = 0.0; b < bar - 0.01; b += 1.0)
+                w = juce::jmax (w, window (b));
+            return w;
+        }
         case targetOne:
         case targetEveryTwoBars: return window (0.0);
         case targetTwoFour: return juce::jmax (window (1.0), bar > 3.0 ? window (3.0) : 0.0f);
@@ -463,6 +496,9 @@ std::unique_ptr<BackwashWetCycle> BackwashDsp::renderWetCycle (const float* memo
         float rect = 0.0f;
         gk::ModDelay line;
         line.prepare (sr, 0.1);
+        SendLeveller lev;
+        lev.prepare (sr);
+        const auto band = gk::TptSvf::Coeffs::make (p.washHpfHz, sr, 0.7071);
         double phase = 0.0;
         for (int pass = 0; pass < 2; ++pass)
             for (int i = 0; i < M; ++i)
@@ -471,7 +507,9 @@ std::unique_ptr<BackwashWetCycle> BackwashDsp::renderWetCycle (const float* memo
                 rect += (std::abs (x) - rect) * rc;
                 const float a = fe.process (rect), b = se.process (rect);
                 const float g = smoothstep (0.35f, 0.75f, (a - b) / juce::jmax (1.0e-6f, a));
-                line.push ((1.0f - p.focus) * x + p.focus * (x * g));
+                const float send = (1.0f - p.focus) * x + p.focus * (x * g);
+                const float lg = lev.process (send, band, p.focus);
+                line.push (send);
                 phase = frac (phase + 1.0 / grain);
                 float u = 0.0f;
                 for (int t = 0; t < 2; ++t)
@@ -482,8 +520,8 @@ std::unique_ptr<BackwashWetCycle> BackwashDsp::renderWetCycle (const float* memo
                 }
                 if (pass == 1)
                 {
-                    prep[(size_t) i] = line.read ((double) grain);
-                    up[(size_t) i] = u;
+                    prep[(size_t) i] = line.read ((double) grain) * lg;
+                    up[(size_t) i] = u * lg;
                 }
             }
     }
@@ -593,6 +631,11 @@ void BackwashDsp::prepare (double newSampleRate, int maxBlockSize, int newNumCha
     hitSlow.prepare (sampleRate, 0.060, 0.300);
     grainSamples = grainSamplesFor (sampleRate);
     shimmerLine.prepare (sampleRate, 0.1);
+    leveller.prepare (sampleRate);
+    for (auto& r : rewindLine)
+        r.prepare (sampleRate, 0.35);
+    for (auto* sp : { &rewindAmount, &chopAmount, &panAmount, &driveAmount, &crushAmount, &resonanceAmount })
+        sp->prepare (sampleRate, 0.050);
     for (auto* s : { &focus, &hpfLogHz, &wetGain, &toneLogHz, &width, &shimmerMix })
         s->prepare (sampleRate, 0.030);
 
@@ -639,6 +682,14 @@ void BackwashDsp::reset()
     for (auto& f : toneLpf)
         f.reset();
     shimmerLine.reset();
+    leveller.reset();
+    for (auto& r : rewindLine)
+        r.reset();
+    for (auto* sp : { &rewindAmount, &chopAmount, &panAmount, &driveAmount, &crushAmount, &resonanceAmount })
+        sp->invalidate();
+    crushHeldL = crushHeldR = rewindMix = 0.0f;
+    panPhase = -1.0;
+    crushCounter = 0;
     shimmerPhase = 0.0;
     for (auto* s : { &focus, &hpfLogHz, &wetGain, &toneLogHz, &width, &shimmerMix })
         s->invalidate();
@@ -669,6 +720,9 @@ void BackwashDsp::retire (std::unique_ptr<BackwashIr> ir)
 
 void BackwashDsp::installIr (std::unique_ptr<BackwashIr> ir, bool fade)
 {
+    // LIVE: the convolver does not run, a fade would never end (and queue
+    // every later IR forever). The rendered cycles crossfade instead.
+    fade = fade && ! liveMode;
     if (fade && convolver.isFading())
     {
         // A fade is still running (e.g. a preset change immediately followed
@@ -786,7 +840,29 @@ void BackwashDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         requestRender();
     liveGate.setTarget (timing.isPlaying ? 1.0f : 0.0f);
 
+    // The next two hits that will be heard (the swell's progress drives the
+    // rewind and the resonant riser)
+    {
+        dueNext = dueAfter = -1;
+        const int n = juce::jmin (hitCount, (int) hits.size());
+        for (int k = 0; k < n; ++k)
+        {
+            const std::int64_t due = hits[(size_t) k].first + lookahead - inputClock;
+            if (due < 0)
+                continue;
+            if (dueNext < 0 || due < dueNext)
+            {
+                dueAfter = dueNext;
+                dueNext = due;
+            }
+            else if (dueAfter < 0 || due < dueAfter)
+                dueAfter = due;
+        }
+    }
+    const double outBeatsOffset = liveMode ? 0.0 : lookaheadBeats; // the output is heard L later in the 2 s mode
+
     const auto& p = presets[(size_t) presetIndex];
+    const auto levelBand = gk::TptSvf::Coeffs::make (p.washHpfHz, sampleRate, 0.7071);
     const float shimmerOn = numToggleData > shimmerToggle ? 1.0f : 0.0f;
 
     for (int i = 0; i < numSamples; ++i)
@@ -801,6 +877,12 @@ void BackwashDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             toneLogHz.setTarget (std::log (logLerp (4000.0f, 18000.0f, std::pow (a, 0.7f))));
             width.setTarget (smoothstep (0.3f, 0.9f, a));
             shimmerMix.setTarget (0.5f * smoothstep (0.5f, 1.0f, a));
+            rewindAmount.setTarget (p.rewindSemitones);
+            chopAmount.setTarget (p.chopDivision > 0.0f ? p.chopDepth : 0.0f);
+            panAmount.setTarget (p.autopan);
+            driveAmount.setTarget (p.drive);
+            crushAmount.setTarget (p.crush);
+            resonanceAmount.setTarget (p.resonance);
         }
         const float shim = shimmerOn > 0.0f ? toggleData[shimmerToggle][i] : 0.0f;
 
@@ -902,6 +984,7 @@ void BackwashDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             const float g = smoothstep (0.35f, 0.75f, (fe - se) / juce::jmax (1.0e-6f, fe));
             const float fo = focus.next();
             float prep = (1.0f - fo) * x + fo * (x * g);
+            const float lg = leveller.process (prep, levelBand, fo); // weaker hits brought up
 
             // (the wash high-pass is built into the IR, see buildIr)
             hpfLogHz.next();
@@ -910,7 +993,7 @@ void BackwashDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             // Hann windows, ~40 ms grains) reads earlier, so it is never late.
             shimmerLine.push (prep);
             const float sm = shimmerMix.next() * shim;
-            prep = shimmerLine.read ((double) grainSamples);
+            prep = shimmerLine.read ((double) grainSamples) * lg;
             if (sm > 0.0f)
             {
                 shimmerPhase = frac (shimmerPhase + 1.0 / grainSamples);
@@ -922,20 +1005,112 @@ void BackwashDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
                     const float w = (float) std::sin (pi * ph);
                     up += w * w * shimmerLine.read (d);
                 }
-                prep += sm * up;
+                prep += sm * up * lg;
             }
 
             convolver.process (prep, wl, wr);
         }
 
-        // Tone (opens with the knob), width (M/S), gain
-        const auto tc = gk::TptSvf::Coeffs::make (juce::jmin (0.45 * sampleRate, (double) std::exp (toneLogHz.next())), sampleRate, 0.7071);
-        wl = (float) toneLpf[0].processLowpass (wl, tc);
-        wr = (float) toneLpf[1].processLowpass (wr, tc);
+        // Where we are in the swell heard now: 0 at its start, 1 on the hit
+        // (0 when no hit is coming)
+        float progress = 0.0f;
+        {
+            std::int64_t d = dueNext - i;
+            if (d < 0)
+                d = dueAfter >= 0 ? dueAfter - i : -1;
+            const int sw = currentIr != nullptr ? juce::jmax (1, currentIr->swellSamples) : 1;
+            if (d >= 0 && d < sw)
+                progress = 1.0f - (float) d / (float) sw;
+        }
+        const double outBeats = beats - outBeatsOffset;
+
+        // Rewind: a delay that shrinks to 0 on the hit (the pitch rises into
+        // it, like a tape being rewound); only during a swell, where it ends
+        // exactly on the dry signal, so nothing replays after the hit
+        if (const float semis = rewindAmount.next(); semis > 0.01f)
+        {
+            const int sw = currentIr != nullptr ? juce::jmax (1, currentIr->swellSamples) : 1;
+            const double maxDelay = juce::jmin (0.33 * sampleRate, (double) sw * (std::pow (2.0, semis / 12.0) - 1.0));
+            const double d = maxDelay * (1.0 - progress);
+            rewindLine[0].push (wl);
+            rewindLine[1].push (wr);
+            const float target = progress > 0.0f ? 1.0f : 0.0f;
+            rewindMix += (target - rewindMix) * 0.02f;
+            const float rl = rewindLine[0].read (juce::jmax (1.0, d)), rr = rewindLine[1].read (juce::jmax (1.0, d));
+            wl += rewindMix * (rl - wl);
+            wr += rewindMix * (rr - wr);
+        }
+        else
+        {
+            rewindLine[0].push (wl);
+            rewindLine[1].push (wr);
+        }
+
+        // Tone (opens with the knob); with resonance, a resonant low-pass
+        // that climbs with the swell (a riser)
+        {
+            double cutoff = std::exp (toneLogHz.next());
+            // (only while a swell runs: between swells and after the hit the
+            // filter is open and flat, so nothing rings after the hit)
+            const float res = resonanceAmount.next() * (progress > 0.0f ? 1.0f : 0.0f);
+            if (res > 0.001f)
+                cutoff = std::exp (std::log (cutoff) + res * (std::log (350.0) - std::log (cutoff)) * (1.0 - std::pow ((double) progress, 1.4)));
+            // the resonance fades out on the hit: nothing rings after it
+            const auto tc = gk::TptSvf::Coeffs::make (juce::jmin (0.45 * sampleRate, cutoff), sampleRate,
+                                                      0.7071 + 5.0 * res * (1.0 - std::pow ((double) progress, 6.0)));
+            wl = (float) toneLpf[0].processLowpass (wl, tc) * (1.0f - 0.5f * res);
+            wr = (float) toneLpf[1].processLowpass (wr, tc) * (1.0f - 0.5f * res);
+        }
+
+        // Tape drive and lo-fi
+        if (const float dr = driveAmount.next(); dr > 0.001f)
+        {
+            const float k = 1.0f + 8.0f * dr;
+            wl = std::tanh (k * wl) / std::sqrt (k);
+            wr = std::tanh (k * wr) / std::sqrt (k);
+        }
+        if (const float cr = crushAmount.next(); cr > 0.001f)
+        {
+            const int hold = 1 + (int) (cr * 7.0f);
+            if (++crushCounter >= hold)
+            {
+                crushCounter = 0;
+                const float q = std::pow (2.0f, 14.0f - 9.0f * cr);
+                crushHeldL = std::round (wl * q) / q;
+                crushHeldR = std::round (wr * q) / q;
+            }
+            wl += cr * (crushHeldL - wl);
+            wr += cr * (crushHeldR - wr);
+        }
+
+        // Width (M/S), stereo movement, rhythmic chop, gain
         const float mid = 0.5f * (wl + wr), side = 0.5f * (wl - wr) * width.next();
         const float gain = wetGain.next();
         wl = gain * (mid + side);
         wr = gain * (mid - side);
+        // continuous oscillator, locked to the bar when it starts: a preset or
+        // tempo change bends its speed instead of making it jump
+        if (panPhase < 0.0)
+            panPhase = frac (outBeats / p.autopanBeats);
+        panPhase = frac (panPhase + timing.beatsPerSample / p.autopanBeats);
+        if (const float pan = panAmount.next(); pan > 0.001f)
+        {
+            const float pos = pan * (float) std::sin (2.0 * pi * panPhase); // -1..1
+            const float angle = (pos + 1.0f) * 0.25f * (float) pi;
+            wl *= std::cos (angle) * 1.41421356f;
+            wr *= std::sin (angle) * 1.41421356f;
+        }
+        if (const float chop = chopAmount.next(); chop > 0.001f && p.chopDivision > 0.0f)
+        {
+            const double ph = frac (outBeats / p.chopDivision);
+            const double edge = juce::jmin (0.2, 0.002 * sampleRate * timing.beatsPerSample / p.chopDivision);
+            // open on the second half of each division: right before every
+            // step of the grid (and the hit), closed right after it
+            const float open = smoothstep (0.5f, 0.5f + (float) edge, (float) ph) * (1.0f - smoothstep (1.0f - (float) edge, 1.0f, (float) ph));
+            const float g = 1.0f - chop * (1.0f - open);
+            wl *= g;
+            wr *= g;
+        }
 
         // Wet-only peak limiter (linked L/R, ceiling -8 dBFS): very loud
         // swells (dense vocals at 100 %) are tamed, the dry is untouched and
