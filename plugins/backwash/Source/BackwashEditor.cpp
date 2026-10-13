@@ -40,6 +40,13 @@ BackwashEditor::BackwashEditor (BackwashProcessor& p)
       proc (p)
 {
     getMascot().setBounds (10, 58, 400, 172); // the wave needs the whole band
+    if (auto* modes = getSwitchChips())
+    {
+        modes->setChipTooltip (BackwashDsp::liveSwitch,
+                               juce::String::fromUTF8 ("LIVE : z\xc3\xa9ro latence. Le swell vient de la mesure pr\xc3\xa9""c\xc3\xa9""dente (id\xc3\xa9""al sur une boucle)"));
+        modes->setChipTooltip (BackwashDsp::lockSwitch,
+                               juce::String::fromUTF8 ("LOCK : fige la m\xc3\xa9moire du mode LIVE (le swell continue m\xc3\xaame si la piste change)"));
+    }
 }
 
 void BackwashEditor::setInhaleOverride (float inhale)
@@ -53,11 +60,18 @@ void BackwashEditor::editorTick (double)
     auto& swell = static_cast<SwellMascot&> (getMascot());
     // The arc breathes during each swell (amount > 0, host playing), and goes
     // dark at once on the hit: you see it before you hear it.
-    const bool live = getMascot().getState().playing && proc.getAmountParameter().getValue() > 0.0f;
-    getKnob().setPulse (inhaleOverride >= 0.0f ? inhaleOverride : (live ? swell.getInhale() : 0.0f));
+    const bool pulsing = getMascot().getState().playing && proc.getAmountParameter().getValue() > 0.0f;
+    getKnob().setPulse (inhaleOverride >= 0.0f ? inhaleOverride : (pulsing ? swell.getInhale() : 0.0f));
 
+    const auto& tel = proc.getBackwashDsp().getTelemetry();
     if (auto* chips = getToggleChips())
-        chips->setWarning (BackwashDsp::longToggle, proc.getBackwashDsp().getTelemetry().swellClamped.load(),
-                           juce::String::fromUTF8 ("Tempo trop lent : souffle raccourci"));
+        chips->setWarning (BackwashDsp::longToggle, tel.swellClamped.load(), juce::String::fromUTF8 ("Tempo trop lent : souffle raccourci"));
+    if (auto* modes = getSwitchChips())
+    {
+        const bool live = proc.getLiveParameter().get();
+        modes->setWarning (BackwashDsp::liveSwitch, live && ! tel.liveMemoryReady.load(),
+                           juce::String::fromUTF8 ("M\xc3\xa9moire vide : lance la lecture, le swell arrive d\xc3\xa8s la 2e mesure"));
+        modes->setChipDimmed (BackwashDsp::lockSwitch, ! live && ! proc.getLockParameter().get());
+    }
 }
 } // namespace bw

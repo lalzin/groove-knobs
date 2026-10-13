@@ -107,6 +107,29 @@ int main (int argc, char** argv)
         }
         chipRows.push_back (std::move (row));
     }
+    // The highest wave (100 %, LONG + SHIMMER, deep breath), then the LIVE
+    // and LOCK modes
+    {
+        std::vector<std::pair<juce::String, juce::Image>> row;
+        setParam (proc.getAmountParameter(), 1.0f);
+        setParam (proc.getLongParameter(), 1.0f);
+        setParam (proc.getShimmerParameter(), 1.0f);
+        for (float inhale : { 0.1f, 0.95f })
+        {
+            const auto img = shoot (proc, 2.0f, inhale);
+            writePng (img, outDir.getChildFile (juce::String ("max_wave_") + (inhale > 0.5f ? "before_hit" : "start") + "@2x.png"));
+            row.push_back ({ juce::String ("100 %, long + shimmer, breath ") + juce::String (inhale), shoot (proc, 1.0f, inhale) });
+        }
+        setParam (proc.getLiveParameter(), 1.0f);
+        row.push_back ({ "LIVE on", shoot (proc, 1.0f, 0.5f) });
+        writePng (shoot (proc, 2.0f, 0.5f), outDir.getChildFile ("live_on@2x.png"));
+        setParam (proc.getLockParameter(), 1.0f);
+        row.push_back ({ "LIVE + LOCK", shoot (proc, 1.0f, 0.5f) });
+        writePng (shoot (proc, 2.0f, 0.5f), outDir.getChildFile ("live_lock@2x.png"));
+        setParam (proc.getLiveParameter(), 0.0f);
+        setParam (proc.getLockParameter(), 0.0f);
+        chipRows.push_back (std::move (row));
+    }
     writePng (sheetOf (chipRows), outDir.getChildFile ("breath_sheet.png"));
     std::cout << "screenshots written to " << outDir.getFullPathName() << std::endl;
     return 0;

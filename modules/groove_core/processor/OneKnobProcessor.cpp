@@ -32,6 +32,12 @@ OneKnobProcessor::OneKnobProcessor (OneKnobConfig cfg, std::unique_ptr<OneKnobEn
         toggleValues.push_back (apvts.getRawParameterValue (t.id));
         jassert (toggleParams.back() != nullptr);
     }
+    for (const auto& t : config.switches)
+    {
+        switchParams.push_back (dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (t.id)));
+        switchValues.push_back (apvts.getRawParameterValue (t.id));
+        jassert (switchParams.back() != nullptr);
+    }
     if (! config.toggles.empty())
     {
         // Changing the preset applies its toggle defaults (not when a state
@@ -65,7 +71,10 @@ void OneKnobProcessor::parameterValueChanged (int, float)
 
 void OneKnobProcessor::handleAsyncUpdate()
 {
-    applyPresetToggleDefaults();
+    if (const int l = pendingLatency.load(); l >= 0 && l != getLatencySamples())
+        setLatencySamples (l);
+    if (! config.toggles.empty())
+        applyPresetToggleDefaults();
 }
 
 void OneKnobProcessor::applyPresetToggleDefaults()
@@ -140,6 +149,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
         const bool def = cfg.presets.size() > 0 && (bool) cfg.presets[0].json.getProperty ("toggles", {}).getProperty (t.id, false);
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { t.id, 1 }, t.name, def));
     }
+    for (const auto& t : cfg.switches)
+        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { t.id, 1 }, t.name, false));
     layout.add (std::make_unique<juce::AudioParameterBool> (bypassId, "Bypass", false));
     return layout;
 }
@@ -183,10 +194,24 @@ void OneKnobProcessor::prepareToPlay (double newSampleRate, int samplesPerBlock)
     const int numChannels = juce::jmax (1, getMainBusNumOutputChannels());
 
     engine->prepare (sampleRate, maxBlock, numChannels);
+    if (! switchParams.empty())
+    {
+        std::array<bool, 8> on {};
+        for (size_t t = 0; t < switchParams.size() && t < on.size(); ++t)
+            on[t] = switchValues[t]->load() >= 0.5f;
+        engine->setSwitches (on.data(), (int) switchParams.size());
+        switchGain.prepare (sampleRate, config.switchFadeSeconds);
+        switchGain.snap (1.0f);
+        latencySwitchPending = false;
+    }
     latency = engine->getLatencySamples();
+    pendingLatency.store (latency);
     setLatencySamples (latency);
 
-    dryDelay.prepare (numChannels, latency);
+    if (switchParams.empty())
+        dryDelay.prepare (numChannels, latency);
+    else
+        dryDelay.prepare (numChannels, latency, engine->getMaxLatencySamples());
     dryBuffer.setSize (numChannels, maxBlock, false, true, false);
     wetBuffer.setSize (numChannels, maxBlock, false, true, false);
     amountBuffer.assign ((size_t) maxBlock, 0.0f);
@@ -287,6 +312,9 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
         toggleSmoothers[t].setTarget (target);
     }
 
+    if (! switchParams.empty())
+        updateSwitches (snapToggles);
+
     if (! config.featuresFromOutput)
         featureExtractor.process (buffer, 0, numSamples, features);
 
@@ -297,6 +325,14 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
         processChunk (buffer, start, n, timing.offsetBy (start), numChannels);
     }
 
+    if (! switchParams.empty() && (switchGain.isSmoothing() || switchGain.getCurrent() < 1.0f))
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float f = dspmath::smoothstep (0.0f, 1.0f, switchGain.next());
+            for (int ch = 0; ch < numChannels; ++ch)
+                buffer.getWritePointer (ch)[i] *= f;
+        }
+
     if (config.featuresFromOutput)
         featureExtractor.process (buffer, 0, numSamples, features);
 
@@ -306,6 +342,50 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
     features.modulationPhase.store (engine->getModulationPhase(), std::memory_order_relaxed);
     features.amount.store (macroFor (amountSmoother.getCurrent()), std::memory_order_relaxed);
     features.bypassMix.store (bypassSmoother.getCurrent(), std::memory_order_relaxed);
+}
+
+void OneKnobProcessor::updateSwitches (bool snap)
+{
+    std::array<bool, 8> on {};
+    const int n = juce::jmin ((int) switchParams.size(), (int) on.size());
+    for (int t = 0; t < n; ++t)
+        on[(size_t) t] = switchValues[(size_t) t]->load() >= 0.5f;
+
+    const int wanted = engine->latencyForSwitches (on.data(), n);
+    if (wanted == latency)
+    {
+        engine->setSwitches (on.data(), n);
+        if (latencySwitchPending)
+        {
+            // Switched back before the change happened
+            latencySwitchPending = false;
+            switchGain.setTarget (1.0f);
+        }
+        return;
+    }
+
+    // The latency changes: fade the output out, then switch (next block, or
+    // at once when snapping: offline, state restored), then fade back in.
+    if (! snap && ! latencySwitchPending)
+    {
+        latencySwitchPending = true;
+        switchGain.setTarget (0.0f);
+        return;
+    }
+    if (! snap && (switchGain.isSmoothing() || switchGain.getCurrent() > 0.0f))
+        return;
+
+    engine->setSwitches (on.data(), n);
+    latency = engine->getLatencySamples();
+    dryDelay.setDelay (latency);
+    wetRunning = false; // restart the engine cleanly with the new latency
+    latencySwitchPending = false;
+    if (snap)
+        switchGain.snap (1.0f);
+    else
+        switchGain.setTarget (1.0f);
+    pendingLatency.store (latency);
+    triggerAsyncUpdate();
 }
 
 void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start, int n, const BlockTiming& timing, int numChannels)
@@ -461,7 +541,10 @@ void OneKnobProcessor::getStateInformation (juce::MemoryBlock& destData)
     state.setProperty ("bypass", bypassParam->get(), nullptr);
     for (size_t t = 0; t < toggleParams.size(); ++t)
         state.setProperty (config.toggles[t].id, toggleParams[t]->get(), nullptr);
+    for (size_t t = 0; t < switchParams.size(); ++t)
+        state.setProperty (config.switches[t].id, switchParams[t]->get(), nullptr);
     state.setProperty ("editorScale", editorScale.load(), nullptr);
+    saveExtraState (state);
 
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -513,6 +596,10 @@ void OneKnobProcessor::setStateInformation (const void* data, int sizeInBytes)
                                                                  : presetToggleDefault (presetIndex, (int) t);
         setParam (*toggleParams[t], on ? 1.0f : 0.0f);
     }
+
+    for (size_t t = 0; t < switchParams.size(); ++t)
+        setParam (*switchParams[t], (bool) state.getProperty (config.switches[t].id, false) ? 1.0f : 0.0f);
+    loadExtraState (state);
 
     setParam (*bypassParam, (bool) state.getProperty ("bypass", false) ? 1.0f : 0.0f);
     editorScale.store (juce::jlimit (0.75f, 2.0f, (float) state.getProperty ("editorScale", 1.0f)));

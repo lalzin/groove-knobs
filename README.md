@@ -128,7 +128,11 @@ Outils : `bt_render` (mêmes commandes que `ff_render`), captures `bt_screenshot
 
 Une **reverb inversée en temps réel, calée sur le tempo** : chaque coup (snare, clap, voix, accord) est précédé d'un souffle qui « aspire » vers lui et s'arrête pile au moment du coup. Ce qui demandait plusieurs minutes (bounce, reverse, reverb, re-bounce, re-reverse, recalage) se fait en un knob, en lecture, sur n'importe quelle piste.
 
-> **Limite assumée : latence fixe de 2 secondes.** Backwash « voit » 2 s à l'avance pour préparer le souffle. Ableton compense cette latence automatiquement en lecture, mais **le plugin n'est pas fait pour une entrée jouée en direct** (micro, instrument monitoré) : tu entendrais le son 2 s en retard.
+> **Deux modes de latence.** Par défaut, Backwash « voit » 2 s à l'avance pour préparer le souffle : c'est exact sur n'importe quel son, mais Ableton retarde tout le set de 2 s (≈ 1 mesure à 120 BPM : lecture, knobs et entrées monitorées répondent en retard).
+>
+> **LIVE (zéro latence)** : Backwash garde en mémoire la dernière mesure jouée et rejoue, avant chaque coup, le souffle du même coup une mesure plus tôt (calculé en arrière-plan, lu à la position musicale). Sur une boucle, c'est identique au mode 2 s ; le premier coup après lecture a déjà son souffle, la mémoire est gardée à l'arrêt et enregistrée avec le projet. Un coup qui change d'une mesure à l'autre reçoit le souffle de l'ancien ; il faut que le transport tourne.
+>
+> **LOCK** fige la mémoire : le souffle continue sur la grille même si la piste change ou s'arrête (break, drop), jusqu'au déverrouillage.
 
 - Longueur du souffle = beats du preset × (2 avec **LONG**) au tempo de l'hôte (120 BPM sans tempo), bridée à ~1,95 s ; à tempo trop lent, un point s'affiche sur le chip LONG.
 - **SHIMMER** : une octave haute dans le souffle.

@@ -72,7 +72,7 @@ void SwellMascot::updateBreath (double dt, float amount, float bypass)
     {
         exhale = 1.0f;
         waveDrop = 1.0f;
-        mutableState().squash = -0.12f; // bounce
+        mutableState().squash = -0.05f; // small bounce
         const auto fig = getFigureArea();
         spawnDrops ({ fig.getCentreX(), fig.getY() + fig.getHeight() * 0.35f }, 8 + (int) (10.0f * amount));
     }
@@ -105,8 +105,7 @@ int SwellMascot::chooseFrame (float amount, float bypass, bool musicOn)
     if (bypass >= 0.5f)
         return sleepPose;
 
-    const double beats = s.playing ? s.beatPhase + std::floor (s.time * 2.0) : s.time * 2.0; // ~120 BPM when stopped
-    const int beat = (int) std::floor (s.playing ? s.time * (getFeatures().bpm.load() / 60.0) : beats);
+    const int beat = (int) std::floor (s.time * (s.playing ? getFeatures().bpm.load() / 60.0 : 2.0)); // ~120 BPM when stopped
 
     if (amount < 0.12f)
     {
@@ -118,13 +117,15 @@ int SwellMascot::chooseFrame (float amount, float bypass, bool musicOn)
         }
         return idleFrame;
     }
+    // One stable pose per zone (Alan: the rhythm must not keep changing his
+    // look); only the paddling keeps a slow stroke, one per bar.
     if (amount < 0.38f)
-        return paddleFirst + (beat & 1); // paddling, one stroke per beat
+        return paddleFirst + ((beat / 4) & 1);
     if (amount < 0.6f)
-        return (beat / 2) & 1 ? kneel : stand;
+        return stand;
     if (amount < 0.9f)
-        return crouchFirst + beat % 3;
-    return exhale > 0.3f || (beat & 1) ? euphoric : crouchFirst + 2;
+        return crouchFirst;
+    return euphoric; // 100 %: all smiles, all the time
 }
 
 void SwellMascot::paintBehind (juce::Graphics& g, const State& s, juce::Rectangle<float> fig)
@@ -136,9 +137,23 @@ void SwellMascot::paintBehind (juce::Graphics& g, const State& s, juce::Rectangl
 
     // Wave height: the knob, the rhythm, the breath (digs in), the hit (falls back)
     const float beatSwing = s.playing ? 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * s.beatPhase) : 0.5f + 0.5f * (float) std::sin (s.time * 2.2);
-    const float height = awake * (6.0f + 112.0f * amount) * (1.0f + 0.12f * beatSwing + 0.35f * inhale - 0.25f * waveDrop) + 2.0f;
-    const float crestX = b.getX() + b.getWidth() * (0.72f - 0.1f * inhale + 0.03f * beatSwing);
+    const float rawHeight = awake * (6.0f + 112.0f * amount) * (1.0f + 0.06f * beatSwing + 0.25f * inhale - 0.2f * waveDrop) + 2.0f;
+    // Never above the band: the crest and the curl stay inside (soft knee,
+    // no flat cut at the top)
+    const float maxHeight = sea - b.getY() - 30.0f, knee = 0.75f * maxHeight;
+    const float height = rawHeight <= knee ? rawHeight : knee + (maxHeight - knee) * std::tanh ((rawHeight - knee) / (maxHeight - knee));
+    const float crestX = b.getX() + b.getWidth() * (0.72f - 0.06f * inhale + 0.015f * beatSwing);
     const float t = (float) s.time;
+
+    // A swell rising towards the crest on the right, ripples riding on it
+    auto surfaceY = [&] (float x)
+    {
+        const float u = (x - b.getX()) / b.getWidth();
+        const float d = (x - crestX) / (b.getWidth() * 0.32f);
+        const float bump = std::exp (-d * d) * (1.0f - 0.25f * smoothstep (0.0f, 0.8f, d)); // back slope lower, no step at the crest
+        const float ripple = 3.0f * std::sin (u * 18.0f + t * 2.2f) + 2.0f * std::sin (u * 31.0f - t * 1.7f);
+        return juce::jmax (b.getY() + 4.0f, sea - height * (0.18f + 0.82f * bump) - ripple * (0.4f + 0.6f * amount) * awake);
+    };
 
     wavePath.clear();
     foamPath.clear();
@@ -146,12 +161,7 @@ void SwellMascot::paintBehind (juce::Graphics& g, const State& s, juce::Rectangl
     bool first = true;
     for (float x = b.getX(); x <= b.getRight() + 0.5f; x += 4.0f)
     {
-        // A swell rising towards the crest on the right, ripples riding on it
-        const float u = (x - b.getX()) / b.getWidth();
-        const float d = (x - crestX) / (b.getWidth() * 0.32f);
-        const float bump = std::exp (-d * d) * (x < crestX ? 1.0f : 0.75f);
-        const float ripple = 3.0f * std::sin (u * 18.0f + t * 2.2f) + 2.0f * std::sin (u * 31.0f - t * 1.7f);
-        const float y = sea - height * (0.18f + 0.82f * bump) - ripple * (0.4f + 0.6f * amount) * awake;
+        const float y = surfaceY (x);
         wavePath.lineTo (x, y);
         if (first)
             foamPath.startNewSubPath (x, y);
@@ -171,20 +181,43 @@ void SwellMascot::paintBehind (juce::Graphics& g, const State& s, juce::Rectangl
     g.setColour (palette (cream).withAlpha (0.85f));
     g.strokePath (foamPath, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    // From 75 %: the lip curls over Swell (a tube at 100 %)
+    // From 75 %: the lip curls over Swell (a tube at 100 %). One roll that
+    // leaves the wave surface right of the crest, arches over it and hooks
+    // down to the left; the hollow underneath goes back into the wave body,
+    // so there is no seam. Only the outer edge gets the foam line.
     if (const float curl = smoothstep (0.7f, 1.0f, amount) * awake; curl > 0.01f)
     {
-        const float lipX = crestX - b.getWidth() * (0.08f + 0.18f * curl + 0.06f * inhale);
-        const float top = sea - height;
+        const float top = surfaceY (crestX);
+        const float startX = crestX + 56.0f * curl;
+        const juce::Point<float> start (startX, surfaceY (startX));
+        // Everything grows with `curl`: at its start the roll is just a
+        // swelling of the crest, no step
+        const float lipX = crestX - b.getWidth() * (0.13f + 0.03f * inhale) * curl;
+        const juce::Point<float> lip (lipX, top + 36.0f * curl);
+        const juce::Point<float> c1 (crestX + 18.0f, top - 26.0f * curl), c2 (lipX - 14.0f, top - 8.0f * curl);
+        const juce::Point<float> hollow (crestX - 4.0f * curl, top + 28.0f * curl);
+
         curlPath.clear();
-        curlPath.startNewSubPath (crestX + 12.0f, top + 4.0f);
-        curlPath.quadraticTo (crestX - 10.0f, top - 18.0f * curl, lipX, top + 6.0f + 22.0f * curl);
-        curlPath.quadraticTo (lipX + 18.0f, top + 10.0f, crestX - 4.0f, top + 14.0f);
+        curlPath.startNewSubPath (start);
+        curlPath.cubicTo (c1, c2, lip);
+        curlPath.quadraticTo ({ lipX + 10.0f * curl, top + 12.0f * curl }, hollow);
+        curlPath.lineTo (start.translated (0.0f, 14.0f * curl));
         curlPath.closeSubPath();
-        g.setColour (palette (aqua).withAlpha (0.9f));
+        g.setGradientFill (fill); // the wave's own gradient: no seam
         g.fillPath (curlPath);
-        g.setColour (palette (cream).withAlpha (0.9f));
-        g.strokePath (curlPath, juce::PathStrokeType (2.5f));
+
+        juce::Path edge;
+        edge.preallocateSpace (40);
+        edge.startNewSubPath (start);
+        edge.cubicTo (c1, c2, lip);
+        g.setColour (palette (cream).withAlpha (0.9f * juce::jmin (1.0f, curl * 3.0f)));
+        g.strokePath (edge, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        // The inside of the tube, a thin darker line under the lip
+        juce::Path inner;
+        inner.startNewSubPath (lip);
+        inner.quadraticTo ({ lipX + 10.0f * curl, top + 12.0f * curl }, hollow);
+        g.setColour (palette (teal).withAlpha (0.55f));
+        g.strokePath (inner, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
     // SHIMMER: sparkles twinkling on the crest
@@ -194,23 +227,31 @@ void SwellMascot::paintBehind (juce::Graphics& g, const State& s, juce::Rectangl
             const float tw = 0.5f + 0.5f * (float) std::sin (s.time * 6.0 + i * 1.9);
             const float x = crestX + (float) (i - 3) * 22.0f;
             const float d = (x - crestX) / (b.getWidth() * 0.32f);
-            const float y = sea - height * (0.18f + 0.82f * std::exp (-d * d)) - 8.0f;
+            const float y = sea - height * (0.18f + 0.82f * std::exp (-d * d) * (1.0f - 0.25f * smoothstep (0.0f, 0.8f, d))) - 8.0f;
             g.setColour (palette (cream).withAlpha (0.35f + 0.65f * tw));
             g.fillPath (sparkle, juce::AffineTransform::scale (3.0f + 3.0f * tw).translated (x, y));
         }
 }
 
-void SwellMascot::paintCharacter (juce::Graphics& g, juce::Rectangle<float> fig, const juce::AffineTransform& animation)
+void SwellMascot::paintCharacter (juce::Graphics& g, juce::Rectangle<float> fig, const juce::AffineTransform&)
 {
     const auto& s = getState();
     const bool longSwell = proc.getLongParameter().get();
-    // Inhale: the body grows and lifts (more with LONG), exhale: back at once
-    const float k = inhale * (longSwell ? 1.25f : 1.0f);
-    const float grow = 0.09f * k;
+    // A calmer version of the suite's animation: the rhythm (nod, transient
+    // squash, pose pop) only nudges him, the design stays readable
     const juce::Point<float> feet (fig.getCentreX(), fig.getBottom());
+    const float sy = 1.0f - 0.35f * s.squash + 0.01f * s.breath + 0.02f * s.pop;
+    const float sx = 1.0f + 0.15f * s.squash + 0.005f * s.breath + 0.01f * s.pop;
+    const auto calm = juce::AffineTransform::translation (-feet.x, -feet.y)
+                          .scaled (sx, sy)
+                          .rotated (0.03f * s.sway - 0.08f * s.bypass)
+                          .translated (feet.x, feet.y + 1.0f * s.nod);
+    // Inhale: he grows a little and lifts (more with LONG), exhale: back at once
+    const float k = inhale * (longSwell ? 1.25f : 1.0f);
+    const float grow = 0.04f * k;
     const float bob = s.bypass > 0.5f ? 2.5f * (float) std::sin (s.time * 1.4) : 0.0f; // floating asleep
-    const auto breath = juce::AffineTransform::scale (1.0f + grow * 0.7f, 1.0f + grow, feet.x, feet.y).translated (0.0f, -10.0f * k + bob);
-    drawFrame (g, s.frame, fig, animation.followedBy (breath), 1.0f);
+    const auto breath = juce::AffineTransform::scale (1.0f + grow * 0.7f, 1.0f + grow, feet.x, feet.y).translated (0.0f, -5.0f * k + bob);
+    drawFrame (g, s.frame, fig, calm.followedBy (breath), 1.0f);
 }
 
 void SwellMascot::paintOverlay (juce::Graphics& g, const State& s, juce::Rectangle<float> fig)

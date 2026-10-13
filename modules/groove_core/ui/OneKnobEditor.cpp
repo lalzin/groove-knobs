@@ -123,6 +123,11 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
         toggleChips = std::make_unique<ToggleChips> (proc, palette);
         canvas->addAndMakeVisible (*toggleChips);
     }
+    if (! cfg.switches.empty())
+    {
+        switchChips = std::make_unique<ToggleChips> (proc, palette, true);
+        canvas->addAndMakeVisible (*switchChips);
+    }
     canvas->addAndMakeVisible (*power);
 
     // Layout on the base canvas (see spec §8.1)
@@ -134,6 +139,8 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
     presetTags->setBounds (juce::Rectangle<int> (200, 22).withCentre ({ 210, 448 })); // in the ring's opening
     if (toggleChips != nullptr)
         toggleChips->setBounds (juce::Rectangle<int> (200, 26).withCentre ({ 210, 448 }));
+    if (switchChips != nullptr)
+        switchChips->setBounds (8, 300, 68, 60); // left of the knob
     power->setBounds (baseWidth - 44, 12, 32, 32);
 
     const double frameRate = 60.0;

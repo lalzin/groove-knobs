@@ -26,6 +26,7 @@ public:
 
     BigKnob& getKnob() noexcept { return *knob; }
     ToggleChips* getToggleChips() noexcept { return toggleChips.get(); }
+    ToggleChips* getSwitchChips() noexcept { return switchChips.get(); }
     PresetBar& getPresetBar() noexcept { return *presetBar; }
     MascotComponent& getMascot() noexcept { return *mascot; }
     Palette& getPalette() noexcept { return palette; }
@@ -52,7 +53,7 @@ private:
     std::unique_ptr<BigKnob> knob;
     std::unique_ptr<PresetBar> presetBar;
     std::unique_ptr<PresetTags> presetTags;
-    std::unique_ptr<ToggleChips> toggleChips;
+    std::unique_ptr<ToggleChips> toggleChips, switchChips;
     int shownPreset = -1, shownSide = -2;
     std::unique_ptr<PowerButton> power;
     std::unique_ptr<juce::ButtonParameterAttachment> powerAttachment;

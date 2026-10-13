@@ -372,8 +372,8 @@ TEST_CASE ("BW 8. State round trip, preset chip defaults", "[bw][state]")
     CHECK_FALSE (c.getLongParameter().get());
     CHECK (c.getShimmerParameter().get());
     CHECK (c.getPresetParameter().isMetaParameter());
-    const char* ids[] { "amount", "preset", "long", "shimmer", "bypass" };
-    for (int i = 0; i < 5; ++i)
+    const char* ids[] { "amount", "preset", "long", "shimmer", "live", "lock", "bypass" };
+    for (int i = 0; i < 7; ++i)
         CHECK (dynamic_cast<juce::RangedAudioParameter*> (c.getParameters()[i])->getParameterID() == ids[i]);
 }
 
@@ -452,6 +452,208 @@ TEST_CASE ("BW 10. UI data: samplesToNextHit announces the hits (< 5 ms error)",
 }
 
 //==============================================================================
+namespace
+{
+/** One bar of the backbeat loop, repeated: a perfectly periodic loop. */
+Buffer tiledLoop (double sr, double bpm, int bars)
+{
+    const auto bar = ts::backbeatLoop (sr, bpm, 1);
+    const int len = (int) std::round (4 * 60.0 / bpm * sr);
+    Buffer out (2, len * bars);
+    for (int k = 0; k < bars; ++k)
+        for (int ch = 0; ch < 2; ++ch)
+            out.copyFrom (ch, k * len, bar, ch, 0, juce::jmin (len, bar.getNumSamples()));
+    return out;
+}
+
+double energy (const std::vector<float>& x, int from, int to)
+{
+    double e = 0.0;
+    for (int i = juce::jmax (0, from); i < juce::jmin ((int) x.size(), to); ++i)
+        e += (double) x[(size_t) i] * x[(size_t) i];
+    return e;
+}
+
+std::unique_ptr<BackwashProcessor> makeLive (double sr, int preset, float amount, bool live, bool lock = false)
+{
+    auto p = std::make_unique<BackwashProcessor>();
+    setLayout (*p, 2);
+    p->setNonRealtime (true);
+    setParam (p->getPresetParameter(), (float) preset);
+    setParam (p->getAmountParameter(), amount);
+    setParam (p->getLiveParameter(), live ? 1.0f : 0.0f);
+    setParam (p->getLockParameter(), lock ? 1.0f : 0.0f);
+    p->prepareToPlay (sr, 512);
+    return p;
+}
+} // namespace
+
+TEST_CASE ("BW 14. LIVE: zero latency, same swells as the 2 s mode on a loop", "[bw][live]")
+{
+    const double sr = 44100.0;
+    for (double bpm : { 120.0, 124.0, 92.0 })
+        for (int preset : { 0, 2, 4 })
+        {
+            const auto in = tiledLoop (sr, bpm, 7);
+            const int L = (int) std::round (2.0 * sr);
+            auto normal = makeLive (sr, preset, 0.8f, false);
+            auto live = makeLive (sr, preset, 0.8f, true);
+            CHECK (normal->getLatencySamples() == L);
+            CHECK (live->getLatencySamples() == 0);
+            CHECK (live->getBackwashDsp().getLatencySamples() == 0);
+            const auto outN = runAt (*normal, in, sr, bpm, 512);
+            const auto outL = runAt (*live, in, sr, bpm, 512);
+
+            // wet: out - dry (dry delayed by L in the normal mode, as is in LIVE)
+            std::vector<float> wetN ((size_t) in.getNumSamples()), wetL ((size_t) in.getNumSamples());
+            for (int i = 0; i < in.getNumSamples(); ++i)
+            {
+                wetN[(size_t) i] = outN.getSample (0, i) - (i >= L ? in.getSample (0, i - L) : 0.0f);
+                wetL[(size_t) i] = outL.getSample (0, i) - in.getSample (0, i);
+            }
+            // Same musical position: LIVE at t, normal at t + L. After the
+            // first cycles (memory filled), they must match closely.
+            const int bar = (int) std::round (4 * 60.0 / bpm * sr);
+            const int from = 3 * bar, to = in.getNumSamples() - L - 1;
+            double diff = 0.0, ref = 0.0, envDiff = 0.0, envRef = 0.0, selfDiff = 0.0;
+            const int win = (int) (0.005 * sr);
+            for (int t = from; t + win < to; t += win)
+            {
+                double eL = 0.0, eN = 0.0, eNext = 0.0;
+                for (int k = t; k < t + win; ++k)
+                {
+                    // the normal mode one bar earlier: its own bar-to-bar variation
+                    const float prev = wetN[(size_t) (k + L - bar)];
+                    eNext += (double) prev * prev;
+                    const double d = (double) wetL[(size_t) k] - wetN[(size_t) (k + L)];
+                    diff += d * d;
+                    ref += (double) wetN[(size_t) (k + L)] * wetN[(size_t) (k + L)];
+                    eL += (double) wetL[(size_t) k] * wetL[(size_t) k];
+                    eN += (double) wetN[(size_t) (k + L)] * wetN[(size_t) (k + L)];
+                }
+                envDiff += std::abs (eL - eN);
+                selfDiff += std::abs (eNext - eN);
+                envRef += eN;
+            }
+            const double selfErr = selfDiff / juce::jmax (1.0e-20, envRef);
+            const double errDb = 10.0 * std::log10 (diff / juce::jmax (1.0e-20, ref));
+            const double envErr = envDiff / juce::jmax (1.0e-20, envRef);
+            INFO ("bpm " << bpm << " preset " << preset << " waveform error " << errDb << " dB, 5 ms envelope error " << envErr * 100.0
+                         << " % (2 s mode against itself one bar earlier: " << selfErr * 100.0 << " %), wet energy " << ref);
+            CHECK (ref > 1.0);
+            // The swells have the same shape and land at the same place (5 ms
+            // energy envelope), whatever the tempo. With SHIMMER, when the
+            // octave grains are not locked to the bar, the 2 s mode itself
+            // varies from bar to bar: LIVE must stay within that.
+            CHECK (envErr < juce::jmax (0.15, 1.5 * selfErr));
+            // When a bar is a whole number of samples (120 BPM at 44.1 kHz),
+            // the two modes are identical to the sample (without SHIMMER, whose
+            // grain phase is free)
+            if (juce::exactlyEqual (bpm, 120.0) && preset != 4)
+                CHECK (errDb < -60.0);
+        }
+}
+
+TEST_CASE ("BW 15. LIVE: the memory is saved with the state, the first hits after reopening have their swell", "[bw][live]")
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const auto in = tiledLoop (sr, bpm, 2);
+    auto a = makeLive (sr, 0, 0.8f, true);
+    runAt (*a, in, sr, bpm, 512);
+    juce::MemoryBlock state;
+    a->getStateInformation (state);
+    CHECK (state.getSize() > 100000); // one bar of audio inside
+
+    // Reopened: state first, then prepare (like a host)
+    auto b = std::make_unique<BackwashProcessor>();
+    setLayout (*b, 2);
+    b->setNonRealtime (true);
+    b->setStateInformation (state.getData(), (int) state.getSize());
+    b->prepareToPlay (sr, 512);
+    CHECK (b->getLiveParameter().get());
+    CHECK (b->getLatencySamples() == 0);
+    auto fresh = makeLive (sr, 0, 0.8f, true);
+
+    const auto first = tiledLoop (sr, bpm, 1);
+    const auto outB = runAt (*b, first, sr, bpm, 512);
+    const auto outF = runAt (*fresh, first, sr, bpm, 512);
+    std::vector<float> wetB ((size_t) first.getNumSamples()), wetF ((size_t) first.getNumSamples());
+    for (int i = 0; i < first.getNumSamples(); ++i)
+    {
+        wetB[(size_t) i] = outB.getSample (0, i) - first.getSample (0, i);
+        wetF[(size_t) i] = outF.getSample (0, i) - first.getSample (0, i);
+    }
+    // The swell into the first snare (beat 2, 0.5 s): there with the memory
+    const int snare = (int) (0.5 * sr);
+    const double eB = energy (wetB, snare - (int) (0.25 * sr), snare), eF = energy (wetF, snare - (int) (0.25 * sr), snare);
+    INFO ("with memory " << eB << ", without " << eF);
+    CHECK (eB > 0.5);
+    CHECK (eF < eB * 1.0e-3);
+
+    // Stop / play keeps it too (no reset of the memory)
+    b->reset();
+    const auto again = runAt (*b, first, sr, bpm, 512);
+    std::vector<float> wetA ((size_t) first.getNumSamples());
+    for (int i = 0; i < first.getNumSamples(); ++i)
+        wetA[(size_t) i] = again.getSample (0, i) - first.getSample (0, i);
+    CHECK (energy (wetA, snare - (int) (0.25 * sr), snare) > 0.5 * eB);
+}
+
+TEST_CASE ("BW 16. LOCK: the swells keep coming when the music stops", "[bw][live]")
+{
+    const double sr = 44100.0, bpm = 120.0;
+    const int bar = (int) std::round (2.0 * sr);
+    for (bool lock : { false, true })
+    {
+        auto p = makeLive (sr, 0, 0.8f, true);
+        auto loop = tiledLoop (sr, bpm, 6);
+        for (int ch = 0; ch < 2; ++ch)
+            loop.clear (ch, 2 * bar, 4 * bar); // the drums stop after 2 bars
+        const auto out = runAt (*p, loop, sr, bpm, 512, [&] (int pos) {
+            if (lock && pos >= 2 * bar - 512 && ! p->getLockParameter().get())
+                setParam (p->getLockParameter(), 1.0f);
+        });
+        std::vector<float> wet ((size_t) loop.getNumSamples());
+        for (int i = 0; i < loop.getNumSamples(); ++i)
+            wet[(size_t) i] = out.getSample (0, i) - loop.getSample (0, i);
+        const double late = energy (wet, 4 * bar, 6 * bar);
+        INFO ("lock " << lock << ": wet energy in bars 5-6 " << late);
+        if (lock)
+            CHECK (late > 1.0);
+        else
+            CHECK (late < 1.0e-4);
+    }
+}
+
+TEST_CASE ("BW 17. LIVE on / off while playing: latency follows, no NaN, no jump above 0 dBFS", "[bw][live]")
+{
+    const double sr = 48000.0, bpm = 124.0;
+    auto p = makeLive (sr, 4, 1.0f, false);
+    const auto in = tiledLoop (sr, bpm, 8);
+    const int L = (int) std::round (2.0 * sr);
+    std::vector<int> latencies;
+    const auto out = runAt (*p, in, sr, bpm, 480, [&] (int pos) {
+        if (pos == 480 * 300)
+            setParam (p->getLiveParameter(), 1.0f);
+        if (pos == 480 * 600)
+            setParam (p->getLiveParameter(), 0.0f);
+        latencies.push_back (p->getBackwashDsp().getLatencySamples());
+    });
+    CHECK (std::find (latencies.begin(), latencies.end(), 0) != latencies.end());
+    CHECK (latencies.back() == L);
+    float peak = 0.0f;
+    bool finite = true;
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < out.getNumSamples(); ++i)
+        {
+            finite = finite && std::isfinite (out.getSample (ch, i));
+            peak = juce::jmax (peak, std::abs (out.getSample (ch, i)));
+        }
+    CHECK (finite);
+    CHECK (peak <= 1.0f);
+}
+
+//==============================================================================
 TEST_CASE ("BW 13. CPU: cost of the convolution, stereo 48 kHz", "[bw][cpu]")
 {
     const double sr = 48000.0;
@@ -474,4 +676,5 @@ TEST_CASE ("BW 13. CPU: cost of the convolution, stereo 48 kHz", "[bw][cpu]")
         CHECK (ms < audioMs * 0.2);
     }
 }
+
 

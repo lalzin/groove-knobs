@@ -5,7 +5,7 @@
 namespace bw
 {
 /** Backwash: the generic one-knob frame + the reverse-reverb engine, with two
-    chips (LONG, SHIMMER) and a fixed 2 s latency. */
+    chips (LONG, SHIMMER), 2 s of latency or none in LIVE mode (LIVE, LOCK). */
 class BackwashProcessor final : public gk::OneKnobProcessor
 {
 public:
@@ -19,5 +19,10 @@ public:
     BackwashDsp& getBackwashDsp() noexcept { return static_cast<BackwashDsp&> (getEngine()); }
     juce::AudioParameterBool& getLongParameter() noexcept { return getToggleParameter (BackwashDsp::longToggle); }
     juce::AudioParameterBool& getShimmerParameter() noexcept { return getToggleParameter (BackwashDsp::shimmerToggle); }
+    juce::AudioParameterBool& getLiveParameter() noexcept { return getSwitchParameter (BackwashDsp::liveSwitch); }
+    juce::AudioParameterBool& getLockParameter() noexcept { return getSwitchParameter (BackwashDsp::lockSwitch); }
+
+    void saveExtraState (juce::ValueTree& state) override;
+    void loadExtraState (const juce::ValueTree& state) override;
 };
 } // namespace bw

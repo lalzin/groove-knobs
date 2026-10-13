@@ -40,6 +40,23 @@ public:
         toggle, valid until that call returns. */
     virtual void setToggleValues (const float* const* perSample, int numToggles) { juce::ignoreUnused (perSample, numToggles); }
 
+    /** Plugins with switches (OneKnobConfig::switches): the latency the
+        engine would have with these switches on/off. Audio thread. */
+    virtual int latencyForSwitches (const bool* on, int numSwitches) const
+    {
+        juce::ignoreUnused (on, numSwitches);
+        return getLatencySamples();
+    }
+
+    /** Applies the switches (on/off, not faded). The processor only calls it
+        when the latency does not change, or once the output has been faded
+        out for a latency change; getLatencySamples() then gives the new
+        latency. Audio thread (and prepare). */
+    virtual void setSwitches (const bool* on, int numSwitches) { juce::ignoreUnused (on, numSwitches); }
+
+    /** Largest latency the switches can give (sizes the dry path). */
+    virtual int getMaxLatencySamples() const { return getLatencySamples(); }
+
     /** Offline rendering (export, freeze, tests): engines that rebuild data in
         the background should do it synchronously, for reproducible results. */
     virtual void setNonRealtime (bool) noexcept {}

@@ -8,6 +8,7 @@ struct BlockTiming
     double beatsAtStart = 0.0;   // musical position (quarter notes) of the first sample
     double beatsPerSample = 0.0; // advance per sample at the current tempo
     double bpm = 120.0;
+    double beatsPerBar = 4.0;    // quarter notes per bar (host time signature, 4/4 if unknown)
     bool isPlaying = false;
 
     double beatsAt (int sampleOffset) const noexcept { return beatsAtStart + sampleOffset * beatsPerSample; }
@@ -38,12 +39,13 @@ public:
     {
         freeBeats = 0.0;
         lastBpm = fallbackBpm;
+        lastBeatsPerBar = 4.0;
     }
 
     /** Must be called once per host block, before processing it. */
     BlockTiming beginBlock (juce::AudioPlayHead* playHead, int numSamples) noexcept;
 
 private:
-    double sr = 44100.0, freeBeats = 0.0, lastBpm = fallbackBpm;
+    double sr = 44100.0, freeBeats = 0.0, lastBpm = fallbackBpm, lastBeatsPerBar = 4.0;
 };
 } // namespace gk

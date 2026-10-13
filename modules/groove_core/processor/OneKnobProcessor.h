@@ -30,6 +30,13 @@ struct OneKnobConfig
     std::vector<ToggleSpec> toggles;
     double toggleFadeSeconds = 0.020;
 
+    /** Global on/off parameters (not part of the presets, no makeup table),
+        after the toggles; shown as chips after them. The engine may change
+        its latency with them (see OneKnobEngine::latencyForSwitches): the
+        output then fades out, the latency changes, and it fades back in. */
+    std::vector<ToggleSpec> switches;
+    double switchFadeSeconds = 0.010;
+
     /** Also accept a mono input with a stereo output (mono is duplicated). */
     bool allowMonoToStereo = false;
 
@@ -109,6 +116,8 @@ public:
     juce::AudioParameterBool& getBypassParameterObject() noexcept { return *bypassParam; }
     int getNumToggles() const noexcept { return (int) toggleParams.size(); }
     juce::AudioParameterBool& getToggleParameter (int index) noexcept { return *toggleParams[(size_t) index]; }
+    int getNumSwitches() const noexcept { return (int) switchParams.size(); }
+    juce::AudioParameterBool& getSwitchParameter (int index) noexcept { return *switchParams[(size_t) index]; }
 
     /** A preset's default value for toggle `index` (from its JSON). */
     bool presetToggleDefault (int presetIndex, int toggleIndex) const;
@@ -133,6 +142,10 @@ public:
     /** Calibration only: disables the makeup gain table. */
     void setMakeupEnabled (bool shouldBeEnabled) noexcept { makeupEnabled.store (shouldBeEnabled); }
 
+    /** Plugin-specific data saved with the state (e.g. captured audio). */
+    virtual void saveExtraState (juce::ValueTree& state) { juce::ignoreUnused (state); }
+    virtual void loadExtraState (const juce::ValueTree& state) { juce::ignoreUnused (state); }
+
     /** Hook for future state versions: upgrade `state` in place from `fromVersion`. */
     virtual void migrateState (juce::ValueTree& state, int fromVersion);
 
@@ -143,6 +156,7 @@ private:
     void handleAsyncUpdate() override;
     void applyPresetToggleDefaults();
     void processInternal (juce::AudioBuffer<float>& buffer, bool forceBypass);
+    void updateSwitches (bool snap);
     void processChunk (juce::AudioBuffer<float>& buffer, int start, int numSamples, const BlockTiming& timing, int numChannels);
 
     OneKnobConfig config;
@@ -158,6 +172,11 @@ private:
     std::vector<juce::AudioParameterBool*> toggleParams;
     std::vector<std::atomic<float>*> toggleValues;
     std::atomic<int> presetForToggles { -1 }; // last preset whose toggle defaults were applied
+    std::vector<juce::AudioParameterBool*> switchParams;
+    std::vector<std::atomic<float>*> switchValues;
+    LinearSmoother switchGain;  // output fade around a latency change
+    bool latencySwitchPending = false;
+    std::atomic<int> pendingLatency { -1 }; // reported to the host on the message thread
 
     // Audio-thread state (sized in prepareToPlay)
     HostSync hostSync;

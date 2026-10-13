@@ -37,8 +37,36 @@ public:
     {
         stopThread (2000);
         delete ready.exchange (nullptr);
+        delete readyCycle.exchange (nullptr);
         for (auto& g : graveyard)
             delete g.exchange (nullptr);
+        for (auto& g : cycleGraveyard)
+            delete g.exchange (nullptr);
+    }
+
+    /** Audio thread: asks for a new LIVE render (latest memory and IR). */
+    void requestRender() noexcept
+    {
+        renderSerial.fetch_add (1, std::memory_order_release);
+        wake.signal();
+    }
+
+    /** Audio thread: takes a finished LIVE render, if any. */
+    std::unique_ptr<BackwashWetCycle> takeReadyCycle() noexcept { return std::unique_ptr<BackwashWetCycle> (readyCycle.exchange (nullptr)); }
+
+    /** Audio thread: hands a cycle over for deletion. False if no slot is free. */
+    bool retire (BackwashWetCycle* c) noexcept
+    {
+        for (auto& g : cycleGraveyard)
+        {
+            BackwashWetCycle* expected = nullptr;
+            if (g.compare_exchange_strong (expected, c))
+            {
+                wake.signal();
+                return true;
+            }
+        }
+        return false;
     }
 
     struct Request { int preset = -1; bool longSwell = false; double bpm = 120.0; };
@@ -80,6 +108,26 @@ public:
             wake.wait (100);
             for (auto& g : graveyard)
                 delete g.exchange (nullptr);
+            for (auto& g : cycleGraveyard)
+                delete g.exchange (nullptr);
+            delete dsp.spentMemory.exchange (nullptr);
+
+            // LIVE render. The IR is loaded after the graveyard sweep: a
+            // retired IR is only deleted by this thread, at the next sweep.
+            if (const int rs = renderSerial.load (std::memory_order_acquire); rs != rendered)
+            {
+                rendered = rs;
+                const int len = dsp.memoryLength.load();
+                const auto* ir = dsp.renderIr.load();
+                if (len > 0 && ir != nullptr)
+                {
+                    const auto& mem = dsp.memoryBuffers[(size_t) dsp.memoryActive.load()];
+                    auto c = BackwashDsp::renderWetCycle (mem.data(), len, dsp.memoryCycleBeatsShared.load(), *ir,
+                                                          dsp.presets[(size_t) juce::jmax (0, ir->preset)], dsp.sampleRate, dsp.lookahead,
+                                                          dsp.partitionSize);
+                    delete readyCycle.exchange (c.release());
+                }
+            }
 
             const int serial = requestSerial.load (std::memory_order_acquire);
             Request r { pendingPreset.load (std::memory_order_relaxed), pendingLong.load (std::memory_order_relaxed),
@@ -101,6 +149,10 @@ private:
     std::atomic<double> pendingBpm { 120.0 };
     std::atomic<BackwashIr*> ready { nullptr };
     std::array<std::atomic<BackwashIr*>, 8> graveyard {};
+    std::atomic<int> renderSerial { 0 };
+    int rendered = 0;
+    std::atomic<BackwashWetCycle*> readyCycle { nullptr };
+    std::array<std::atomic<BackwashWetCycle*>, 4> cycleGraveyard {};
 };
 
 //==============================================================================
@@ -109,6 +161,144 @@ BackwashDsp::BackwashDsp() = default;
 BackwashDsp::~BackwashDsp()
 {
     builder.reset(); // stops the thread before the IRs it may reference go away
+    delete pendingMemory.exchange (nullptr);
+    delete spentMemory.exchange (nullptr);
+}
+
+//==============================================================================
+void BackwashDsp::resampleInto (const float* src, int srcLen, float* dst, int dstLen) noexcept
+{
+    // Linear, by position in the cycle (a tempo change keeps every hit on
+    // its beat)
+    if (srcLen <= 0)
+    {
+        std::fill (dst, dst + dstLen, 0.0f);
+        return;
+    }
+    const double step = (double) srcLen / (double) juce::jmax (1, dstLen);
+    for (int j = 0; j < dstLen; ++j)
+    {
+        const double pos = j * step;
+        const int i0 = (int) pos;
+        const float f = (float) (pos - i0);
+        const float a = src[i0 % srcLen], b = src[(i0 + 1) % srcLen];
+        dst[j] = a + f * (b - a);
+    }
+}
+
+std::vector<float> BackwashDsp::copyMemory() const
+{
+    const int len = memoryLength.load();
+    const int active = memoryActive.load();
+    if (! telemetry.liveMemoryReady.load() || len <= 0 || memoryBuffers[(size_t) active].size() < (size_t) len)
+        return {};
+    const auto& m = memoryBuffers[(size_t) active];
+    return std::vector<float> (m.begin(), m.begin() + len);
+}
+
+void BackwashDsp::loadMemory (std::vector<float> data)
+{
+    auto* fresh = data.empty() ? nullptr : new std::vector<float> (std::move (data));
+    delete pendingMemory.exchange (fresh);
+}
+
+void BackwashDsp::takePendingMemory()
+{
+    auto* m = pendingMemory.exchange (nullptr);
+    if (m == nullptr)
+        return;
+    const int len = memoryLength.load();
+    if (len > 0)
+    {
+        auto& dst = memoryBuffers[(size_t) memoryActive.load()];
+        resampleInto (m->data(), (int) m->size(), dst.data(), len);
+        memoryHasContent = true;
+        renderWanted = true;
+        telemetry.liveMemoryReady.store (true);
+    }
+    else
+    {
+        // Not sized yet (no block seen): keep it for later
+        delete pendingMemory.exchange (m);
+        return;
+    }
+    if (nonRealtime.load() || builder == nullptr)
+        delete m;
+    else if (auto* old = spentMemory.exchange (m))
+        delete old; // the builder had not collected the previous one (unlikely)
+}
+
+int BackwashDsp::cycleIndex (double cyclePosition, int length) noexcept
+{
+    // Rounded, not truncated: at tempos where a cycle is a whole number of
+    // samples, positions fall exactly on sample boundaries and truncation
+    // would jitter by one sample
+    const int q = (int) ((cyclePosition - std::floor (cyclePosition)) * length + 0.5);
+    return q >= length ? q - length : q;
+}
+
+void BackwashDsp::retireCycle (std::unique_ptr<BackwashWetCycle> c)
+{
+    if (c == nullptr || nonRealtime.load() || builder == nullptr)
+        return; // offline: plain delete
+    auto* raw = c.release();
+    if (! builder->retire (raw))
+        delete raw;
+}
+
+void BackwashDsp::installCycle (std::unique_ptr<BackwashWetCycle> c)
+{
+    // Crossfade from the previous render (its content may differ: a new bar,
+    // a new IR)
+    if (previousCycle != nullptr)
+        retireCycle (std::move (previousCycle));
+    previousCycle = std::move (cycle);
+    cycle = std::move (c);
+    cycleFade = previousCycle != nullptr ? 0.0f : 1.0f;
+}
+
+void BackwashDsp::requestRender()
+{
+    renderWanted = false;
+    if (! memoryHasContent)
+        return;
+    if (nonRealtime.load() || builder == nullptr)
+    {
+        // Offline / tests: render now, deterministic
+        if (currentIr != nullptr && memoryLength.load() > 0)
+            installCycle (renderWetCycle (memoryBuffers[(size_t) memoryActive.load()].data(), memoryLength.load(), memoryCycleBeats, *currentIr,
+                                          presets[(size_t) juce::jmax (0, currentIr->preset)], sampleRate, lookahead, partitionSize));
+        return;
+    }
+    builder->requestRender();
+}
+
+void BackwashDsp::updateMemoryLength (const gk::BlockTiming& timing)
+{
+    // One bar (halved while longer than the capacity), at the settled tempo
+    double cycleBeats = juce::jmax (0.25, timing.beatsPerBar);
+    const double bpm = juce::jmax (20.0, activeBpm);
+    auto lengthFor = [&] (double beats) { return (int) std::round (beats * 60.0 / bpm * sampleRate); };
+    while (lengthFor (cycleBeats) > memoryCapacity && cycleBeats > 0.25)
+        cycleBeats *= 0.5;
+    const int len = juce::jlimit (1, memoryCapacity, lengthFor (cycleBeats));
+    const int oldLen = memoryLength.load();
+    if (len == oldLen && juce::exactlyEqual (cycleBeats, memoryCycleBeats))
+        return;
+
+    const int active = memoryActive.load();
+    auto& src = memoryBuffers[(size_t) active];
+    auto& dst = memoryBuffers[(size_t) (1 - active)];
+    if (memoryHasContent && oldLen > 0)
+        resampleInto (src.data(), oldLen, dst.data(), len);
+    else
+        std::fill (dst.begin(), dst.begin() + len, 0.0f);
+    memoryCycleBeats = cycleBeats;
+    memoryCycleBeatsShared.store (cycleBeats);
+    memoryLength.store (len);
+    memoryActive.store (1 - active);
+    lastWrite = -1;
+    renderWanted = true;
 }
 
 int BackwashDsp::grainSamplesFor (double sr)
@@ -194,7 +384,113 @@ BackwashIr BackwashDsp::buildIr (const BackwashPreset& p, int presetIndex, bool 
     }
 
     ir.kernel = gk::PartitionedConvolver::Kernel::build (irL.data(), irR.data(), length, P);
+    ir.taps = { std::move (irL), std::move (irR) };
     return ir;
+}
+
+std::unique_ptr<BackwashWetCycle> BackwashDsp::renderWetCycle (const float* memory, int M, double cycleBeats, const BackwashIr& ir,
+                                                               const BackwashPreset& p, double sr, int lookahead, int P)
+{
+    auto out = std::make_unique<BackwashWetCycle>();
+    out->length = M;
+    out->cycleBeats = cycleBeats;
+    for (auto& c : out->channels)
+        c.assign ((size_t) M, 0.0f);
+    if (M <= 0 || ir.taps[0].empty())
+        return out;
+
+    // 1. The send chain (focus, one-grain delay, octave up) over the looped
+    //    memory, exactly as in processWet. Two passes: the first one settles
+    //    the envelopes and the shimmer line, as on a loop that keeps playing.
+    const int grain = grainSamplesFor (sr);
+    std::vector<float> prep ((size_t) M), up ((size_t) M);
+    {
+        gk::EnvelopeFollower fe, se;
+        fe.prepare (sr, 0.001, 0.100);
+        se.prepare (sr, 0.060, 0.100);
+        const float rc = (float) (1.0 - std::exp (-1.0 / (0.004 * sr)));
+        float rect = 0.0f;
+        gk::ModDelay line;
+        line.prepare (sr, 0.1);
+        double phase = 0.0;
+        for (int pass = 0; pass < 2; ++pass)
+            for (int i = 0; i < M; ++i)
+            {
+                const float x = memory[i];
+                rect += (std::abs (x) - rect) * rc;
+                const float a = fe.process (rect), b = se.process (rect);
+                const float g = smoothstep (0.35f, 0.75f, (a - b) / juce::jmax (1.0e-6f, a));
+                line.push ((1.0f - p.focus) * x + p.focus * (x * g));
+                phase = frac (phase + 1.0 / grain);
+                float u = 0.0f;
+                for (int t = 0; t < 2; ++t)
+                {
+                    const double ph = frac (phase + 0.5 * t);
+                    const float w = (float) std::sin (pi * ph);
+                    u += w * w * line.read (1.0 + (grain - 2) * (1.0 - ph));
+                }
+                if (pass == 1)
+                {
+                    prep[(size_t) i] = line.read ((double) grain);
+                    up[(size_t) i] = u;
+                }
+            }
+    }
+
+    // 2. The convolver gives y(t) = sum_j taps[j] * prep(t - P - j), heard
+    //    with the dry delayed by L. Here the dry is not delayed, so the wet at
+    //    position q is that sum at t = q + L: a circular correlation with the
+    //    IR folded on the cycle, h[(L - P - j) mod M] += taps[j]:
+    //        wet[q] = sum_m h[m] * prep[(q + m) mod M]
+    //    computed as a linear convolution of h reversed with prep looped
+    //    twice (outputs M-1 .. 2M-2), by FFT.
+    int order = 1;
+    while ((1 << order) < 2 * M)
+        ++order;
+    const int N = 1 << order;
+    juce::dsp::FFT fft (order);
+    auto spectrum = [&] (std::vector<float>& buf) { fft.performRealOnlyForwardTransform (buf.data(), true); };
+    auto looped = [&] (const std::vector<float>& sig)
+    {
+        std::vector<float> b ((size_t) (2 * N), 0.0f);
+        for (int i = 0; i < 2 * M; ++i)
+            b[(size_t) i] = sig[(size_t) (i % M)];
+        spectrum (b);
+        return b;
+    };
+    const auto prepSpec = looped (prep), upSpec = looped (up);
+    const int D = lookahead - P;
+
+    for (int c = 0; c < 2; ++c)
+    {
+        std::vector<float> h ((size_t) (2 * N), 0.0f);
+        const auto& taps = ir.taps[(size_t) c];
+        for (int j = 0; j < (int) taps.size(); ++j)
+        {
+            int m = (D - j) % M;
+            if (m < 0)
+                m += M;
+            h[(size_t) (M - 1 - m)] += taps[(size_t) j]; // reversed
+        }
+        spectrum (h);
+        for (int k = 0; k < 2; ++k)
+        {
+            const auto& sigSpec = k == 0 ? prepSpec : upSpec;
+            std::vector<float> prod ((size_t) (2 * N), 0.0f);
+            for (int bin = 0; bin <= N / 2; ++bin)
+            {
+                const float ar = h[(size_t) (2 * bin)], ai = h[(size_t) (2 * bin + 1)];
+                const float br = sigSpec[(size_t) (2 * bin)], bi = sigSpec[(size_t) (2 * bin + 1)];
+                prod[(size_t) (2 * bin)] = ar * br - ai * bi;
+                prod[(size_t) (2 * bin + 1)] = ar * bi + ai * br;
+            }
+            fft.performRealOnlyInverseTransform (prod.data()); // normalised by 1/N
+            auto& dst = out->channels[(size_t) (2 * k + c)];
+            for (int q = 0; q < M; ++q)
+                dst[(size_t) q] = prod[(size_t) (q + M - 1)];
+        }
+    }
+    return out;
 }
 
 void BackwashDsp::setPresets (const gk::PresetManager& pm)
@@ -213,6 +509,21 @@ void BackwashDsp::prepare (double newSampleRate, int maxBlockSize, int newNumCha
     numChannels = juce::jlimit (1, 2, newNumChannels);
     lookahead = (int) std::round (lookaheadSeconds * sampleRate);
     partitionSize = partitionSizeFor (sampleRate);
+
+    // LIVE memory: keep what was captured across a re-prepare
+    {
+        auto kept = copyMemory();
+        memoryCapacity = (int) std::ceil (memoryMaxSeconds * sampleRate) + 2;
+        for (auto& m : memoryBuffers)
+            m.assign ((size_t) memoryCapacity, 0.0f);
+        memoryLength.store (0);
+        memoryActive.store (0);
+        memoryCycleBeats = 0.0;
+        memoryHasContent = false;
+        telemetry.liveMemoryReady.store (false);
+        if (! kept.empty() && pendingMemory.load() == nullptr)
+            loadMemory (std::move (kept));
+    }
 
     convolver.prepare (partitionSize, (lookahead - partitionSize) / partitionSize + 2);
     dryDelay.prepare (numChannels, lookahead);
@@ -240,6 +551,15 @@ void BackwashDsp::prepare (double newSampleRate, int maxBlockSize, int newNumCha
                                                        partitionSize));
     previousIr.reset();
     convolver.setKernel (currentIr->kernel.get());
+    renderIr.store (currentIr.get());
+    cycle.reset();
+    previousCycle.reset();
+    cycleFade = 1.0f;
+    cycleFadeStep = (float) (1.0 / (irFadeSeconds * sampleRate));
+    liveGate.prepare (sampleRate, 0.010);
+    liveGate.snap (0.0f);
+    lastWrite = -1;
+    renderWanted = true;
 
     builder = std::make_unique<Builder> (*this);
     builder->startThread (juce::Thread::Priority::low);
@@ -305,6 +625,8 @@ void BackwashDsp::installIr (std::unique_ptr<BackwashIr> ir, bool fade)
         retire (std::move (previousIr));
     previousIr = std::move (currentIr);
     currentIr = std::move (ir);
+    renderIr.store (currentIr.get()); // before the old one can be retired
+    renderWanted = true;
     if (fade)
         convolver.fadeTo (currentIr->kernel.get(), (int) (irFadeSeconds * sampleRate));
     else
@@ -364,10 +686,36 @@ void BackwashDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         telemetry.swellClamped.store (currentIr->clamped, std::memory_order_relaxed);
     }
 
-    // --- Dry path, delayed by the lookahead ----------------------------------
-    for (int c = 0; c < nch; ++c)
-        dryDelay.process (c, buffer.getReadPointer (c), dryBuffer.getWritePointer (c), numSamples);
-    dryDelay.advance (numSamples);
+    // --- LIVE memory: sized to one cycle at the settled tempo ---------------
+    updateMemoryLength (timing);
+    takePendingMemory();
+    const int memLen = memoryLength.load();
+    float* memory = memoryBuffers[(size_t) memoryActive.load()].data();
+    const bool recording = timing.isPlaying && ! locked;
+    const double lookaheadBeats = lookahead * timing.beatsPerSample;
+
+    // --- Dry path: delayed by the lookahead (LIVE: as is) -------------------
+    if (liveMode)
+    {
+        for (int c = 0; c < nch; ++c)
+            dryBuffer.copyFrom (c, 0, buffer, c, 0, numSamples);
+    }
+    else
+    {
+        for (int c = 0; c < nch; ++c)
+            dryDelay.process (c, buffer.getReadPointer (c), dryBuffer.getWritePointer (c), numSamples);
+        dryDelay.advance (numSamples);
+    }
+
+    // --- LIVE: rendered cycles -------------------------------------------
+    if (builder != nullptr)
+        if (auto ready = builder->takeReadyCycle())
+            installCycle (std::move (ready));
+    if (previousCycle != nullptr && cycleFade >= 1.0f)
+        retireCycle (std::move (previousCycle));
+    if (liveMode && renderWanted)
+        requestRender();
+    liveGate.setTarget (timing.isPlaying ? 1.0f : 0.0f);
 
     const auto& p = presets[(size_t) presetIndex];
     const float shimmerOn = numToggleData > shimmerToggle ? 1.0f : 0.0f;
@@ -392,7 +740,35 @@ void BackwashDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             x += buffer.getReadPointer (c)[i];
         x /= (float) nch;
 
-        // UI: hits detected on the input, heard `lookahead` samples later
+        // Memory: one cycle of the input, by musical position (recorded in
+        // both modes, so LIVE is ready when switched on; LOCK freezes it).
+        const double beats = timing.beatsAt (i);
+        {
+            const int w = cycleIndex (beats / memoryCycleBeats, memLen);
+            if (liveMode)
+            {
+                // What will be heard `lookahead` from now: drives the UI breath
+                const float remembered = memory[cycleIndex ((beats + lookaheadBeats) / memoryCycleBeats, memLen)];
+                if (recording)
+                    memory[w] = x;
+                x = timing.isPlaying ? remembered : 0.0f;
+            }
+            else if (recording)
+                memory[w] = x;
+            if (recording)
+            {
+                if (! memoryHasContent && std::abs (memory[w]) > 1.0e-5f)
+                {
+                    memoryHasContent = true;
+                    telemetry.liveMemoryReady.store (true, std::memory_order_relaxed);
+                }
+                if (w < lastWrite - memLen / 2)
+                    renderWanted = true; // a whole cycle was recorded: render it
+                lastWrite = w;
+            }
+        }
+
+        // UI: hits detected on what will be heard `lookahead` samples later
         {
             const float f = hitFast.process (x), sl = hitSlow.process (x);
             if (hitHoldoff > 0)
@@ -405,39 +781,70 @@ void BackwashDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         }
         ++inputClock;
 
-        // Transient focus: keep the attacks only. Gate on how far the fast
-        // envelope is above the slow one: nothing below 35 %, fully open at
-        // 75 % (a held note, a slow fade-in or a sine's ripple stay closed).
-        rectified += (std::abs (x) - rectified) * rectifyCoeff; // ~4 ms average: no waveform ripple
-        const float fe = fastEnv.process (rectified), se = slowEnv.process (rectified);
-        const float g = smoothstep (0.35f, 0.75f, (fe - se) / juce::jmax (1.0e-6f, fe));
-        const float fo = focus.next();
-        float prep = (1.0f - fo) * x + fo * (x * g);
-
-        // (the wash high-pass is built into the IR, see buildIr)
-        hpfLogHz.next();
-
-        // Send delayed by one grain; SHIMMER (octave up: two crossed taps,
-        // Hann windows, ~40 ms grains) reads earlier, so it is never late.
-        shimmerLine.push (prep);
-        const float sm = shimmerMix.next() * shim;
-        prep = shimmerLine.read ((double) grainSamples);
-        if (sm > 0.0f)
-        {
-            shimmerPhase = frac (shimmerPhase + 1.0 / grainSamples);
-            float up = 0.0f;
-            for (int t = 0; t < 2; ++t)
-            {
-                const double ph = frac (shimmerPhase + 0.5 * t);
-                const double d = 1.0 + (grainSamples - 2) * (1.0 - ph); // delay shrinks 1 sample per sample: ×2 speed
-                const float w = (float) std::sin (pi * ph);
-                up += w * w * shimmerLine.read (d);
-            }
-            prep += sm * up;
-        }
-
         float wl = 0.0f, wr = 0.0f;
-        convolver.process (prep, wl, wr);
+        if (liveMode)
+        {
+            // LIVE: the rendered cycle, read at this musical position (the
+            // send chain and the convolution were done in the background)
+            focus.next();
+            hpfLogHz.next();
+            const float sm = shimmerMix.next() * shim;
+            auto read = [&] (const BackwashWetCycle& c, float& l, float& r)
+            {
+                const auto q = (size_t) cycleIndex (beats / c.cycleBeats, c.length);
+                l = c.channels[0][q] + sm * c.channels[2][q];
+                r = c.channels[1][q] + sm * c.channels[3][q];
+            };
+            if (cycle != nullptr)
+                read (*cycle, wl, wr);
+            if (previousCycle != nullptr && cycleFade < 1.0f)
+            {
+                float pl = 0.0f, pr = 0.0f;
+                read (*previousCycle, pl, pr);
+                const float f = smoothstep (0.0f, 1.0f, cycleFade);
+                wl = pl + f * (wl - pl);
+                wr = pr + f * (wr - pr);
+                cycleFade = juce::jmin (1.0f, cycleFade + cycleFadeStep);
+            }
+            const float gate = liveGate.next(); // transport stopped: no phantom swells
+            wl *= gate;
+            wr *= gate;
+        }
+        else
+        {
+            // Transient focus: keep the attacks only. Gate on how far the fast
+            // envelope is above the slow one: nothing below 35 %, fully open at
+            // 75 % (a held note, a slow fade-in or a sine's ripple stay closed).
+            rectified += (std::abs (x) - rectified) * rectifyCoeff; // ~4 ms average: no waveform ripple
+            const float fe = fastEnv.process (rectified), se = slowEnv.process (rectified);
+            const float g = smoothstep (0.35f, 0.75f, (fe - se) / juce::jmax (1.0e-6f, fe));
+            const float fo = focus.next();
+            float prep = (1.0f - fo) * x + fo * (x * g);
+
+            // (the wash high-pass is built into the IR, see buildIr)
+            hpfLogHz.next();
+
+            // Send delayed by one grain; SHIMMER (octave up: two crossed taps,
+            // Hann windows, ~40 ms grains) reads earlier, so it is never late.
+            shimmerLine.push (prep);
+            const float sm = shimmerMix.next() * shim;
+            prep = shimmerLine.read ((double) grainSamples);
+            if (sm > 0.0f)
+            {
+                shimmerPhase = frac (shimmerPhase + 1.0 / grainSamples);
+                float up = 0.0f;
+                for (int t = 0; t < 2; ++t)
+                {
+                    const double ph = frac (shimmerPhase + 0.5 * t);
+                    const double d = 1.0 + (grainSamples - 2) * (1.0 - ph); // delay shrinks 1 sample per sample: ×2 speed
+                    const float w = (float) std::sin (pi * ph);
+                    up += w * w * shimmerLine.read (d);
+                }
+                prep += sm * up;
+            }
+
+            convolver.process (prep, wl, wr);
+        }
 
         // Tone (opens with the knob), width (M/S), gain
         const auto tc = gk::TptSvf::Coeffs::make (juce::jmin (0.45 * sampleRate, (double) std::exp (toneLogHz.next())), sampleRate, 0.7071);

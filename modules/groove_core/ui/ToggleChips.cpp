@@ -45,6 +45,7 @@ public:
     }
 
     bool warning = false;
+    juce::String savedTooltip;
 
 private:
     static juce::Font font() { return GrooveFonts::font (11.5f).withExtraKerningFactor (0.05f); }
@@ -52,19 +53,22 @@ private:
     const Palette& palette;
 };
 
-ToggleChips::ToggleChips (OneKnobProcessor& proc, const Palette& palette)
+ToggleChips::ToggleChips (OneKnobProcessor& proc, const Palette& palette, bool showSwitches) : vertical (showSwitches)
 {
-    const auto& specs = proc.getConfig().toggles;
+    // The preset toggles (a row), or the global switches (a column)
+    const auto& specs = showSwitches ? proc.getConfig().switches : proc.getConfig().toggles;
     for (size_t i = 0; i < specs.size(); ++i)
     {
-        const float t = specs.size() > 1 ? 0.35f + 0.65f * (float) i / (float) (specs.size() - 1) : 0.6f;
+        const float t = specs.size() > 1 ? (showSwitches ? (float) i / (float) (specs.size() - 1) : 0.35f + 0.65f * (float) i / (float) (specs.size() - 1))
+                                         : 0.6f;
         auto chip = std::make_unique<Chip> (specs[i].chipLabel, palette.arcColour (t), palette);
         chip->setTooltip (specs[i].name);
         addAndMakeVisible (*chip);
-        attachments.push_back (std::make_unique<juce::ButtonParameterAttachment> (proc.getToggleParameter ((int) i), *chip));
+        auto& param = showSwitches ? proc.getSwitchParameter ((int) i) : proc.getToggleParameter ((int) i);
+        attachments.push_back (std::make_unique<juce::ButtonParameterAttachment> (param, *chip));
         chips.push_back (std::move (chip));
     }
-    setTitle ("Options");
+    setTitle (showSwitches ? "Modes" : "Options");
 }
 
 void ToggleChips::setWarning (int index, bool on, const juce::String& tooltip)
@@ -75,13 +79,38 @@ void ToggleChips::setWarning (int index, bool on, const juce::String& tooltip)
     if (c.warning == on)
         return;
     c.warning = on;
-    c.setTooltip (on ? tooltip : c.getName());
+    if (on)
+        c.savedTooltip = c.getTooltip();
+    c.setTooltip (on ? tooltip : (c.savedTooltip.isNotEmpty() ? c.savedTooltip : c.getName()));
     c.repaint();
+}
+
+void ToggleChips::setChipTooltip (int index, const juce::String& tooltip)
+{
+    if (juce::isPositiveAndBelow (index, (int) chips.size()))
+        chips[(size_t) index]->setTooltip (tooltip);
+}
+
+void ToggleChips::setChipDimmed (int index, bool dimmed)
+{
+    if (juce::isPositiveAndBelow (index, (int) chips.size()))
+        chips[(size_t) index]->setAlpha (dimmed ? 0.45f : 1.0f);
 }
 
 void ToggleChips::resized()
 {
     constexpr float gap = 6.0f, h = 21.0f;
+    if (vertical)
+    {
+        float y = 0.0f;
+        for (auto& c : chips)
+        {
+            const float w = c->preferredWidth();
+            c->setBounds (juce::Rectangle<float> (((float) getWidth() - w) * 0.5f, y, w, h).toNearestInt());
+            y += h + gap;
+        }
+        return;
+    }
     float total = -gap;
     for (auto& c : chips)
         total += c->preferredWidth() + gap;

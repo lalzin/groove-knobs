@@ -9,8 +9,23 @@ class IntegerDelay
 public:
     void prepare (int numChannels, int delaySamples)
     {
+        prepare (numChannels, delaySamples, delaySamples);
+    }
+
+    /** With room for delays up to `maxDelaySamples` (see setDelay). */
+    void prepare (int numChannels, int delaySamples, int maxDelaySamples)
+    {
+        capacity = juce::jmax (0, maxDelaySamples, delaySamples);
         delay = juce::jmax (0, delaySamples);
-        buffer.setSize (juce::jmax (1, numChannels), juce::jmax (1, delay), false, true, false);
+        buffer.setSize (juce::jmax (1, numChannels), juce::jmax (1, capacity), false, true, false);
+        reset();
+    }
+
+    /** Changes the delay (<= the prepared maximum) and clears the line.
+        Real-time safe. */
+    void setDelay (int delaySamples) noexcept
+    {
+        delay = juce::jlimit (0, capacity, delaySamples);
         reset();
     }
 
@@ -34,6 +49,22 @@ public:
 
         auto* d = buffer.getWritePointer (channel);
         int pos = writePos;
+        if (delay != capacity)
+        {
+            // Line longer than the delay: separate read and write positions
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const float x = in[i];
+                int r = pos - delay;
+                if (r < 0)
+                    r += capacity;
+                out[i] = d[r];
+                d[pos] = x;
+                if (++pos == capacity)
+                    pos = 0;
+            }
+            return;
+        }
         for (int i = 0; i < numSamples; ++i)
         {
             const float x = in[i];
@@ -48,11 +79,11 @@ public:
     void advance (int numSamples) noexcept
     {
         if (delay > 0)
-            writePos = (writePos + numSamples) % delay;
+            writePos = (writePos + numSamples) % capacity;
     }
 
 private:
     juce::AudioBuffer<float> buffer;
-    int delay = 0, writePos = 0;
+    int delay = 0, capacity = 0, writePos = 0;
 };
 } // namespace gk
