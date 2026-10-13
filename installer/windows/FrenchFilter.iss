@@ -1,4 +1,4 @@
-; French Filter — Windows installer (Inno Setup 6).
+﻿; French Filter — Windows installer (Inno Setup 6).
 ; Built by scripts/make_installer_win.ps1, or:
 ;   iscc /DMyAppVersion=0.1.0 /DBuildDir=<...>\FrenchFilter_artefacts\Release installer\windows\FrenchFilter.iss
 
@@ -32,7 +32,7 @@ WizardStyle=modern
 UninstallDisplayName={#MyAppName} ({#MyPublisher})
 VersionInfoVersion={#MyAppVersion}
 VersionInfoCompany={#MyPublisher}
-VersionInfoDescription={#MyAppName} installer
+VersionInfoDescription={#MyAppName} installer — by LALZIN, with groove and love
 
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
@@ -60,4 +60,7 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\French Filter.exe"; Compon
 Type: filesandordirs; Name: "{commoncf64}\VST3\French Filter.vst3"
 
 [Messages]
-FinishedLabel=French Filter is installed.%n%nIn Ableton Live: Options > Preferences > Plug-Ins, enable "Use VST3 Plug-In System Folders", then Rescan.
+en.WelcomeLabel2=This will install {#MyAppName} {#MyAppVersion} on your computer.%n%nby LALZIN — with groove and love ♥
+fr.WelcomeLabel2={#MyAppName} {#MyAppVersion} va être installé sur votre ordinateur.%n%nby LALZIN — with groove and love ♥
+en.FinishedLabel=French Filter is installed.%n%nIn Ableton Live: Options > Preferences > Plug-Ins, enable "Use VST3 Plug-In System Folders", then Rescan.%n%nby LALZIN — with groove and love ♥
+fr.FinishedLabel=French Filter est installé.%n%nDans Ableton Live : Options > Préférences > Plug-Ins, activez « Use VST3 Plug-In System Folders », puis Rescan.%n%nby LALZIN — with groove and love ♥

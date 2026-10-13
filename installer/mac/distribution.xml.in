@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
-    <title>French Filter @VERSION@</title>
+    <title>French Filter @VERSION@ — by LALZIN, with groove and love</title>
     <organization>@BUNDLE_PREFIX@</organization>
     <domains enable_localSystem="true"/>
     <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
