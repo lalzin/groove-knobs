@@ -25,6 +25,7 @@ struct OneKnobConfig
     juce::String productName;
     juce::String suiteName { "Groove Knobs" };
     juce::String companyName { "LALZIN" };   // shown as "made by ..." in the editor
+    juce::String companyUrl { "https://www.lalzin.com/links" }; // opened by a click on the credit (empty: not clickable)
     PresetManager presets;
 
     /** Bipolar knob: centred by default, left and right drive two sides of

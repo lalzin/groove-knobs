@@ -53,6 +53,52 @@ private:
 };
 
 //==============================================================================
+/** Invisible link over the "made by" credit: hand cursor, a small underline
+    on hover, opens the company's page. */
+class OneKnobEditor::CreditLink final : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    CreditLink (const Palette& p, const juce::String& link) : palette (p), url (link)
+    {
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+        setTooltip (url.toString (false).fromFirstOccurrenceOf ("://", false, false));
+        setTitle ("LALZIN website");
+        setWantsKeyboardFocus (true);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        if (! over && ! hasKeyboardFocus (false))
+            return;
+        // underline under the company name
+        g.setColour (palette (palette.beret).withAlpha (0.9f));
+        g.fillRoundedRectangle (juce::Rectangle<float> ((float) getWidth() - 14.0f, 2.0f).withCentre ({ getWidth() * 0.5f, (float) getHeight() - 3.0f }), 1.0f);
+    }
+
+    void mouseEnter (const juce::MouseEvent&) override { over = true; repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { over = false; repaint(); }
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        if (contains (e.getPosition()))
+            url.launchInDefaultBrowser();
+    }
+    bool keyPressed (const juce::KeyPress& k) override
+    {
+        if (k != juce::KeyPress::returnKey && k != juce::KeyPress::spaceKey)
+            return false;
+        url.launchInDefaultBrowser();
+        return true;
+    }
+    void focusGained (FocusChangeType) override { repaint(); }
+    void focusLost (FocusChangeType) override { repaint(); }
+
+private:
+    const Palette& palette;
+    juce::URL url;
+    bool over = false;
+};
+
+//==============================================================================
 class OneKnobEditor::PowerButton final : public juce::Button
 {
 public:
@@ -134,6 +180,12 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
         canvas->addAndMakeVisible (*choiceChips);
     }
     canvas->addAndMakeVisible (*power);
+    if (cfg.companyUrl.isNotEmpty())
+    {
+        creditLink = std::make_unique<CreditLink> (palette, cfg.companyUrl);
+        canvas->addAndMakeVisible (*creditLink);
+        creditLink->setBounds (2, 10, 76, 40); // over "made by LALZIN"
+    }
 
     // Layout on the base canvas (see spec §8.1)
     canvas->setBounds (0, 0, baseWidth, baseHeight);

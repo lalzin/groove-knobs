@@ -1,4 +1,4 @@
-THIRD-PARTY NOTICES — Groove Knobs (French Filter, Boogie Trio)
+THIRD-PARTY NOTICES — Groove Knobs (French Filter, Boogie Trio, Backwash)
 
 JUCE (https://juce.com) — Copyright (c) Raw Material Software Limited.
   Used under the JUCE licence agreement applicable to the publisher.

@@ -79,8 +79,8 @@ Type: filesandordirs; Name: "{commoncf64}\VST3\{#MyAppName}.vst3"
 
 #if Plugin == "BW"
 [CustomMessages]
-en.LatencyNote=Backwash has a fixed 2-second latency (compensated by your DAW on playback): it is not meant for live, monitored input.
-fr.LatencyNote=Backwash a une latence fixe de 2 secondes (compensée par le logiciel en lecture) : il n'est pas fait pour une entrée jouée en direct.
+en.LatencyNote=Backwash starts in LIVE mode (zero latency): it listens to the first bar, keeps it in memory and plays its swell before each hit. Turn LIVE off for the exact mode on any sound (2-second latency, compensated by your DAW on playback).
+fr.LatencyNote=Backwash démarre en mode LIVE (zéro latence) : il écoute la première mesure, la garde en mémoire et rejoue son souffle avant chaque coup. Désactive LIVE pour le mode exact sur n'importe quel son (latence de 2 secondes, compensée par le logiciel en lecture).
 #endif
 
 [Messages]
