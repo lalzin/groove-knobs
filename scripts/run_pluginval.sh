@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 # Validates the built VST3 and AU with pluginval.
-#   scripts/run_pluginval.sh [build-dir] [strictness]   (defaults: build, 10)
+#   scripts/run_pluginval.sh [build-dir] [strictness] [plugin]
+#   defaults: build, 10, "French Filter"   (plugin: "French Filter" | "Boogie Trio" | "Backwash")
 # Downloads pluginval 1.0.4 into .deps/pluginval if it is not installed.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD="${1:-$ROOT/build}"
 STRICT="${2:-10}"
-ART="$BUILD/plugins/french_filter/FrenchFilter_artefacts/Release"
+PLUGIN="${3:-French Filter}"
+case "$PLUGIN" in
+  "French Filter") ART="$BUILD/plugins/french_filter/FrenchFilter_artefacts/Release" ;;
+  "Boogie Trio")   ART="$BUILD/plugins/boogie_trio/BoogieTrio_artefacts/Release" ;;
+  "Backwash")      ART="$BUILD/plugins/backwash/Backwash_artefacts/Release" ;;
+  *) echo "unknown plugin: $PLUGIN"; exit 2 ;;
+esac
 
 PV="$(command -v pluginval || true)"
 if [[ -z "$PV" ]]; then
@@ -20,7 +27,7 @@ if [[ -z "$PV" ]]; then
 fi
 
 status=0
-for plugin in "$ART/VST3/French Filter.vst3" "$HOME/Library/Audio/Plug-Ins/Components/French Filter.component"; do
+for plugin in "$ART/VST3/$PLUGIN.vst3" "$HOME/Library/Audio/Plug-Ins/Components/$PLUGIN.component"; do
   [[ -e "$plugin" ]] || { echo "missing: $plugin"; status=1; continue; }
   log="$BUILD/pluginval_$(basename "$plugin" | tr ' ' '_').log"
   echo "== pluginval strictness $STRICT: $plugin"

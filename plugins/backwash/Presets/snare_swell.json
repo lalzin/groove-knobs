@@ -1,0 +1,7 @@
+{
+  "name": "Snare Swell",
+  "toggles": {"long": false, "shimmer": false},
+  "swell": {"beats": 1, "riseSharpness": 4, "toneStartHz": 1500, "toneEndHz": 9000},
+  "input": {"focus": 0.9, "washHpfHz": 200},
+  "level": {"maxWetDb": -3}
+}

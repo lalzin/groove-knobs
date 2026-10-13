@@ -54,6 +54,65 @@ void MascotComponent::triggerDrop() noexcept
     joyStartBeats = beatsUi;
 }
 
+const juce::Image& MascotComponent::scaledTintedFrame (const std::vector<juce::Image>& tinted, int index, int pixelHeight)
+{
+    if (pixelHeight != tintedHeight || tintedSource != &tinted)
+    {
+        tintedHeight = pixelHeight;
+        tintedSource = &tinted;
+        scaledTinted.assign (tinted.size(), {});
+    }
+    auto& img = scaledTinted[(size_t) index];
+    if (! img.isValid())
+    {
+        const auto& src = tinted[(size_t) index];
+        const int h = juce::jlimit (16, src.getHeight(), pixelHeight);
+        const int w = juce::roundToInt ((float) h * (float) src.getWidth() / (float) src.getHeight());
+        img = h >= src.getHeight() ? src : src.rescaled (w, h, juce::Graphics::highResamplingQuality);
+    }
+    return img;
+}
+
+int MascotComponent::chooseFrame (float macro, float bypass, bool musicOn)
+{
+    return bypass >= 0.5f ? poses.sleep : moodFrame (macro, musicOn);
+}
+
+void MascotComponent::paintCharacter (juce::Graphics& g, juce::Rectangle<float> fig, const juce::AffineTransform& animation)
+{
+    drawFrame (g, state.frame, fig, animation, 1.0f);
+}
+
+void MascotComponent::drawFrame (juce::Graphics& g, int frame, juce::Rectangle<float> fig, const juce::AffineTransform& animation,
+                                 float opacity, const std::vector<juce::Image>* tinted)
+{
+    // Physical pixels per component unit (editor scale × display density)
+    const float physical = g.getInternalContext().getPhysicalPixelScaleFactor();
+    const int pixelHeight = juce::roundToInt (fig.getHeight() * physical * 1.1f / 8.0f) * 8;
+    const auto& colour = tinted != nullptr ? scaledTintedFrame (*tinted, frame, pixelHeight) : scaledFrame (frame, false, pixelHeight);
+    const auto& grey = scaledFrame (frame, true, pixelHeight);
+    const auto place = juce::AffineTransform::scale (fig.getWidth() / (float) colour.getWidth(), fig.getHeight() / (float) colour.getHeight())
+                           .translated (fig.getX(), fig.getY())
+                           .followedBy (animation);
+    const auto greyPlace = juce::AffineTransform::scale (fig.getWidth() / (float) grey.getWidth(), fig.getHeight() / (float) grey.getHeight())
+                               .translated (fig.getX(), fig.getY())
+                               .followedBy (animation);
+
+    g.setImageResamplingQuality (juce::Graphics::mediumResamplingQuality);
+    const float desat = 1.0f - palette.saturation; // 0 = colour, 0.6 = 40 % saturation
+    if (desat < 0.6f)
+    {
+        g.setOpacity (opacity);
+        g.drawImageTransformed (colour, place);
+    }
+    if (desat > 0.0f)
+    {
+        g.setOpacity (opacity * juce::jlimit (0.0f, 1.0f, desat / 0.6f));
+        g.drawImageTransformed (grey, greyPlace);
+    }
+    g.setOpacity (1.0f);
+}
+
 int MascotComponent::moodFrame (float macro, bool musicOn) noexcept
 {
     const int n = (int) colourFrames.size();
@@ -108,7 +167,7 @@ void MascotComponent::snap (float amount, float bypass)
     rung = 0;
     recentPeak = std::abs (amount);
     state.joy = joyRemaining > 0.0 ? 1.0f : 0.0f;
-    state.frame = bypass >= 0.5f ? poses.sleep : moodFrame (amount, false);
+    state.frame = chooseFrame (amount, bypass, false);
     state.pop = state.squash = state.nod = state.sway = 0.0f;
     springX = springV = 0.0f;
     level = 0.0f;
@@ -143,7 +202,7 @@ void MascotComponent::advance (double dt, float amount, float bypass)
 
     // Pose (+ pop when it changes)
     const bool musicOn = level > 0.05f;
-    const int target = bypass >= 0.5f ? poses.sleep : moodFrame (amount, musicOn);
+    const int target = chooseFrame (amount, bypass, musicOn);
     if (target != state.frame)
     {
         state.frame = target;
@@ -234,31 +293,10 @@ void MascotComponent::paint (juce::Graphics& g)
                        .rotated (tilt)
                        .translated (feet.x, feet.y + amp * s.nod);
 
-    // Physical pixels per component unit (editor scale × display density)
-    const float physical = g.getInternalContext().getPhysicalPixelScaleFactor();
-    const int pixelHeight = juce::roundToInt (fig.getHeight() * physical * 1.1f / 8.0f) * 8;
-    const auto& colour = scaledFrame (s.frame, false, pixelHeight);
-    const auto& grey = scaledFrame (s.frame, true, pixelHeight);
-    const auto place = juce::AffineTransform::scale (fig.getWidth() / (float) colour.getWidth(), fig.getHeight() / (float) colour.getHeight())
-                           .translated (fig.getX(), fig.getY())
-                           .followedBy (t);
-
-    g.setImageResamplingQuality (juce::Graphics::mediumResamplingQuality);
-    const float desat = 1.0f - palette.saturation; // 0 = colour, 0.6 = 40 % saturation
-    if (desat < 0.6f)
-    {
-        g.setOpacity (1.0f);
-        g.drawImageTransformed (colour, place);
-    }
-    if (desat > 0.0f)
-    {
-        g.setOpacity (juce::jlimit (0.0f, 1.0f, desat / 0.6f));
-        g.drawImageTransformed (grey, place);
-    }
-    g.setOpacity (1.0f);
+    paintCharacter (g, fig, t);
 
     // Sleep: floating "Zzz"
-    if (s.bypass > 0.01f)
+    if (showSleepZ && s.bypass > 0.01f)
     {
         for (int i = 0; i < 3; ++i)
         {

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Builds dist/FrenchFilter-<version>-macOS.pkg (universal VST3 + AU + app).
+# Builds dist/<Plugin>-<version>-macOS.pkg (universal VST3 + AU + app).
 #
-#   scripts/make_installer_mac.sh [--skip-build]
+#   scripts/make_installer_mac.sh [--skip-build] [FF|BT]
+#   FF = French Filter (default), BT = Boogie Trio, BW = Backwash
 #
 # Free public download: without an Apple Developer ID the package is only
 # ad-hoc signed and Gatekeeper will block it on other Macs (users would have
@@ -13,15 +14,37 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ids="$ROOT/cmake/GrooveIds.cmake"
-get() { sed -nE "s/^set\($1 +\"([^\"]*)\".*/\1/p" "$ids"; }
-VERSION="$(get FF_VERSION)"
-BUNDLE_ID="$(get FF_BUNDLE_ID)"
+# Reads a value from GrooveIds.cmake, expanding ${OTHER_VARIABLES} it references.
+get() {
+  local v; v="$(sed -nE "s/^set\($1 +\"([^\"]*)\".*/\1/p" "$ids")"
+  while [[ "$v" =~ \$\{([A-Z0-9_]+)\} ]]; do
+    local name="${BASH_REMATCH[1]}"
+    v="${v//\$\{$name\}/$(get "$name")}"
+  done
+  printf '%s' "$v"
+}
+SKIP_BUILD=0; P=FF
+for a in "$@"; do
+  case "$a" in
+    --skip-build) SKIP_BUILD=1 ;;
+    FF|BT|BW) P="$a" ;;
+    *) echo "unknown argument: $a"; exit 2 ;;
+  esac
+done
+VERSION="$(get ${P}_VERSION)"
+BUNDLE_ID="$(get ${P}_BUNDLE_ID)"
 PREFIX="$(get GK_BUNDLE_ID_PREFIX)"
-PRODUCT="$(get FF_PRODUCT_NAME)"
+PRODUCT="$(get ${P}_PRODUCT_NAME)"
+case "$P" in
+  FF) DIR=french_filter; TARGET=FrenchFilter; RES="$ROOT/installer/mac" ;;
+  BT) DIR=boogie_trio;   TARGET=BoogieTrio;   RES="$ROOT/installer/mac/boogie_trio" ;;
+  BW) DIR=backwash;      TARGET=Backwash;     RES="$ROOT/installer/mac/backwash" ;;
+esac
+FILE_NAME="${PRODUCT// /}"   # "French Filter" -> FrenchFilter
 
-[[ "${1:-}" == "--skip-build" ]] || "$ROOT/scripts/build_mac.sh" --no-tests
-ART="$ROOT/build-release/plugins/french_filter/FrenchFilter_artefacts/Release"
-WORK="$ROOT/build-release/installer"
+[[ "$SKIP_BUILD" == 1 ]] || "$ROOT/scripts/build_mac.sh" --no-tests
+ART="$ROOT/build-release/plugins/$DIR/${TARGET}_artefacts/Release"
+WORK="$ROOT/build-release/installer-$P"
 DIST="$ROOT/dist"
 rm -rf "$WORK"; mkdir -p "$WORK"/{vst3,au,app,res} "$DIST"
 
@@ -58,11 +81,11 @@ component vst3 vst3 "/Library/Audio/Plug-Ins/VST3"
 component au au "/Library/Audio/Plug-Ins/Components"
 component app app "/Applications"
 
-cp "$ROOT/installer/common/LICENSE.txt" "$ROOT/installer/mac/welcome.html" "$ROOT/installer/mac/conclusion.html" "$WORK/res/"
-sed -e "s/@VERSION@/$VERSION/g" -e "s/@BUNDLE_ID@/$BUNDLE_ID/g" -e "s/@BUNDLE_PREFIX@/$PREFIX/g" \
+cp "$ROOT/installer/common/LICENSE.txt" "$RES/welcome.html" "$RES/conclusion.html" "$WORK/res/"
+sed -e "s/@VERSION@/$VERSION/g" -e "s/@BUNDLE_ID@/$BUNDLE_ID/g" -e "s/@BUNDLE_PREFIX@/$PREFIX/g" -e "s/@PRODUCT@/$PRODUCT/g" \
   "$ROOT/installer/mac/distribution.xml.in" > "$WORK/distribution.xml"
 
-OUT="$DIST/FrenchFilter-$VERSION-macOS.pkg"
+OUT="$DIST/$FILE_NAME-$VERSION-macOS.pkg"
 sign=()
 [[ -n "${DEV_ID_INSTALLER:-}" ]] && sign=(--sign "$DEV_ID_INSTALLER" --timestamp)
 productbuild --distribution "$WORK/distribution.xml" --resources "$WORK/res" --package-path "$WORK" ${sign[@]+"${sign[@]}"} "$OUT"
@@ -73,9 +96,9 @@ if [[ -n "${NOTARY_PROFILE:-}" && -n "${DEV_ID_INSTALLER:-}" ]]; then
 fi
 
 # Companion zip for the website: pkg + licences
-( cd "$DIST" && rm -f "FrenchFilter-$VERSION-macOS.zip" && \
+( cd "$DIST" && rm -f "$FILE_NAME-$VERSION-macOS.zip" && \
   cp "$ROOT/installer/common/"{LICENSE.txt,THIRD_PARTY_NOTICES.txt,LilitaOne-OFL.txt} . && \
-  zip -q "FrenchFilter-$VERSION-macOS.zip" "FrenchFilter-$VERSION-macOS.pkg" LICENSE.txt THIRD_PARTY_NOTICES.txt LilitaOne-OFL.txt && \
+  zip -q "$FILE_NAME-$VERSION-macOS.zip" "$FILE_NAME-$VERSION-macOS.pkg" LICENSE.txt THIRD_PARTY_NOTICES.txt LilitaOne-OFL.txt && \
   rm LICENSE.txt THIRD_PARTY_NOTICES.txt LilitaOne-OFL.txt )
 echo "Installer: $OUT"
 [[ -n "${DEV_ID_INSTALLER:-}" ]] || echo "NOTE: unsigned (ad-hoc) — fine for your own Macs, blocked by Gatekeeper for public download. See header of this script."

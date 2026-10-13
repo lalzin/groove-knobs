@@ -36,10 +36,38 @@ struct PresetData
     MakeupTable makeupLow;  // bipolar only: the low (left) side
     bool hasMakeup = false, bipolar = false;
 
+    /** Plugins with on/off toggles (unipolar): one table per toggle
+        combination, "makeupDb@<mask>" (bit 0 = first toggle). `makeup` is
+        mask 0; variants[mask - 1] the others. */
+    static constexpr int maxToggles = 2;
+    std::array<MakeupTable, (1 << maxToggles) - 1> variants;
+    std::array<bool, (1 << maxToggles) - 1> hasVariant {};
+
+    const MakeupTable& tableForMask (int mask) const noexcept
+    {
+        return mask > 0 && hasVariant[(size_t) mask - 1] ? variants[(size_t) mask - 1] : makeup;
+    }
+
     /** Makeup (dB) for a signed macro value (-1..1, or 0..1 when unipolar). */
     float makeupDbAt (float macro) const noexcept
     {
         return macro < 0.0f ? makeupLow.dbAt (-macro) : makeup.dbAt (macro);
+    }
+
+    /** Makeup (dB) with toggles (0..1 each, fading): bilinear between the
+        tables of the neighbouring combinations. */
+    float makeupDbAt (float macro, const float* toggles, int numToggles) const noexcept
+    {
+        if (numToggles <= 0 || bipolar)
+            return makeupDbAt (macro);
+        const float t0 = toggles[0], t1 = numToggles > 1 ? toggles[1] : 0.0f;
+        const float a = tableForMask (0).dbAt (macro), b = tableForMask (1).dbAt (macro);
+        const float lo = a + t0 * (b - a);
+        if (numToggles == 1)
+            return lo;
+        const float c = tableForMask (2).dbAt (macro), d = tableForMask (3).dbAt (macro);
+        const float hi = c + t0 * (d - c);
+        return lo + t1 * (hi - lo);
     }
 };
 

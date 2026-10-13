@@ -1,0 +1,7 @@
+{
+  "name": "Vocal Suck",
+  "toggles": {"long": false, "shimmer": false},
+  "swell": {"beats": 1, "riseSharpness": 3, "toneStartHz": 1200, "toneEndHz": 10000},
+  "input": {"focus": 0.3, "washHpfHz": 300},
+  "level": {"maxWetDb": -9}
+}

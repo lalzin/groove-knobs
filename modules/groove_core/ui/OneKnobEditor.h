@@ -25,9 +25,15 @@ public:
     void snapForSnapshot();
 
     BigKnob& getKnob() noexcept { return *knob; }
+    ToggleChips* getToggleChips() noexcept { return toggleChips.get(); }
     PresetBar& getPresetBar() noexcept { return *presetBar; }
     MascotComponent& getMascot() noexcept { return *mascot; }
     Palette& getPalette() noexcept { return palette; }
+
+protected:
+    /** Called every frame (and on snapshots) after the generic animation, for
+        plugin-specific UI updates. */
+    virtual void editorTick (double dt) { juce::ignoreUnused (dt); }
 
 private:
     class Canvas;
@@ -46,6 +52,7 @@ private:
     std::unique_ptr<BigKnob> knob;
     std::unique_ptr<PresetBar> presetBar;
     std::unique_ptr<PresetTags> presetTags;
+    std::unique_ptr<ToggleChips> toggleChips;
     int shownPreset = -1, shownSide = -2;
     std::unique_ptr<PowerButton> power;
     std::unique_ptr<juce::ButtonParameterAttachment> powerAttachment;

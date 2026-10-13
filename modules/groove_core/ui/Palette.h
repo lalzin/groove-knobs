@@ -22,8 +22,16 @@ struct Palette
     std::vector<juce::Colour> arcStops { juce::Colour (0xfff5f3ee), juce::Colour (0xff3d7bff) };
     /** Vertical bands of the knob body (left to right); one colour = plain. */
     std::vector<juce::Colour> knobBands { juce::Colour (0xff16264f) };
+    /** Wavy band edges (amplitude in px, 0 = straight). */
+    float knobBandWave = 0.0f;
+    /** Colour of the knob's "breathing" glow (BigKnob::setPulse). */
+    juce::Colour pulse { 0x00000000 };
     /** Preset bar arrows (left, right). */
     juce::Colour arrowLeft { 0xff3d7bff }, arrowRight { 0xff3d7bff };
+    /** Preset bar frame gradient; transparent = use the arrow colours. */
+    juce::Colour frameLeft { 0x00000000 }, frameRight { 0x00000000 };
+    /** Knob end labels; transparent = use the arc's end colours. */
+    juce::Colour lowLabel { 0x00000000 }, highLabel { 0x00000000 };
 
     float saturation = 1.0f;
 

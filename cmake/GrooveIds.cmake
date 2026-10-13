@@ -17,3 +17,17 @@ set(FF_PLUGIN_CODE         "FrFl")
 set(FF_AU_TYPE             "aufx")          # kAudioUnitType_Effect
 set(FF_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.frenchfilter")
 set(FF_VERSION             "0.1.0")
+
+# Boogie Trio
+set(BT_PRODUCT_NAME        "Boogie Trio")
+set(BT_PLUGIN_CODE         "BgTr")
+set(BT_AU_TYPE             "aufx")          # kAudioUnitType_Effect
+set(BT_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.boogietrio")
+set(BT_VERSION             "0.1.0")
+
+# Backwash
+set(BW_PRODUCT_NAME        "Backwash")
+set(BW_PLUGIN_CODE         "Bkws")
+set(BW_AU_TYPE             "aufx")          # kAudioUnitType_Effect
+set(BW_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.backwash")
+set(BW_VERSION             "0.1.0")

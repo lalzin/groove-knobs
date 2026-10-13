@@ -1,0 +1,7 @@
+{
+  "name": "Ghost Pad",
+  "toggles": {"long": true, "shimmer": false},
+  "swell": {"beats": 2, "riseSharpness": 2, "toneStartHz": 800, "toneEndHz": 6000},
+  "input": {"focus": 0.0, "washHpfHz": 150},
+  "level": {"maxWetDb": -15}
+}

@@ -32,6 +32,10 @@ public:
     /** Musical position, used to pulse the excitement lines on the beat. */
     void setBeatPhase (float phase);
 
+    /** A glow growing along the arc (0..1), e.g. a breath before a hit.
+        Drawn in palette.pulse; 0 = none. */
+    void setPulse (float amount);
+
     void paint (juce::Graphics&) override;
     void resized() override;
     bool hitTest (int x, int y) override;
@@ -64,7 +68,7 @@ private:
     const juce::String lowLabel, highLabel;
     juce::ParameterAttachment attachment;
 
-    float value = 0.0f, dragStartValue = 0.0f, dragAnchorY = 0.0f, beatPhase = 0.0f;
+    float value = 0.0f, dragStartValue = 0.0f, dragAnchorY = 0.0f, beatPhase = 0.0f, pulse = 0.0f;
     bool hovering = false, dragging = false, dragFine = false;
 
     // Pre-built geometry (rebuilt in resized(), never in paint())

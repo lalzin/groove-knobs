@@ -114,7 +114,9 @@ void PresetBar::paint (juce::Graphics& g)
     g.setColour (juce::Colours::black.withAlpha (0.35f));
     g.fillRoundedRectangle (plaque.translated (2.0f, 4.0f), 9.0f);
 
-    juce::ColourGradient frame (palette (palette.arrowLeft), plaque.getX(), 0.0f, palette (palette.arrowRight), plaque.getRight(), 0.0f, false);
+    const auto left = palette.frameLeft.isTransparent() ? palette.arrowLeft : palette.frameLeft;
+    const auto right = palette.frameRight.isTransparent() ? palette.arrowRight : palette.frameRight;
+    juce::ColourGradient frame (palette (left), plaque.getX(), 0.0f, palette (right), plaque.getRight(), 0.0f, false);
     frame.addColour (0.5, palette (palette.plaque));
     g.setGradientFill (frame);
     g.fillRoundedRectangle (plaque, 9.0f);

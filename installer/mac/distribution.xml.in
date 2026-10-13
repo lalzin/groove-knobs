@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
-    <title>French Filter @VERSION@ — by LALZIN, with groove and love</title>
+    <title>@PRODUCT@ @VERSION@ — by LALZIN, with groove and love</title>
     <organization>@BUNDLE_PREFIX@</organization>
     <domains enable_localSystem="true"/>
     <options customize="allow" require-scripts="false" hostArchitectures="arm64,x86_64"/>
@@ -15,13 +15,13 @@
         <line choice="app"/>
     </choices-outline>
 
-    <choice id="vst3" title="VST3 plug-in" description="French Filter.vst3 → /Library/Audio/Plug-Ins/VST3">
+    <choice id="vst3" title="VST3 plug-in" description="@PRODUCT@.vst3 → /Library/Audio/Plug-Ins/VST3">
         <pkg-ref id="@BUNDLE_ID@.vst3"/>
     </choice>
-    <choice id="au" title="Audio Unit plug-in" description="French Filter.component → /Library/Audio/Plug-Ins/Components (Ableton Live, Logic, GarageBand)">
+    <choice id="au" title="Audio Unit plug-in" description="@PRODUCT@.component → /Library/Audio/Plug-Ins/Components (Ableton Live, Logic, GarageBand)">
         <pkg-ref id="@BUNDLE_ID@.au"/>
     </choice>
-    <choice id="app" title="Standalone application" description="French Filter.app → /Applications">
+    <choice id="app" title="Standalone application" description="@PRODUCT@.app → /Applications">
         <pkg-ref id="@BUNDLE_ID@.app"/>
     </choice>
 

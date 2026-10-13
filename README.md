@@ -1,6 +1,6 @@
-# Groove Knobs — French Filter
+# Groove Knobs — French Filter, Boogie Trio, Backwash
 
-Premier plugin de la suite **Groove Knobs** (LALZIN) : un seul knob, le passe-bas « French Touch » (disco filtrée, funky house).
+La suite **Groove Knobs** (LALZIN) : des plugins à un seul knob pour la funky house et la disco. **French Filter** (le filtre French Touch), **Boogie Trio** (chorus triple de string machine), **Backwash** (reverb inversée calée sur le tempo).
 VST3 / AU / Standalone, macOS (universel) et Windows.
 
 > État : DSP, presets, calibration, interface et mascotte faits (étapes 1–5). Reste la finalisation après validation des captures.
@@ -95,3 +95,64 @@ Fichier d'automation : une paire `<temps> <amount>` par ligne (secondes, ou temp
 ## Licence JUCE
 
 JUCE 8 est sous double licence (AGPLv3 / commerciale). Vérifie la licence adaptée avant une distribution publique.
+
+---
+
+# Boogie Trio
+
+Un chorus triple façon *string machine* des années 70 : à 0 % une seule voix, à 100 % un trio.
+
+- **Stéréo façon « Wider »** : le centre reste exactement le signal d'origine (phase intacte), le chorus vit sur les côtés ; en mono, la somme L + R redonne l'entrée.
+- **La basse reste sèche et mono** (passe-haut 24 dB sur l'envoi des voix).
+- Chips **VINTAGE** (couleur BBD : passe-bas, saturation douce, souffle qui suit le signal) et **WIDE** (côtés plus larges). Chaque preset a ses valeurs par défaut, tes choix sont sauvegardés.
+- Bus mono, stéréo et mono → stéréo. Latence nulle.
+
+| Preset | Signature |
+|---|---|
+| Disco Strings | nappe de cordes disco, brillante, petite salle |
+| Lush Pad | immense et lent, grande reverb, légère dérive de bande |
+| Warble | instable, façon cassette : forte dérive, un peu de feedback, sombre |
+| Velvet | épaississement discret et propre (bus, voix) |
+| Funk Keys | Rhodes / clavinet : autopan en croches calé sur le tempo |
+| Jet Set | flanger « jet » à feedback |
+| Disco Gate | cordes hachées en doubles croches, calées sur le tempo |
+| Moon Phaser | phaser sur 2 mesures + salle |
+
+Mascotte : **Velvet**, le violoniste disco ; des clones apparaissent à partir de 50 % et se balancent sur la vraie phase du LFO.
+
+Outils : `bt_render` (mêmes commandes que `ff_render`), captures `bt_screenshots`, installateur `scripts/make_installer_mac.sh BT`.
+
+---
+
+# Backwash
+
+Une **reverb inversée en temps réel, calée sur le tempo** : chaque coup (snare, clap, voix, accord) est précédé d'un souffle qui « aspire » vers lui et s'arrête pile au moment du coup. Ce qui demandait plusieurs minutes (bounce, reverse, reverb, re-bounce, re-reverse, recalage) se fait en un knob, en lecture, sur n'importe quelle piste.
+
+> **Limite assumée : latence fixe de 2 secondes.** Backwash « voit » 2 s à l'avance pour préparer le souffle. Ableton compense cette latence automatiquement en lecture, mais **le plugin n'est pas fait pour une entrée jouée en direct** (micro, instrument monitoré) : tu entendrais le son 2 s en retard.
+
+- Longueur du souffle = beats du preset × (2 avec **LONG**) au tempo de l'hôte (120 BPM sans tempo), bridée à ~1,95 s ; à tempo trop lent, un point s'affiche sur le chip LONG.
+- **SHIMMER** : une octave haute dans le souffle.
+- Le knob règle le niveau (courbe douce), la brillance et la largeur du souffle ; il ne change pas sa longueur.
+- À 0 %, la sortie est exactement l'entrée retardée de 2 s.
+
+| Preset | Pour quoi |
+|---|---|
+| Snare Swell (défaut) | le classique : un souffle d'un temps vers chaque snare / clap |
+| Vocal Suck | la voix « aspirée » avant chaque phrase, plus doux et plus brillant |
+| Clap Rewind | court et sec (½ temps), comme une bande rembobinée juste avant le clap |
+| Ghost Pad | tout le signal s'aspire en nappe fantôme (breaks, intros) ; LONG par défaut |
+| Big Inhale | énorme et très pentu, avec SHIMMER : l'effet « avant le drop » |
+
+Mascotte : **Swell**, le surfeur. La vague derrière lui suit le knob et le rythme ; grâce au lookahead, il **inspire avant chaque coup**, en même temps que le vrai souffle, et l'arc du knob s'illumine pendant le souffle puis s'éteint d'un coup sur le coup.
+
+Outils : `bw_render` (rendus à 100 %), captures `bw_screenshots`, installateur `scripts/make_installer_mac.sh BW`.
+
+## Installateurs de la suite
+
+```bash
+scripts/make_installer_mac.sh FF    # French Filter
+scripts/make_installer_mac.sh BT    # Boogie Trio
+scripts/make_installer_mac.sh BW    # Backwash
+```
+
+Windows : `scripts\make_installer_win.ps1 -Plugin FF|BT|BW` (Visual Studio 2022 + Inno Setup 6), ou le workflow GitHub Actions, qui construit les trois plugins et leurs installateurs Mac et Windows à chaque push.

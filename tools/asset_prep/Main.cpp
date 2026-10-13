@@ -1,7 +1,11 @@
 // asset_prep — slices green-screen sprite sheets into keyed, aligned frames.
 //
-//   asset_prep <out-dir> [--cols 4] [--rows 3] [--height 560] <sheet>:<i,j,...> [<sheet>:<...> ...]
+//   asset_prep <out-dir> [--cols 4] [--rows 3] [--height 560] [--key-flat] <sheet>:<i,j,...> [<sheet>:<...> ...]
 //
+// --key-flat: the background is a flat colour (sampled from the sheet's
+// corners) instead of a green screen.
+// --auto-cells: characters are found automatically (irregular grids); cell
+// numbers then follow the detected characters, row by row.
 // Cells are numbered row by row. Frames are written in the order given
 // (mascot_0.png, mascot_1.png, ...); a sheet may appear several times.
 // Different sheets are scaled so the character has the same size.
@@ -48,6 +52,68 @@ juce::Image keyGreen (const juce::Image& src)
     return out;
 }
 
+/** Keys out a flat background colour (any hue): distance in RGB from `bg`;
+    below `lo` transparent, above `hi` opaque, soft in between (keeps soft
+    ground shadows as translucency). */
+juce::Image keyColour (const juce::Image& src, juce::Colour bg, float lo = 34.0f, float hi = 78.0f)
+{
+    juce::Image out (juce::Image::ARGB, src.getWidth(), src.getHeight(), true);
+    const juce::Image::BitmapData in (src, juce::Image::BitmapData::readOnly);
+    juce::Image::BitmapData dst (out, juce::Image::BitmapData::writeOnly);
+    for (int y = 0; y < src.getHeight(); ++y)
+        for (int x = 0; x < src.getWidth(); ++x)
+        {
+            const auto c = in.getPixelColour (x, y);
+            const float dr = (float) c.getRed() - (float) bg.getRed(), dg = (float) c.getGreen() - (float) bg.getGreen(),
+                        db = (float) c.getBlue() - (float) bg.getBlue();
+            const float d = std::sqrt (dr * dr + dg * dg + db * db);
+            const float alpha = juce::jlimit (0.0f, 1.0f, (d - lo) / (hi - lo));
+            if (alpha <= 0.0f)
+                continue;
+            // Ground shadows / painted strokes (background-hued, darker,
+            // desaturated): neutral translucent shadow instead of tinted paint
+            {
+                const float lumC = 0.3f * c.getRed() + 0.59f * c.getGreen() + 0.11f * c.getBlue();
+                const float lumB = 0.3f * bg.getRed() + 0.59f * bg.getGreen() + 0.11f * bg.getBlue();
+                float hueDiff = std::abs (c.getHue() - bg.getHue());
+                hueDiff = juce::jmin (hueDiff, 1.0f - hueDiff);
+                if (lumC < lumB && hueDiff < 0.14f && c.getSaturation() < 0.45f)
+                {
+                    const float k = lumC / juce::jmax (1.0f, lumB);
+                    dst.setPixelColour (x, y, juce::Colours::black.withAlpha (juce::jlimit (0.0f, 0.55f, (1.0f - k) * 1.3f)));
+                    continue;
+                }
+            }
+            if (alpha >= 1.0f)
+            {
+                dst.setPixelColour (x, y, c);
+                continue;
+            }
+            // Un-mix the background from semi-transparent edge pixels
+            auto unmix = [alpha] (int v, int b) { return (juce::uint8) juce::jlimit (0, 255, juce::roundToInt ((float) b + ((float) v - (float) b) / alpha)); };
+            dst.setPixelColour (x, y, juce::Colour (unmix (c.getRed(), bg.getRed()), unmix (c.getGreen(), bg.getGreen()), unmix (c.getBlue(), bg.getBlue()), alpha));
+        }
+    return out;
+}
+
+/** Background colour estimate: median of small patches in the four corners. */
+juce::Colour sampleBackground (const juce::Image& sheet)
+{
+    std::vector<int> r, g, b;
+    const int w = sheet.getWidth(), h = sheet.getHeight(), p = 12;
+    for (auto [cx, cy] : { std::pair { 2, 2 }, std::pair { w - p - 2, 2 }, std::pair { 2, h - p - 2 }, std::pair { w - p - 2, h - p - 2 } })
+        for (int y = cy; y < cy + p; ++y)
+            for (int x = cx; x < cx + p; ++x)
+            {
+                const auto c = sheet.getPixelAt (x, y);
+                r.push_back (c.getRed());
+                g.push_back (c.getGreen());
+                b.push_back (c.getBlue());
+            }
+    auto med = [] (std::vector<int>& v) { std::sort (v.begin(), v.end()); return (juce::uint8) v[v.size() / 2]; };
+    return juce::Colour (med (r), med (g), med (b));
+}
+
 juce::Rectangle<int> opaqueBounds (const juce::Image& img)
 {
     const juce::Image::BitmapData d (img, juce::Image::BitmapData::readOnly);
@@ -90,16 +156,100 @@ struct Frame
 /** Keeps only the main subject of a keyed cell: the band of rows (allowing
     small gaps) holding the most opaque pixels. Removes bits of the
     neighbouring cells' characters that bleed over the cell border. */
+void keepMainBand (juce::Image& img, bool columns);
+
+/** Removes fragments cut by the cell border: every connected opaque region
+    that touches the border, except the largest one (the character). Small
+    elements fully inside the cell (sparkles, drops) are kept. */
+void dropEdgeFragments (juce::Image& img, juce::Rectangle<int> core = {})
+{
+    const int w = img.getWidth(), h = img.getHeight();
+    std::vector<char> opaque ((size_t) (w * h), 0);
+    {
+        const juce::Image::BitmapData d (img, juce::Image::BitmapData::readOnly);
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x)
+                opaque[(size_t) (y * w + x)] = d.getPixelColour (x, y).getAlpha() > 24 ? 1 : 0;
+    }
+    std::vector<int> label ((size_t) (w * h), 0), size (1, 0);
+    std::vector<char> touches (1, 0);
+    std::vector<double> sumX (1, 0.0), sumY (1, 0.0);
+    std::vector<int> stack;
+    int next = 0;
+    for (int start = 0; start < w * h; ++start)
+    {
+        if (! opaque[(size_t) start] || label[(size_t) start])
+            continue;
+        ++next;
+        size.push_back (0);
+        touches.push_back (0);
+        sumX.push_back (0.0);
+        sumY.push_back (0.0);
+        stack.push_back (start);
+        label[(size_t) start] = next;
+        while (! stack.empty())
+        {
+            const int i = stack.back();
+            stack.pop_back();
+            const int x = i % w, y = i / w;
+            ++size[(size_t) next];
+            sumX[(size_t) next] += x;
+            sumY[(size_t) next] += y;
+            if (x == 0 || y == 0 || x == w - 1 || y == h - 1)
+                touches[(size_t) next] = 1;
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx)
+                {
+                    const int xx = x + dx, yy = y + dy;
+                    if (xx < 0 || yy < 0 || xx >= w || yy >= h)
+                        continue;
+                    const int n = yy * w + xx;
+                    if (opaque[(size_t) n] && ! label[(size_t) n])
+                    {
+                        label[(size_t) n] = next;
+                        stack.push_back (n);
+                    }
+                }
+        }
+    }
+    int biggest = 0;
+    for (int l = 1; l <= next; ++l)
+        if (size[(size_t) l] > size[(size_t) biggest])
+            biggest = l;
+    juce::Image::BitmapData d (img, juce::Image::BitmapData::writeOnly);
+    for (int i = 0; i < w * h; ++i)
+    {
+        const int l = label[(size_t) i];
+        if (l == 0 || l == biggest)
+            continue;
+        // Neighbours' fragments: cut by the border, or centred outside the core cell
+        const juce::Point<int> centre ((int) (sumX[(size_t) l] / size[(size_t) l]), (int) (sumY[(size_t) l] / size[(size_t) l]));
+        if (touches[(size_t) l] || (! core.isEmpty() && ! core.contains (centre)))
+            d.setPixelColour (i % w, i / w, juce::Colours::transparentBlack);
+    }
+}
+
+/** Rows, then columns: removes neighbours' bits bleeding in from any side. */
 void keepMainBand (juce::Image& img)
 {
-    const int hgt = img.getHeight(), wid = img.getWidth();
+    keepMainBand (img, false);
+    keepMainBand (img, true);
+}
+
+void keepMainBand (juce::Image& img, bool columns)
+{
+    const int hgt = columns ? img.getWidth() : img.getHeight(), wid = columns ? img.getHeight() : img.getWidth();
+    auto at = [columns] (int line, int k) { return columns ? juce::Point<int> (line, k) : juce::Point<int> (k, line); };
     std::vector<int> rowCount ((size_t) hgt, 0);
     {
         const juce::Image::BitmapData d (img, juce::Image::BitmapData::readOnly);
         for (int y = 0; y < hgt; ++y)
             for (int x = 0; x < wid; ++x)
-                if (d.getPixelColour (x, y).getAlpha() > 24)
+            {
+                const auto pt = at (y, x);
+                if (d.getPixelColour (pt.x, pt.y).getAlpha() > 24)
                     ++rowCount[(size_t) y];
+            }
     }
     constexpr int maxGap = 14;
     int bestStart = 0, bestEnd = hgt, start = -1, lastFilled = -1;
@@ -128,8 +278,81 @@ void keepMainBand (juce::Image& img)
     for (int y = 0; y < hgt; ++y)
         if (y < bestStart || y >= bestEnd)
             for (int x = 0; x < wid; ++x)
-                d.setPixelColour (x, y, juce::Colours::transparentBlack);
+            {
+                const auto pt = at (y, x);
+                d.setPixelColour (pt.x, pt.y, juce::Colours::transparentBlack);
+            }
 }
+
+/** Keying mode: green screen (default) or a flat colour sampled from the corners. */
+bool keyFlatBackground = false;
+
+/** Grid of a sheet whose rows / columns are not evenly spaced: splits at the
+    least dense row / column (character pixels only) near each expected
+    boundary (±30 % of a cell). Cells are returned row by row. */
+std::vector<juce::Rectangle<int>> findCells (const juce::Image& keyed, int cols, int rows)
+{
+    const int w = keyed.getWidth(), h = keyed.getHeight();
+    std::vector<char> mask ((size_t) (w * h), 0);
+    {
+        const juce::Image::BitmapData d (keyed, juce::Image::BitmapData::readOnly);
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x)
+            {
+                // Character pixels only: saturated colours or dark outlines
+                // (painted ground strokes are greyish)
+                const auto c = d.getPixelColour (x, y);
+                if (c.getAlpha() > 200 && (c.getSaturation() > 0.35f || c.getPerceivedBrightness() < 0.25f))
+                    mask[(size_t) (y * w + x)] = 1;
+            }
+    }
+
+    auto splits = [] (const std::vector<double>& profile, int parts)
+    {
+        const int n = (int) profile.size();
+        std::vector<double> smooth ((size_t) n, 0.0);
+        for (int i = 0; i < n; ++i)
+            for (int k = -6; k <= 6; ++k)
+                smooth[(size_t) i] += profile[(size_t) juce::jlimit (0, n - 1, i + k)];
+        std::vector<int> cuts { 0 };
+        for (int p = 1; p < parts; ++p)
+        {
+            const int expected = n * p / parts, span = n * 3 / (10 * parts);
+            int best = expected;
+            for (int i = juce::jmax (1, expected - span); i < juce::jmin (n - 1, expected + span); ++i)
+                if (smooth[(size_t) i] < smooth[(size_t) best])
+                    best = i;
+            cuts.push_back (best);
+        }
+        cuts.push_back (n);
+        return cuts;
+    };
+
+    std::vector<double> rowProfile ((size_t) h, 0.0);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x)
+            rowProfile[(size_t) y] += mask[(size_t) (y * w + x)];
+    const auto rowCuts = splits (rowProfile, rows);
+
+    std::vector<juce::Rectangle<int>> cells;
+    for (int r = 0; r < rows; ++r)
+    {
+        const int y0 = rowCuts[(size_t) r], y1 = rowCuts[(size_t) r + 1];
+        std::vector<double> colProfile ((size_t) w, 0.0);
+        for (int y = y0; y < y1; ++y)
+            for (int x = 0; x < w; ++x)
+                colProfile[(size_t) x] += mask[(size_t) (y * w + x)];
+        const auto colCuts = splits (colProfile, cols);
+        for (int c = 0; c < cols; ++c)
+            cells.push_back ({ colCuts[(size_t) c], y0, colCuts[(size_t) c + 1] - colCuts[(size_t) c], y1 - y0 });
+    }
+    if (std::getenv ("ASSET_PREP_DEBUG") != nullptr)
+        for (const auto& b : cells)
+            std::cerr << "cell " << b.toString() << "\n";
+    return cells;
+}
+
+bool autoCells = false;
 
 /** Cuts cell `index` (row by row) of a cols × rows sheet and keys it. */
 Frame cutFrame (const juce::Image& sheet, int cols, int rows, int index)
@@ -138,8 +361,28 @@ Frame cutFrame (const juce::Image& sheet, int cols, int rows, int index)
     const int x0 = sheet.getWidth() * c / cols, x1 = sheet.getWidth() * (c + 1) / cols;
     const int y0 = sheet.getHeight() * r / rows, y1 = sheet.getHeight() * (r + 1) / rows;
     Frame f;
-    f.image = keyGreen (sheet.getClippedImage ({ x0, y0, x1 - x0, y1 - y0 }));
-    keepMainBand (f.image);
+    if (autoCells)
+    {
+        const auto keyedSheet = keyFlatBackground ? keyColour (sheet, sampleBackground (sheet)) : keyGreen (sheet);
+        const auto cells = findCells (keyedSheet, cols, rows);
+        if (! juce::isPositiveAndBelow (index, (int) cells.size()))
+        {
+            std::cerr << "cell " << index << " not found (" << cells.size() << " characters detected)\n";
+            std::exit (1);
+        }
+        // Cut with a margin (hands, boards reaching over the grid line stay
+        // whole), then keep the character and what belongs to its cell.
+        const auto cell = cells[(size_t) index];
+        const auto wide = cell.expanded (48, 24).getIntersection (keyedSheet.getBounds());
+        f.image = keyedSheet.getClippedImage (wide).createCopy();
+        dropEdgeFragments (f.image, cell.translated (-wide.getX(), -wide.getY()));
+    }
+    else
+    {
+        const auto cell = sheet.getClippedImage ({ x0, y0, x1 - x0, y1 - y0 });
+        f.image = keyFlatBackground ? keyColour (cell, sampleBackground (sheet)) : keyGreen (cell);
+        keepMainBand (f.image);
+    }
     f.box = opaqueBounds (f.image);
     f.anchorX = headCentreX (f.image, f.box);
     f.anchorY = f.box.getBottom();
@@ -166,6 +409,8 @@ int main (int argc, char** argv)
     const auto cwd = juce::File::getCurrentWorkingDirectory();
     const int cols = argInt (args, "--cols", 4), rows = argInt (args, "--rows", 3);
     const int targetHeight = argInt (args, "--height", 560);
+    keyFlatBackground = args.contains ("--key-flat");
+    autoCells = args.contains ("--auto-cells");
 
     juce::StringArray specs;
     juce::File outDir;
@@ -182,6 +427,8 @@ int main (int argc, char** argv)
         outDir = cwd.getChildFile (args[0]);
         for (int i = 1; i < args.size(); ++i)
         {
+            if (args[i] == "--key-flat" || args[i] == "--auto-cells")
+                continue;
             if (args[i].startsWith ("--"))
             {
                 ++i;
@@ -287,7 +534,9 @@ int main (int argc, char** argv)
             g.setColour (juce::Colours::white);
             g.drawText (juce::String ((int) i), x, y, cw, 18, juce::Justification::centred);
         }
-        juce::FileOutputStream os (cwd.getChildFile (args[ci + 1]));
+        const auto contactFile = cwd.getChildFile (args[ci + 1]);
+        contactFile.deleteFile(); // FileOutputStream appends to existing files
+        juce::FileOutputStream os (contactFile);
         png.writeImageToStream (sheet, os);
     }
     return 0;

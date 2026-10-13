@@ -16,5 +16,6 @@
 #include "ui/GrooveLookAndFeel.cpp"
 #include "ui/BigKnob.cpp"
 #include "ui/PresetBar.cpp"
+#include "ui/ToggleChips.cpp"
 #include "ui/MascotComponent.cpp"
 #include "ui/OneKnobEditor.cpp"

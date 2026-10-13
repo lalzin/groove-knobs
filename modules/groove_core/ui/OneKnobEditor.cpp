@@ -103,7 +103,10 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
     addAndMakeVisible (*canvas);
 
     const auto& cfg = proc.getConfig();
-    knob = std::make_unique<BigKnob> (proc.getAmountParameter(), palette, cfg.bipolar, cfg.lowSideLabel, cfg.highSideLabel);
+    const bool customLabels = cfg.knobLowLabel.isNotEmpty() || cfg.knobHighLabel.isNotEmpty();
+    knob = std::make_unique<BigKnob> (proc.getAmountParameter(), palette, cfg.bipolar,
+                                      customLabels ? cfg.knobLowLabel : (cfg.bipolar ? cfg.lowSideLabel : juce::String()),
+                                      customLabels ? cfg.knobHighLabel : (cfg.bipolar ? cfg.highSideLabel : juce::String()));
     presetBar = std::make_unique<PresetBar> (proc.getPresetParameter(), palette);
     presetTags = std::make_unique<PresetTags> (palette);
     power = std::make_unique<PowerButton> (palette);
@@ -112,7 +115,14 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
     canvas->addAndMakeVisible (*mascot);
     canvas->addAndMakeVisible (*knob);
     canvas->addAndMakeVisible (*presetBar);
-    canvas->addAndMakeVisible (*presetTags);
+    if (cfg.toggles.empty())
+        canvas->addAndMakeVisible (*presetTags);
+    else
+    {
+        // Plugins with toggles show them as clickable chips in the same place
+        toggleChips = std::make_unique<ToggleChips> (proc, palette);
+        canvas->addAndMakeVisible (*toggleChips);
+    }
     canvas->addAndMakeVisible (*power);
 
     // Layout on the base canvas (see spec §8.1)
@@ -122,6 +132,8 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
     knob->setBounds (juce::Rectangle<int> (262, 262).withCentre ({ 210, 345 }));
     presetBar->setBounds (0, 470, baseWidth, 50);
     presetTags->setBounds (juce::Rectangle<int> (200, 22).withCentre ({ 210, 448 })); // in the ring's opening
+    if (toggleChips != nullptr)
+        toggleChips->setBounds (juce::Rectangle<int> (200, 26).withCentre ({ 210, 448 }));
     power->setBounds (baseWidth - 44, 12, 32, 32);
 
     const double frameRate = 60.0;
@@ -206,6 +218,8 @@ void OneKnobEditor::updateFromParameters (double dt, bool snap)
         else
             presetTags->setTags (json.getProperty (side < 0 ? "low" : "high", {}).getProperty ("tags", {}));
     }
+
+    editorTick (dt);
 }
 
 void OneKnobEditor::tick (double timestampSeconds)

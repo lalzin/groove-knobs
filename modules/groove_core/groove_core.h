@@ -24,6 +24,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <complex>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -40,6 +41,8 @@
 #include "dsp/SafetyClipper.h"
 #include "dsp/KWeighting.h"
 #include "dsp/TestSignals.h"
+#include "dsp/ModDelay.h"
+#include "dsp/PartitionedConvolver.h"
 
 #include "processor/HostSync.h"
 #include "processor/MacroMapper.h"
@@ -55,5 +58,6 @@
 #include "ui/BigKnob.h"
 #include "ui/PresetBar.h"
 #include "ui/PresetTags.h"
+#include "ui/ToggleChips.h"
 #include "ui/MascotComponent.h"
 #include "ui/OneKnobEditor.h"

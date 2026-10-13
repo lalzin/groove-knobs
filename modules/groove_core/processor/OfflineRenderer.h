@@ -54,6 +54,7 @@ struct OfflineRenderer
         layout.inputBuses.add (set);
         layout.outputBuses.add (set);
         proc.setBusesLayout (layout);
+        proc.setNonRealtime (true); // offline: engines build their data synchronously (reproducible)
 
         if (opt.preset >= 0)
             setParameter (proc.getPresetParameter(), (float) opt.preset);

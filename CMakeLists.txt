@@ -67,10 +67,14 @@ juce_add_binary_data(GrooveCoreAssets
 set_target_properties(GrooveCoreAssets PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_subdirectory(plugins/french_filter)
+add_subdirectory(plugins/boogie_trio)
+add_subdirectory(plugins/backwash)
 
 if(GK_BUILD_TOOLS)
     add_subdirectory(tools/ff_render)
     add_subdirectory(tools/asset_prep)
+    add_subdirectory(tools/bt_render)
+    add_subdirectory(tools/bw_render)
 endif()
 
 if(GK_BUILD_TESTS)

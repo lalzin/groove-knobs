@@ -67,6 +67,28 @@ public:
     void paint (juce::Graphics&) override;
 
 protected:
+    /** Which frame to show (called at frame rate). Default: the mood model. */
+    virtual int chooseFrame (float macro, float bypass, bool musicOn);
+
+    /** Draws the character(s). Default: the current frame with `animation`
+        (pivot at the feet). Override to draw more than one figure. */
+    virtual void paintCharacter (juce::Graphics& g, juce::Rectangle<float> figure, const juce::AffineTransform& animation);
+
+    /** Draws one frame into `figure` with an animation transform, honouring
+        the UI desaturation. `tinted`: optional alternative full-size frames
+        (e.g. sepia), drawn instead of the colour ones. */
+    void drawFrame (juce::Graphics& g, int frame, juce::Rectangle<float> figure, const juce::AffineTransform& animation, float opacity,
+                    const std::vector<juce::Image>* tinted = nullptr);
+
+    int numFrames() const noexcept { return (int) colourFrames.size(); }
+    const juce::Image& getColourFrame (int i) const { return colourFrames[(size_t) i]; }
+    float musicLevel() const noexcept { return level; }
+    AudioFeatures& getFeatures() noexcept { return features; }
+    State& mutableState() noexcept { return state; }
+    juce::Rectangle<float> getFigureArea() const { return figureArea(); }
+
+    bool showSleepZ = true; // generic floating "Zzz" in bypass
+
     /** Plugin-specific decorations, in component coordinates. `figure` is the
         area the character is drawn into (before the animation transform). */
     virtual void paintBehind (juce::Graphics&, const State&, juce::Rectangle<float> figure) { juce::ignoreUnused (figure); }
@@ -78,6 +100,7 @@ private:
     int moodFrame (float macro, bool musicOn) noexcept;
     juce::Rectangle<float> figureArea() const;
     const juce::Image& scaledFrame (int index, bool grey, int pixelHeight);
+    const juce::Image& scaledTintedFrame (const std::vector<juce::Image>& tinted, int index, int pixelHeight);
 
     AudioFeatures& features;
     std::vector<juce::Image> colourFrames, greyFrames;
@@ -86,6 +109,9 @@ private:
     // does a cheap bilinear draw instead of resampling the full-size bitmap.
     std::vector<juce::Image> scaledColour, scaledGrey;
     int scaledHeight = 0;
+    std::vector<juce::Image> scaledTinted;
+    const std::vector<juce::Image>* tintedSource = nullptr;
+    int tintedHeight = 0;
     State state;
 
     Poses poses;

@@ -32,11 +32,22 @@ juce::Result PresetManager::parse (const juce::String& jsonText, PresetData& out
         return juce::Result::ok();
     };
 
+    out.hasVariant = {};
     if (out.bipolar)
     {
         if (auto r = readTable ("makeupLowDb", out.makeupLow); r.failed())
             return r;
         return readTable ("makeupHighDb", out.makeup);
+    }
+    for (int mask = 1; mask < (1 << PresetData::maxToggles); ++mask)
+    {
+        const auto key = "makeupDb@" + juce::String (mask);
+        if (root.hasProperty (key))
+        {
+            if (auto r = readTable (key.toRawUTF8(), out.variants[(size_t) mask - 1]); r.failed())
+                return r;
+            out.hasVariant[(size_t) mask - 1] = true;
+        }
     }
     return readTable ("makeupDb", out.makeup);
 }
@@ -95,7 +106,12 @@ juce::String PresetManager::toJson (const PresetData& preset)
         writeTable ("makeupHighDb", preset.makeup);
     }
     else
+    {
         writeTable ("makeupDb", preset.makeup);
+        for (int mask = 1; mask < (1 << PresetData::maxToggles); ++mask)
+            if (preset.hasVariant[(size_t) mask - 1])
+                writeTable (("makeupDb@" + juce::String (mask)).toRawUTF8(), preset.variants[(size_t) mask - 1]);
+    }
     s << "\n}\n";
     return s;
 }

@@ -1,7 +1,7 @@
-FRENCH FILTER — FREEWARE LICENSE
+GROOVE KNOBS (FRENCH FILTER, BOOGIE TRIO) — FREEWARE LICENSE
 Copyright (c) 2026 LALZIN. All rights reserved.
 
-French Filter ("the Software") is distributed free of charge.
+The Groove Knobs plug-ins ("the Software") are distributed free of charge.
 
 1. You may install and use the Software on any number of computers you own,
    for personal and commercial music production, live performance and

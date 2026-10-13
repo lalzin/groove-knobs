@@ -1,0 +1,7 @@
+{
+  "name": "Clap Rewind",
+  "toggles": {"long": false, "shimmer": false},
+  "swell": {"beats": 0.5, "riseSharpness": 3, "toneStartHz": 2000, "toneEndHz": 12000},
+  "input": {"focus": 1.0, "washHpfHz": 400},
+  "level": {"maxWetDb": -2}
+}

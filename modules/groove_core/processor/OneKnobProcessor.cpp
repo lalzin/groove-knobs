@@ -24,9 +24,66 @@ OneKnobProcessor::OneKnobProcessor (OneKnobConfig cfg, std::unique_ptr<OneKnobEn
     presetValue = apvts.getRawParameterValue (presetId.getParamID());
     bypassValue = apvts.getRawParameterValue (bypassId.getParamID());
     jassert (amountParam && presetParam && bypassParam);
+
+    jassert ((int) config.toggles.size() <= PresetData::maxToggles);
+    for (const auto& t : config.toggles)
+    {
+        toggleParams.push_back (dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (t.id)));
+        toggleValues.push_back (apvts.getRawParameterValue (t.id));
+        jassert (toggleParams.back() != nullptr);
+    }
+    if (! config.toggles.empty())
+    {
+        // Changing the preset applies its toggle defaults (not when a state
+        // is restored: see setStateInformation).
+        presetForToggles = 0;
+        presetParam->addListener (this);
+    }
 }
 
-OneKnobProcessor::~OneKnobProcessor() = default;
+OneKnobProcessor::~OneKnobProcessor()
+{
+    if (! config.toggles.empty())
+        presetParam->removeListener (this);
+    cancelPendingUpdate();
+}
+
+bool OneKnobProcessor::presetToggleDefault (int presetIndex, int toggleIndex) const
+{
+    const auto& json = config.presets[presetIndex].json;
+    return (bool) json.getProperty ("toggles", {}).getProperty (config.toggles[(size_t) toggleIndex].id, false);
+}
+
+void OneKnobProcessor::parameterValueChanged (int, float)
+{
+    // May come from the audio thread (automation): defer to the message thread.
+    if (juce::MessageManager::existsAndIsCurrentThread())
+        applyPresetToggleDefaults();
+    else
+        triggerAsyncUpdate();
+}
+
+void OneKnobProcessor::handleAsyncUpdate()
+{
+    applyPresetToggleDefaults();
+}
+
+void OneKnobProcessor::applyPresetToggleDefaults()
+{
+    const int preset = presetParam->getIndex();
+    if (presetForToggles.exchange (preset) == preset)
+        return;
+    for (size_t i = 0; i < toggleParams.size(); ++i)
+    {
+        const bool on = presetToggleDefault (preset, (int) i);
+        if (toggleParams[i]->get() != on)
+        {
+            toggleParams[i]->beginChangeGesture();
+            toggleParams[i]->setValueNotifyingHost (on ? 1.0f : 0.0f);
+            toggleParams[i]->endChangeGesture();
+        }
+    }
+}
 
 juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayout (const OneKnobConfig& cfg)
 {
@@ -74,7 +131,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
         amountId, "Amount", juce::NormalisableRange<float> (0.0f, 1.0f), cfg.bipolar ? 0.5f : 0.0f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction (toText).withValueFromStringFunction (fromText)));
 
-    layout.add (std::make_unique<juce::AudioParameterChoice> (presetId, "Preset", cfg.presets.getNames(), 0));
+    // With toggles, a preset change also sets the toggles: hosts must know it
+    // is a "meta" parameter (AU validation checks this).
+    layout.add (std::make_unique<juce::AudioParameterChoice> (presetId, "Preset", cfg.presets.getNames(), 0,
+                                                              juce::AudioParameterChoiceAttributes().withMeta (! cfg.toggles.empty())));
+    for (const auto& t : cfg.toggles)
+    {
+        const bool def = cfg.presets.size() > 0 && (bool) cfg.presets[0].json.getProperty ("toggles", {}).getProperty (t.id, false);
+        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { t.id, 1 }, t.name, def));
+    }
     layout.add (std::make_unique<juce::AudioParameterBool> (bypassId, "Bypass", false));
     return layout;
 }
@@ -104,6 +169,8 @@ bool OneKnobProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     const auto in = layouts.getMainInputChannelSet();
     const auto out = layouts.getMainOutputChannelSet();
+    if (config.allowMonoToStereo && in == juce::AudioChannelSet::mono() && out == juce::AudioChannelSet::stereo())
+        return true;
     if (in != out)
         return false;
     return out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo();
@@ -124,6 +191,12 @@ void OneKnobProcessor::prepareToPlay (double newSampleRate, int samplesPerBlock)
     wetBuffer.setSize (numChannels, maxBlock, false, true, false);
     amountBuffer.assign ((size_t) maxBlock, 0.0f);
     bypassBuffer.assign ((size_t) maxBlock, 0.0f);
+    for (size_t t = 0; t < toggleParams.size(); ++t)
+    {
+        toggleBuffers[t].assign ((size_t) maxBlock, 0.0f);
+        togglePointers[t] = toggleBuffers[t].data();
+        toggleSmoothers[t].prepare (sampleRate, config.toggleFadeSeconds);
+    }
     weightBuffer.assign ((size_t) maxBlock, 0.0f);
     crossfadeMaxStep = (float) (1.0 / juce::jmax (1.0, config.crossfadeMinSeconds * sampleRate));
 
@@ -150,6 +223,12 @@ void OneKnobProcessor::reset()
     snapRequested.store (true);
 }
 
+void OneKnobProcessor::setNonRealtime (bool isNonRealtime) noexcept
+{
+    AudioProcessor::setNonRealtime (isNonRealtime);
+    engine->setNonRealtime (isNonRealtime);
+}
+
 void OneKnobProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     processInternal (buffer, false);
@@ -172,6 +251,10 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
     if (numSamples == 0 || numChannels == 0 || maxBlock == 0)
         return;
 
+    // Mono in, stereo out: the mono input feeds both channels.
+    if (numChannels == 2 && getTotalNumInputChannels() == 1)
+        buffer.copyFrom (1, 0, buffer, 0, 0, numSamples);
+
     const auto timing = hostSync.beginBlock (getPlayHead(), numSamples);
 
     const int presetIndex = juce::jlimit (0, config.presets.size() - 1, juce::roundToInt (presetValue->load()));
@@ -184,6 +267,7 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
     const float amountTarget = juce::jlimit (0.0f, 1.0f, amountValue->load());
     const float bypassTarget = (forceBypass || bypassValue->load() >= 0.5f) ? 1.0f : 0.0f;
 
+    const bool snapToggles = snapRequested.load();
     if (snapRequested.exchange (false))
     {
         amountSmoother.snap (amountTarget);
@@ -195,8 +279,16 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
     }
     amountSmoother.setTarget (amountTarget);
     bypassSmoother.setTarget (bypassTarget);
+    for (size_t t = 0; t < toggleParams.size(); ++t)
+    {
+        const float target = toggleValues[t]->load() >= 0.5f ? 1.0f : 0.0f;
+        if (snapToggles)
+            toggleSmoothers[t].snap (target);
+        toggleSmoothers[t].setTarget (target);
+    }
 
-    featureExtractor.process (buffer, 0, numSamples, features);
+    if (! config.featuresFromOutput)
+        featureExtractor.process (buffer, 0, numSamples, features);
 
     // Hosts may send more samples than announced in prepareToPlay: split.
     for (int start = 0; start < numSamples; start += maxBlock)
@@ -204,6 +296,9 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
         const int n = juce::jmin (maxBlock, numSamples - start);
         processChunk (buffer, start, n, timing.offsetBy (start), numChannels);
     }
+
+    if (config.featuresFromOutput)
+        featureExtractor.process (buffer, 0, numSamples, features);
 
     features.beats.store (timing.beatsAt (numSamples), std::memory_order_relaxed);
     features.bpm.store ((float) timing.bpm, std::memory_order_relaxed);
@@ -234,8 +329,11 @@ void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start
         amountBuffer[(size_t) i] = a;
         bypassBuffer[(size_t) i] = b;
         weightBuffer[(size_t) i] = crossfadeWeight;
+        for (size_t t = 0; t < toggleParams.size(); ++t)
+            toggleBuffers[t][(size_t) i] = toggleSmoothers[t].next();
         anyActive = anyActive || ((! juce::exactlyEqual (a, 0.0f) || crossfadeWeight > 0.0f) && b < 1.0f);
     }
+    anyActive = anyActive || config.engineAlwaysRuns;
 
     // Latency-aligned dry path
     for (int ch = 0; ch < numChannels; ++ch)
@@ -272,6 +370,8 @@ void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start
                     wetBuffer.getWritePointer (ch)[i] *= f;
             }
 
+        if (! toggleParams.empty())
+            engine->setToggleValues (togglePointers.data(), (int) toggleParams.size());
         engine->processWet (wetBuffer, n, amountBuffer.data(), timing);
 
         const bool useMakeup = makeupEnabled.load (std::memory_order_relaxed);
@@ -280,7 +380,20 @@ void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start
         for (int i = 0; i < n; ++i)
         {
             const float a = amountBuffer[(size_t) i];
-            makeupSmoother.setTarget (useMakeup ? preset.makeupDbAt (a) : 0.0f);
+            float makeupDb = 0.0f;
+            if (useMakeup)
+            {
+                if (toggleParams.empty())
+                    makeupDb = preset.makeupDbAt (a);
+                else
+                {
+                    std::array<float, PresetData::maxToggles> tv {};
+                    for (size_t t = 0; t < toggleParams.size(); ++t)
+                        tv[t] = toggleBuffers[t][(size_t) i];
+                    makeupDb = preset.makeupDbAt (a, tv.data(), (int) toggleParams.size());
+                }
+            }
+            makeupSmoother.setTarget (makeupDb);
             const float makeup = dspmath::dbToGain (makeupSmoother.next());
 
             if (warmupRemaining > 0)
@@ -346,6 +459,8 @@ void OneKnobProcessor::getStateInformation (juce::MemoryBlock& destData)
     state.setProperty ("preset", config.presets[presetIndex].name, nullptr);
     state.setProperty ("presetIndex", presetIndex, nullptr);
     state.setProperty ("bypass", bypassParam->get(), nullptr);
+    for (size_t t = 0; t < toggleParams.size(); ++t)
+        state.setProperty (config.toggles[t].id, toggleParams[t]->get(), nullptr);
     state.setProperty ("editorScale", editorScale.load(), nullptr);
 
     if (auto xml = state.createXml())
@@ -389,7 +504,15 @@ void OneKnobProcessor::setStateInformation (const void* data, int sizeInBytes)
     int presetIndex = config.presets.indexOf (state.getProperty ("preset").toString());
     if (presetIndex < 0)
         presetIndex = juce::jlimit (0, config.presets.size() - 1, (int) state.getProperty ("presetIndex", 0));
+    // Restoring a state keeps the saved toggles: do not apply preset defaults.
+    presetForToggles = presetIndex;
     setParam (*presetParam, (float) presetIndex);
+    for (size_t t = 0; t < toggleParams.size(); ++t)
+    {
+        const bool on = state.hasProperty (config.toggles[t].id) ? (bool) state.getProperty (config.toggles[t].id)
+                                                                 : presetToggleDefault (presetIndex, (int) t);
+        setParam (*toggleParams[t], on ? 1.0f : 0.0f);
+    }
 
     setParam (*bypassParam, (bool) state.getProperty ("bypass", false) ? 1.0f : 0.0f);
     editorScale.store (juce::jlimit (0.75f, 2.0f, (float) state.getProperty ("editorScale", 1.0f)));

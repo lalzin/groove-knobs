@@ -5,7 +5,7 @@ target_sources(ff_tests PRIVATE
     DspTests.cpp
     StateTests.cpp
     MakeupTests.cpp)
-target_include_directories(ff_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(ff_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/common)
 target_link_libraries(ff_tests PRIVATE
     FrenchFilterCode
     Catch2::Catch2
@@ -22,5 +22,9 @@ catch_discover_tests(ff_tests
 juce_add_console_app(ff_screenshots PRODUCT_NAME "ff_screenshots")
 target_sources(ff_screenshots PRIVATE Screenshots.cpp)
 target_link_libraries(ff_screenshots PRIVATE FrenchFilterCode juce::juce_recommended_config_flags)
+
+# Boogie Trio
+add_subdirectory(boogie_trio)
+add_subdirectory(backwash)
 target_compile_definitions(ff_screenshots PRIVATE JUCE_STANDALONE_APPLICATION=1)
 gk_enable_warnings(ff_screenshots)

@@ -2,6 +2,13 @@
 
 namespace gk
 {
+/** An extra on/off parameter (shown as a chip under the knob). Each preset
+    gives its default in its JSON: "toggles": { "<id>": true/false }. */
+struct ToggleSpec
+{
+    juce::String id, name, chipLabel;
+};
+
 /** Static description of a Groove Knobs plugin. */
 struct OneKnobConfig
 {
@@ -15,6 +22,25 @@ struct OneKnobConfig
     bool bipolar = false;
     float centreDeadZone = 0.01f;         // bipolar: |macro| below this is exactly the centre
     juce::String lowSideLabel { "LP" }, highSideLabel { "HP" };
+    /** Labels at the two ends of the knob arc. Empty: the side labels when
+        bipolar, nothing otherwise. */
+    juce::String knobLowLabel, knobHighLabel;
+
+    /** Extra on/off parameters, between "preset" and "bypass" (max 2). */
+    std::vector<ToggleSpec> toggles;
+    double toggleFadeSeconds = 0.020;
+
+    /** Also accept a mono input with a stereo output (mono is duplicated). */
+    bool allowMonoToStereo = false;
+
+    /** Keep the engine running at 0 % and when bypassed (engines with a long
+        history, e.g. a lookahead convolution). The output stays bit-exact at
+        0 % since the wet weight is 0. */
+    bool engineAlwaysRuns = false;
+
+    /** Take the UI telemetry (RMS, transients) from the output instead of the
+        input (plugins with a long latency). */
+    bool featuresFromOutput = false;
 
     float transparencyZone = 0.03f;       // amount range crossfaded dry -> wet
     double amountRampSeconds = 0.020;     // linear ramp on the macro
@@ -34,7 +60,9 @@ struct OneKnobConfig
 
     Parameters (versioned IDs, v1): "amount" (0..1), "preset" (choice), "bypass".
 */
-class OneKnobProcessor : public juce::AudioProcessor
+class OneKnobProcessor : public juce::AudioProcessor,
+                         private juce::AudioProcessorParameter::Listener,
+                         private juce::AsyncUpdater
 {
 public:
     static constexpr int stateVersion = 2;
@@ -50,6 +78,7 @@ public:
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
     void reset() override;
+    void setNonRealtime (bool isNonRealtime) noexcept override;
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
@@ -78,6 +107,11 @@ public:
     juce::RangedAudioParameter& getAmountParameter() noexcept { return *amountParam; }
     juce::AudioParameterChoice& getPresetParameter() noexcept { return *presetParam; }
     juce::AudioParameterBool& getBypassParameterObject() noexcept { return *bypassParam; }
+    int getNumToggles() const noexcept { return (int) toggleParams.size(); }
+    juce::AudioParameterBool& getToggleParameter (int index) noexcept { return *toggleParams[(size_t) index]; }
+
+    /** A preset's default value for toggle `index` (from its JSON). */
+    bool presetToggleDefault (int presetIndex, int toggleIndex) const;
     const PresetManager& getPresets() const noexcept { return config.presets; }
     const OneKnobConfig& getConfig() const noexcept { return config; }
     OneKnobEngine& getEngine() noexcept { return *engine; }
@@ -104,6 +138,10 @@ public:
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout (const OneKnobConfig& config);
+    void parameterValueChanged (int parameterIndex, float newValue) override;
+    void parameterGestureChanged (int, bool) override {}
+    void handleAsyncUpdate() override;
+    void applyPresetToggleDefaults();
     void processInternal (juce::AudioBuffer<float>& buffer, bool forceBypass);
     void processChunk (juce::AudioBuffer<float>& buffer, int start, int numSamples, const BlockTiming& timing, int numChannels);
 
@@ -117,6 +155,9 @@ private:
     std::atomic<float>* amountValue = nullptr;
     std::atomic<float>* presetValue = nullptr;
     std::atomic<float>* bypassValue = nullptr;
+    std::vector<juce::AudioParameterBool*> toggleParams;
+    std::vector<std::atomic<float>*> toggleValues;
+    std::atomic<int> presetForToggles { -1 }; // last preset whose toggle defaults were applied
 
     // Audio-thread state (sized in prepareToPlay)
     HostSync hostSync;
@@ -125,6 +166,9 @@ private:
     IntegerDelay dryDelay;
     juce::AudioBuffer<float> dryBuffer, wetBuffer;
     std::vector<float> amountBuffer, bypassBuffer, weightBuffer;
+    std::array<LinearSmoother, PresetData::maxToggles> toggleSmoothers;
+    std::array<std::vector<float>, PresetData::maxToggles> toggleBuffers;
+    std::array<const float*, PresetData::maxToggles> togglePointers {};
     LinearSmoother amountSmoother, bypassSmoother, wetGate, wetInputFade;
     SmoothParam makeupSmoother;
     float crossfadeWeight = 0.0f, crossfadeMaxStep = 1.0f;

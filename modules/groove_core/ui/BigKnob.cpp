@@ -51,6 +51,16 @@ void BigKnob::setBeatPhase (float phase)
     }
 }
 
+void BigKnob::setPulse (float amount)
+{
+    amount = dspmath::clamp01 (amount);
+    if (std::abs (amount - pulse) > 0.004f || (juce::exactlyEqual (amount, 0.0f) && pulse > 0.0f))
+    {
+        pulse = amount;
+        repaint();
+    }
+}
+
 void BigKnob::resized()
 {
     rebuildPaths();
@@ -79,7 +89,22 @@ void BigKnob::rebuildPaths()
     for (int i = 0; i < nb; ++i)
     {
         juce::Path band;
-        band.addRectangle (disc.getX() + disc.getWidth() * (float) i / (float) nb, disc.getY(), disc.getWidth() / (float) nb + 0.5f, disc.getHeight());
+        const float x0 = disc.getX() + disc.getWidth() * (float) i / (float) nb, x1 = x0 + disc.getWidth() / (float) nb + 0.5f;
+        const float wave = palette.knobBandWave;
+        if (wave <= 0.0f)
+            band.addRectangle (x0, disc.getY(), x1 - x0, disc.getHeight());
+        else
+        {
+            // Wavy edges (outer edges pushed out of the disc, clipped anyway)
+            auto edge = [&] (float x, float y) { return x + wave * std::sin (y / disc.getHeight() * juce::MathConstants<float>::twoPi * 2.5f); };
+            const float left = i == 0 ? x0 - 2.0f * wave : x0, right = i == nb - 1 ? x1 + 2.0f * wave : x1;
+            band.startNewSubPath (edge (left, disc.getY()), disc.getY());
+            for (float y = disc.getY(); y <= disc.getBottom(); y += 3.0f)
+                band.lineTo (edge (left, y), y);
+            for (float y = disc.getBottom(); y >= disc.getY(); y -= 3.0f)
+                band.lineTo (edge (right, y), y);
+            band.closeSubPath();
+        }
         bandPaths.push_back (band);
     }
     bodyOutline.clear();
@@ -172,18 +197,49 @@ void BigKnob::paint (juce::Graphics& g)
         g.setColour (pal (palette.text).withAlpha (0.55f));
         g.drawLine (juce::Line<float> (centre.getPointOnCircumference (ringRadius - 10.0f, 0.0f), centre.getPointOnCircumference (ringRadius - 4.0f, 0.0f)), 2.5f);
 
-        g.setFont (GrooveFonts::font (15.0f));
-        g.setColour (pal (palette.arcColour (0.0f)).withAlpha (value < 0.5f ? 1.0f : 0.55f));
-        g.drawText (lowLabel, juce::Rectangle<float> (40.0f, 18.0f).withCentre (lowLabelPos), juce::Justification::centred);
-        g.setColour (pal (palette.arcColour (1.0f)).withAlpha (value > 0.5f ? 1.0f : 0.55f));
-        g.drawText (highLabel, juce::Rectangle<float> (40.0f, 18.0f).withCentre (highLabelPos), juce::Justification::centred);
+    }
+
+    // End labels (LP / HP, SOLO / TRIO...): the side the knob leans to is lit
+    if (lowLabel.isNotEmpty() || highLabel.isNotEmpty())
+    {
+        const auto lowColour = palette.lowLabel.isTransparent() ? palette.arcColour (0.0f) : palette.lowLabel;
+        const auto highColour = palette.highLabel.isTransparent() ? palette.arcColour (1.0f) : palette.highLabel;
+        const float pivot = bipolar ? 0.5f : 0.5f;
+        const auto font = GrooveFonts::font (15.0f);
+        g.setFont (font);
+        // Long labels move outwards so they never reach the chips in the middle
+        auto outwards = [&font] (const juce::String& t) { return juce::jmax (0.0f, 0.5f * juce::GlyphArrangement::getStringWidth (font, t) - 22.0f); };
+        g.setColour (pal (lowColour).withAlpha (value < pivot ? 1.0f : 0.55f));
+        g.drawText (lowLabel, juce::Rectangle<float> (90.0f, 18.0f).withCentre (lowLabelPos.translated (-outwards (lowLabel), 0.0f)),
+                    juce::Justification::centred);
+        g.setColour (pal (highColour).withAlpha (value > pivot ? 1.0f : 0.55f));
+        g.drawText (highLabel, juce::Rectangle<float> (90.0f, 18.0f).withCentre (highLabelPos.translated (outwards (highLabel), 0.0f)),
+                    juce::Justification::centred);
+    }
+
+    // Breathing glow (e.g. Backwash: grows during the swell, gone on the hit)
+    if (pulse > 0.0f && ! palette.pulse.isTransparent() && span > 0.0005f)
+    {
+        const float end = from + span * pulse;
+        juce::Path glowArc;
+        const float a0 = value < origin() ? angleFor (to - span * pulse) : angleFor (from);
+        const float a1 = value < origin() ? angleFor (to) : angleFor (end);
+        glowArc.addCentredArc (centre.x, centre.y, ringRadius, ringRadius, 0.0f, a0, a1, true);
+        const auto c = pal (palette.pulse);
+        for (int k = 3; k >= 1; --k)
+        {
+            g.setColour (c.withAlpha (0.12f * pulse * (float) (4 - k)));
+            g.strokePath (glowArc, juce::PathStrokeType (ringWidth + 6.0f * (float) k, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+        g.setColour (c.withAlpha (0.85f * pulse));
+        g.strokePath (glowArc, juce::PathStrokeType (ringWidth * 0.45f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
     // Excitement dashes, pulsing on the beat above 80 %
     if (const float ex = dspmath::smoothstep (0.8f, 0.95f, level); ex > 0.0f)
     {
-        const float pulse = 0.65f + 0.35f * std::exp (-beatPhase * 5.0f);
-        g.setColour (pal (palette.text).withAlpha (ex * pulse));
+        const float beatPulse = 0.65f + 0.35f * std::exp (-beatPhase * 5.0f);
+        g.setColour (pal (palette.text).withAlpha (ex * beatPulse));
         for (const auto& l : excitementLines)
             g.strokePath (l, juce::PathStrokeType (3.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }

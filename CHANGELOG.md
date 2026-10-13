@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased] — Backwash 0.1.0 (nouveau)
+- Reverb inversée en temps réel, calée sur le tempo, lookahead fixe de 2 s ; convolueur partitionné maison (`gk::PartitionedConvolver`) ; IR générées en arrière-plan avec fondu de 50 ms ; focus sur les attaques ; SHIMMER (octave haute) ; limiteur sur le wet seul.
+- 5 presets (Snare Swell, Vocal Suck, Clap Rewind, Ghost Pad, Big Inhale), chips LONG et SHIMMER.
+- UI « surf rétro » : knob aux bords ondulés dans les bleus de Swell, arc qui « respire » avant chaque coup, vague vectorielle qui suit le knob et le rythme, mascotte Swell (12 poses) qui inspire en même temps que le souffle.
+- Tests `bw_tests` (null, alignement, latence, longueur, stabilité, clics, blocs, état, focus, données UI, CPU), `bw_render`, `bw_screenshots`.
+
+## [Unreleased] — Boogie Trio 0.1.0 (nouveau)
+- Chorus triple de string machine : 3 voix (Hermite), LFO chorus / vibrato à 0 / 120 / 240°, stéréo façon Wider (centre intact), basse sèche, VINTAGE et WIDE.
+- 8 presets avec effets en plus (feedback, dérive de bande, trémolo / gate synchronisés, reverb, ton, phaser).
+- UI « 70s sunset » et mascotte Velvet avec ses clones.
+
+## groove_core (suite)
+- Toggles avec valeurs par défaut par preset, bus mono → stéréo, makeup par combinaison de toggles, moteur toujours actif, télémétrie en sortie, mode hors temps réel, convolueur partitionné, chips cliquables, libellés d'extrémité, knob aux bandes ondulées et lueur qui « respire », hooks de mascotte, outil `gk_render` commun, `asset_prep` (fond uni, grilles irrégulières, fragments voisins).
+
+
 ## [Unreleased] — 0.1.0
 ### Modifié (2026-10-13)
 - Knob bipolaire : centre neutre, gauche = passe-bas, droite = passe-haut ; presets à deux côtés ; zone morte au centre ; affichage LP / HP ; migration des sessions v1.
