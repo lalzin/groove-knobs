@@ -1,0 +1,20 @@
+{
+  "name": "Space Toms",
+  "osc": "fm",
+  "fmRatio": 1.41,
+  "fmIndex": 3.0,
+  "baseHz": 164.8,
+  "tuneOffset": 0,
+  "sweepOct": 0.8,
+  "endOct": -0.3,
+  "pitchTauMs": 60,
+  "decayMs": 620,
+  "clickDb": -30,
+  "velCurve": 1.0,
+  "fmTauMs": 120,
+  "roomSize": 0.85,
+  "damping": 0.3,
+  "reverbMax": 0.6,
+  "delayFeedback": 0.55,
+  "level": 0.6
+}

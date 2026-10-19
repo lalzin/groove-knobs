@@ -113,4 +113,63 @@ struct OfflineRenderer
         return result;
     }
 };
+
+/** Instruments: plays a MIDI sequence (time stamps in samples) through an
+    instrument, like a host: no input bus, stereo (or mono) output, fixed
+    block size, every event at its exact offset inside its block. */
+struct MidiRenderer
+{
+    struct Options
+    {
+        int blockSize = 512;
+        int numChannels = 2;
+        double bpm = 124.0;
+        bool transportPlaying = true;
+        bool prepare = true;           // false: keep the processor's state (rendering in several passes)
+        std::int64_t startSample = 0;  // play head position of the first sample
+    };
+
+    static juce::AudioBuffer<float> render (juce::AudioProcessor& proc, const juce::MidiMessageSequence& events, int numSamples,
+                                            double sampleRate, const Options& opt)
+    {
+        if (opt.prepare)
+        {
+            juce::AudioProcessor::BusesLayout layout;
+            layout.outputBuses.add (opt.numChannels == 1 ? juce::AudioChannelSet::mono() : juce::AudioChannelSet::stereo());
+            proc.setBusesLayout (layout);
+            proc.setNonRealtime (true);
+            proc.prepareToPlay (sampleRate, opt.blockSize);
+        }
+        OfflinePlayHead playHead;
+        playHead.bpm = opt.bpm;
+        playHead.sampleRate = sampleRate;
+        playHead.playing = opt.transportPlaying;
+        proc.setPlayHead (&playHead);
+
+        juce::AudioBuffer<float> out (opt.numChannels, numSamples);
+        out.clear();
+        juce::MidiBuffer midi;
+        int next = 0;
+        for (int pos = 0; pos < numSamples; pos += opt.blockSize)
+        {
+            const int n = juce::jmin (opt.blockSize, numSamples - pos);
+            midi.clear();
+            while (next < events.getNumEvents())
+            {
+                const auto& m = events.getEventPointer (next)->message;
+                const auto at = (std::int64_t) std::llround (m.getTimeStamp());
+                if (at >= pos + n)
+                    break;
+                if (at >= pos)
+                    midi.addEvent (m, (int) (at - pos));
+                ++next;
+            }
+            playHead.samplePosition = opt.startSample + pos;
+            juce::AudioBuffer<float> view (out.getArrayOfWritePointers(), opt.numChannels, pos, n);
+            proc.processBlock (view, midi);
+        }
+        proc.setPlayHead (nullptr);
+        return out;
+    }
+};
 } // namespace gk

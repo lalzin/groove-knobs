@@ -1,0 +1,17 @@
+{
+  "name": "Laser Pew",
+  "osc": "triangle",
+  "baseHz": 220,
+  "tuneOffset": 0,
+  "sweepOct": 2.6,
+  "endOct": -0.2,
+  "pitchTauMs": 18,
+  "decayMs": 170,
+  "clickDb": -14,
+  "velCurve": 1.6,
+  "roomSize": 0.35,
+  "damping": 0.6,
+  "reverbMax": 0.35,
+  "delayFeedback": 0.3,
+  "level": 1.58
+}

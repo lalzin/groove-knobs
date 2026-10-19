@@ -27,5 +27,6 @@ target_link_libraries(ff_screenshots PRIVATE FrenchFilterCode juce::juce_recomme
 # Boogie Trio
 add_subdirectory(boogie_trio)
 add_subdirectory(backwash)
+add_subdirectory(pew_pew)
 target_compile_definitions(ff_screenshots PRIVATE JUCE_STANDALONE_APPLICATION=1)
 gk_enable_warnings(ff_screenshots)

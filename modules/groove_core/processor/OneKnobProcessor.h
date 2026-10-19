@@ -19,6 +19,14 @@ struct ChoiceSpec
     int defaultIndex = 0;
 };
 
+/** A small global knob (0..1, shown in percent), not part of the presets
+    (e.g. an instrument's ROOM / ECHO sends). */
+struct KnobSpec
+{
+    juce::String id, name, caption;
+    float defaultValue = 0.0f;
+};
+
 /** Static description of a Groove Knobs plugin. */
 struct OneKnobConfig
 {
@@ -47,6 +55,18 @@ struct OneKnobConfig
         output then fades out, the latency changes, and it fades back in. */
     std::vector<ToggleSpec> switches;
     double switchFadeSeconds = 0.010;
+
+    /** Instrument (VSTi / AU "aumu"): no audio input, MIDI in, the engine
+        makes the sound. There is no dry path: the knob's 0 % is the engine's
+        own sound (no transparency zone, no makeup, no warm-up fade), and the
+        engine receives the MIDI of each chunk (OneKnobEngine::setMidi). */
+    bool isInstrument = false;
+    /** Default of "amount" (< 0: 0, or the centre when bipolar). */
+    float defaultAmount = -1.0f;
+
+    /** Small global knobs, after the switches (before the choices); the
+        engine gets their values every block (OneKnobEngine::setKnobs). */
+    std::vector<KnobSpec> knobs;
 
     /** Global multiple-choice parameters, after the switches; the engine gets
         their indices every block (OneKnobEngine::setChoices). */
@@ -108,7 +128,7 @@ public:
     using AudioProcessor::processBlockBypassed;
 
     double getTailLengthSeconds() const override { return config.tailSeconds; }
-    bool acceptsMidi() const override { return false; }
+    bool acceptsMidi() const override { return config.isInstrument; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     bool hasEditor() const override { return true; }
@@ -133,6 +153,8 @@ public:
     juce::AudioParameterBool& getToggleParameter (int index) noexcept { return *toggleParams[(size_t) index]; }
     int getNumSwitches() const noexcept { return (int) switchParams.size(); }
     juce::AudioParameterBool& getSwitchParameter (int index) noexcept { return *switchParams[(size_t) index]; }
+    int getNumKnobs() const noexcept { return (int) knobParams.size(); }
+    juce::RangedAudioParameter& getKnobParameter (int index) noexcept { return *knobParams[(size_t) index]; }
     int getNumChoices() const noexcept { return (int) choiceParams.size(); }
     juce::AudioParameterChoice& getChoiceParameter (int index) noexcept { return *choiceParams[(size_t) index]; }
 
@@ -172,7 +194,8 @@ private:
     void parameterGestureChanged (int, bool) override {}
     void handleAsyncUpdate() override;
     void applyPresetToggleDefaults();
-    void processInternal (juce::AudioBuffer<float>& buffer, bool forceBypass);
+    void processInternal (juce::AudioBuffer<float>& buffer, bool forceBypass, const juce::MidiBuffer* midi = nullptr);
+    static BusesProperties busesFor (const OneKnobConfig& config);
     void updateSwitches (bool snap);
     void processChunk (juce::AudioBuffer<float>& buffer, int start, int numSamples, const BlockTiming& timing, int numChannels);
 
@@ -191,6 +214,9 @@ private:
     std::atomic<int> presetForToggles { -1 }; // last preset whose toggle defaults were applied
     std::vector<juce::AudioParameterBool*> switchParams;
     std::vector<std::atomic<float>*> switchValues;
+    std::vector<juce::RangedAudioParameter*> knobParams;
+    std::vector<std::atomic<float>*> knobValues;
+    const juce::MidiBuffer* chunkMidi = nullptr; // instrument: the block's MIDI, during processInternal
     std::vector<juce::AudioParameterChoice*> choiceParams;
     std::vector<std::atomic<float>*> choiceValues;
     LinearSmoother switchGain;  // output fade around a latency change

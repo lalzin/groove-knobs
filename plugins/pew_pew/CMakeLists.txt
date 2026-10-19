@@ -1,0 +1,70 @@
+# ---------------------------------------------------------------------------
+# Pew Pew — disco "pew" tom instrument (fourth Groove Knobs plugin, first VSTi)
+#   PewPewCode  INTERFACE target (plugin, gb_render, pp_tests)
+#   PewPew      the VST3 / AU (aumu) / Standalone instrument
+# ---------------------------------------------------------------------------
+
+juce_add_binary_data(PewPewPresets
+    HEADER_NAME PewPewPresets.h
+    NAMESPACE   PPPresets
+    SOURCES
+        Presets/disco_tom.json
+        Presets/laser_pew.json
+        Presets/robo_zap.json
+        Presets/space_toms.json
+        Presets/deep_drop.json)
+set_target_properties(PewPewPresets PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(PewPewCode INTERFACE)
+target_sources(PewPewCode INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/PewPewDsp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/PewPewProcessor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/PewPewEditor.cpp)
+target_include_directories(PewPewCode INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
+target_link_libraries(PewPewCode INTERFACE
+    groove::groove_core
+    GrooveCoreAssets
+    PewPewPresets
+    juce::juce_audio_utils
+    juce::juce_dsp)
+target_compile_definitions(PewPewCode INTERFACE
+    PP_PRODUCT_NAME="${PP_PRODUCT_NAME}"
+    GK_SUITE_NAME="${GK_SUITE_NAME}"
+    GK_COMPANY_NAME="${GK_COMPANY_NAME}"
+    PP_VERSION_STRING="${PP_VERSION}"
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_VST3_CAN_REPLACE_VST2=0
+    JUCE_MODAL_LOOPS_PERMITTED=0)
+
+if(GK_COPY_PLUGINS)
+    set(_pp_copy TRUE)
+else()
+    set(_pp_copy FALSE)
+endif()
+
+juce_add_plugin(PewPew
+    PRODUCT_NAME                "${PP_PRODUCT_NAME}"
+    COMPANY_NAME                "${GK_COMPANY_NAME}"
+    BUNDLE_ID                   "${PP_BUNDLE_ID}"
+    VERSION                     "${PP_VERSION}"
+    PLUGIN_MANUFACTURER_CODE    ${GK_MANUFACTURER_CODE}
+    PLUGIN_CODE                 ${PP_PLUGIN_CODE}
+    FORMATS                     VST3 AU Standalone
+    IS_SYNTH                    TRUE
+    NEEDS_MIDI_INPUT            TRUE
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    HARDENED_RUNTIME_ENABLED    TRUE
+    AU_MAIN_TYPE                kAudioUnitType_MusicDevice
+    VST3_CATEGORIES             Instrument Drum
+    DESCRIPTION                 "One-knob disco pew tom (${GK_SUITE_NAME})"
+    COPY_PLUGIN_AFTER_BUILD     ${_pp_copy})
+
+target_sources(PewPew PRIVATE Source/PluginEntry.cpp)
+target_link_libraries(PewPew PRIVATE
+    PewPewCode
+    juce::juce_recommended_config_flags
+    juce::juce_recommended_lto_flags)
+gk_enable_warnings(PewPew)

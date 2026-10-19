@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ids="$ROOT/cmake/GrooveIds.cmake"
 get() { sed -nE "s/^set\($1 +\"([^\"]*)\".*/\1/p" "$ids"; }
-# scripts/run_auval.sh [FF|BT]   (default FF = French Filter, BT = Boogie Trio)
+# scripts/run_auval.sh [FF|BT|BW|PP]   (default FF = French Filter, BT = Boogie Trio, BW = Backwash, PP = Pew Pew)
 P="${1:-FF}"
 TYPE="$(get ${P}_AU_TYPE)"; SUB="$(get ${P}_PLUGIN_CODE)"; MANU="$(get GK_MANUFACTURER_CODE)"
 echo "auval -v $TYPE $SUB $MANU"

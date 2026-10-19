@@ -5,10 +5,17 @@ namespace
     constexpr const char* stateTag = "GrooveKnobsState";
 }
 
+juce::AudioProcessor::BusesProperties OneKnobProcessor::busesFor (const OneKnobConfig& cfg)
+{
+    if (cfg.isInstrument) // no audio input
+        return BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true);
+    return BusesProperties()
+        .withInput ("Input", juce::AudioChannelSet::stereo(), true)
+        .withOutput ("Output", juce::AudioChannelSet::stereo(), true);
+}
+
 OneKnobProcessor::OneKnobProcessor (OneKnobConfig cfg, std::unique_ptr<OneKnobEngine> eng)
-    : AudioProcessor (BusesProperties()
-                          .withInput ("Input", juce::AudioChannelSet::stereo(), true)
-                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+    : AudioProcessor (busesFor (cfg)),
       config (std::move (cfg)),
       engine (std::move (eng)),
       apvts (*this, nullptr, "PARAMETERS", createLayout (config))
@@ -37,6 +44,12 @@ OneKnobProcessor::OneKnobProcessor (OneKnobConfig cfg, std::unique_ptr<OneKnobEn
         switchParams.push_back (dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (t.id)));
         switchValues.push_back (apvts.getRawParameterValue (t.id));
         jassert (switchParams.back() != nullptr);
+    }
+    for (const auto& k : config.knobs)
+    {
+        knobParams.push_back (apvts.getParameter (k.id));
+        knobValues.push_back (apvts.getRawParameterValue (k.id));
+        jassert (knobParams.back() != nullptr);
     }
     for (const auto& c : config.choices)
     {
@@ -143,7 +156,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
 
     // "amount" first: it becomes the first mappable parameter in Ableton.
     layout.add (std::make_unique<juce::AudioParameterFloat> (
-        amountId, "Amount", juce::NormalisableRange<float> (0.0f, 1.0f), cfg.bipolar ? 0.5f : 0.0f,
+        amountId, "Amount", juce::NormalisableRange<float> (0.0f, 1.0f), cfg.defaultAmount >= 0.0f ? cfg.defaultAmount : (cfg.bipolar ? 0.5f : 0.0f),
         juce::AudioParameterFloatAttributes().withStringFromValueFunction (toText).withValueFromStringFunction (fromText)));
 
     // With toggles, a preset change also sets the toggles: hosts must know it
@@ -157,6 +170,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
     }
     for (const auto& t : cfg.switches)
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { t.id, 1 }, t.name, t.defaultOn));
+    for (const auto& k : cfg.knobs)
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { k.id, 1 }, k.name, juce::NormalisableRange<float> (0.0f, 1.0f), k.defaultValue,
+            juce::AudioParameterFloatAttributes()
+                .withStringFromValueFunction ([] (float v, int) { return juce::String (juce::roundToInt (v * 100.0f)) + " %"; })
+                .withValueFromStringFunction ([] (const juce::String& t)
+                                              { return juce::jlimit (0.0f, 1.0f, t.trim().trimCharactersAtEnd ("% ").getFloatValue() / 100.0f); })));
     for (const auto& c : cfg.choices)
         layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { c.id, 1 }, c.name, c.options, c.defaultIndex));
     layout.add (std::make_unique<juce::AudioParameterBool> (bypassId, "Bypass", false));
@@ -188,6 +208,8 @@ bool OneKnobProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     const auto in = layouts.getMainInputChannelSet();
     const auto out = layouts.getMainOutputChannelSet();
+    if (config.isInstrument)
+        return in.isDisabled() && (out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo());
     if (config.allowMonoToStereo && in == juce::AudioChannelSet::mono() && out == juce::AudioChannelSet::stereo())
         return true;
     if (in != out)
@@ -262,18 +284,18 @@ void OneKnobProcessor::setNonRealtime (bool isNonRealtime) noexcept
     engine->setNonRealtime (isNonRealtime);
 }
 
-void OneKnobProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void OneKnobProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
-    processInternal (buffer, false);
+    processInternal (buffer, false, &midi);
 }
 
-void OneKnobProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void OneKnobProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     // Host-side bypass: keep the latency-compensated dry path and ramp.
-    processInternal (buffer, true);
+    processInternal (buffer, true, &midi);
 }
 
-void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool forceBypass)
+void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool forceBypass, const juce::MidiBuffer* midi)
 {
     juce::ScopedNoDenormals noDenormals;
 
@@ -283,6 +305,21 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
         buffer.clear (ch, 0, numSamples);
     if (numSamples == 0 || numChannels == 0 || maxBlock == 0)
         return;
+    if (config.isInstrument)
+    {
+        // No input: the host's buffer holds nothing meaningful
+        for (int ch = 0; ch < numChannels; ++ch)
+            buffer.clear (ch, 0, numSamples);
+        chunkMidi = midi;
+        if (! knobParams.empty())
+        {
+            std::array<float, 8> v {};
+            const int n = juce::jmin ((int) knobParams.size(), (int) v.size());
+            for (int k = 0; k < n; ++k)
+                v[(size_t) k] = knobValues[(size_t) k]->load();
+            engine->setKnobs (v.data(), n);
+        }
+    }
 
     // Mono in, stereo out: the mono input feeds both channels.
     if (numChannels == 2 && getTotalNumInputChannels() == 1)
@@ -305,7 +342,7 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
     {
         amountSmoother.snap (amountTarget);
         bypassSmoother.snap (bypassTarget);
-        crossfadeWeight = macro::transparencyWeight (std::abs (macroFor (amountTarget)), config.transparencyZone);
+        crossfadeWeight = config.isInstrument ? 1.0f : macro::transparencyWeight (std::abs (macroFor (amountTarget)), config.transparencyZone);
         makeupSmoother.invalidate();
         engine->reset();
         wetRunning = false;
@@ -358,6 +395,7 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
     features.modulationPhase.store (engine->getModulationPhase(), std::memory_order_relaxed);
     features.amount.store (macroFor (amountSmoother.getCurrent()), std::memory_order_relaxed);
     features.bypassMix.store (bypassSmoother.getCurrent(), std::memory_order_relaxed);
+    chunkMidi = nullptr;
 }
 
 void OneKnobProcessor::updateSwitches (bool snap)
@@ -416,7 +454,7 @@ void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start
         // Dry/wet weight of the transparency zone, slew-limited: even a very
         // fast knob move crossfades over >= crossfadeMinSeconds (the dry and
         // wet paths differ slightly in phase, a 1 ms crossfade would click).
-        const float target = macro::transparencyWeight (std::abs (a), config.transparencyZone);
+        const float target = config.isInstrument ? 1.0f : macro::transparencyWeight (std::abs (a), config.transparencyZone);
         if (std::abs (target - crossfadeWeight) <= crossfadeMaxStep)
             crossfadeWeight = target;
         else
@@ -446,13 +484,23 @@ void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start
             // the wet signal is valid, then fade it in.
             engine->reset();
             makeupSmoother.invalidate();
-            warmupRemaining = latency + 16;
-            wetGate.snap (0.0f);
-            // The engine restarts from silence: fade its input in, so its
-            // filters / reverb see a soft onset instead of a step (which they
-            // would ring with after the gate opens).
-            wetInputFade.snap (0.0f);
-            wetInputFade.setTarget (1.0f);
+            if (config.isInstrument)
+            {
+                // The engine is the sound: no warm-up, no fade-in (a note in
+                // the very first sample must start there)
+                warmupRemaining = 0;
+                wetGate.snap (1.0f);
+            }
+            else
+            {
+                warmupRemaining = latency + 16;
+                wetGate.snap (0.0f);
+                // The engine restarts from silence: fade its input in, so its
+                // filters / reverb see a soft onset instead of a step (which they
+                // would ring with after the gate opens).
+                wetInputFade.snap (0.0f);
+                wetInputFade.setTarget (1.0f);
+            }
             wetRunning = true;
         }
 
@@ -468,6 +516,8 @@ void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start
 
         if (! toggleParams.empty())
             engine->setToggleValues (togglePointers.data(), (int) toggleParams.size());
+        if (config.isInstrument && chunkMidi != nullptr)
+            engine->setMidi (*chunkMidi, start, n);
         engine->processWet (wetBuffer, n, amountBuffer.data(), timing);
 
         const bool useMakeup = makeupEnabled.load (std::memory_order_relaxed);
@@ -477,7 +527,7 @@ void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start
         {
             const float a = amountBuffer[(size_t) i];
             float makeupDb = 0.0f;
-            if (useMakeup)
+            if (useMakeup && ! config.isInstrument)
             {
                 if (toggleParams.empty())
                     makeupDb = preset.makeupDbAt (a);
@@ -559,6 +609,8 @@ void OneKnobProcessor::getStateInformation (juce::MemoryBlock& destData)
         state.setProperty (config.toggles[t].id, toggleParams[t]->get(), nullptr);
     for (size_t t = 0; t < switchParams.size(); ++t)
         state.setProperty (config.switches[t].id, switchParams[t]->get(), nullptr);
+    for (size_t k = 0; k < knobParams.size(); ++k)
+        state.setProperty (config.knobs[k].id, knobParams[k]->convertFrom0to1 (knobParams[k]->getValue()), nullptr);
     for (size_t c = 0; c < choiceParams.size(); ++c)
         state.setProperty (config.choices[c].id, choiceParams[c]->getCurrentChoiceName(), nullptr);
     state.setProperty ("editorScale", editorScale.load(), nullptr);
@@ -617,6 +669,8 @@ void OneKnobProcessor::setStateInformation (const void* data, int sizeInBytes)
 
     for (size_t t = 0; t < switchParams.size(); ++t)
         setParam (*switchParams[t], (bool) state.getProperty (config.switches[t].id, config.switches[t].defaultOn) ? 1.0f : 0.0f);
+    for (size_t k = 0; k < knobParams.size(); ++k)
+        setParam (*knobParams[k], juce::jlimit (0.0f, 1.0f, (float) state.getProperty (config.knobs[k].id, config.knobs[k].defaultValue)));
     for (size_t c = 0; c < choiceParams.size(); ++c)
     {
         // Saved by name (options may be reordered later)

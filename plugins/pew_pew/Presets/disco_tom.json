@@ -1,0 +1,17 @@
+{
+  "name": "Disco Tom",
+  "osc": "sine",
+  "baseHz": 130.8,
+  "tuneOffset": 0,
+  "sweepOct": 1.2,
+  "endOct": -0.4,
+  "pitchTauMs": 35,
+  "decayMs": 340,
+  "clickDb": -26,
+  "velCurve": 1.3,
+  "roomSize": 0.55,
+  "damping": 0.4,
+  "reverbMax": 0.45,
+  "delayFeedback": 0.4,
+  "level": 0.9
+}

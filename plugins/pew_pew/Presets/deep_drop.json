@@ -1,0 +1,17 @@
+{
+  "name": "Deep Drop",
+  "osc": "sine",
+  "baseHz": 65.4,
+  "tuneOffset": 0,
+  "sweepOct": 0.5,
+  "endOct": -1.0,
+  "pitchTauMs": 90,
+  "decayMs": 900,
+  "clickDb": -32,
+  "velCurve": 1.1,
+  "roomSize": 0.7,
+  "damping": 0.5,
+  "reverbMax": 0.3,
+  "delayFeedback": 0.3,
+  "level": 0.63
+}

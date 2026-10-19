@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Validates the built VST3 and AU with pluginval.
 #   scripts/run_pluginval.sh [build-dir] [strictness] [plugin]
-#   defaults: build, 10, "French Filter"   (plugin: "French Filter" | "Boogie Trio" | "Backwash")
+#   defaults: build, 10, "French Filter"   (plugin: "French Filter" | "Boogie Trio" | "Backwash" | "Pew Pew")
 # Downloads pluginval 1.0.4 into .deps/pluginval if it is not installed.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -12,6 +12,7 @@ case "$PLUGIN" in
   "French Filter") ART="$BUILD/plugins/french_filter/FrenchFilter_artefacts/Release" ;;
   "Boogie Trio")   ART="$BUILD/plugins/boogie_trio/BoogieTrio_artefacts/Release" ;;
   "Backwash")      ART="$BUILD/plugins/backwash/Backwash_artefacts/Release" ;;
+  "Pew Pew")       ART="$BUILD/plugins/pew_pew/PewPew_artefacts/Release" ;;
   *) echo "unknown plugin: $PLUGIN"; exit 2 ;;
 esac
 

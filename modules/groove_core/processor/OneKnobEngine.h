@@ -54,6 +54,15 @@ public:
         latency. Audio thread (and prepare). */
     virtual void setSwitches (const bool* on, int numSwitches) { juce::ignoreUnused (on, numSwitches); }
 
+    /** Instruments: the MIDI events of the chunk about to be processed are
+        those of `midi` with a sample position in [start, start + numSamples)
+        (their offset in the chunk is position - start). Audio thread. */
+    virtual void setMidi (const juce::MidiBuffer& midi, int start, int numSamples) { juce::ignoreUnused (midi, start, numSamples); }
+
+    /** Plugins with small knobs (OneKnobConfig::knobs): their values (0..1),
+        before every block; smoothing is up to the engine. Audio thread. */
+    virtual void setKnobs (const float* values, int numKnobs) { juce::ignoreUnused (values, numKnobs); }
+
     /** Plugins with choices (OneKnobConfig::choices): their current indices,
         before every block. Audio thread. */
     virtual void setChoices (const int* indices, int numChoices) { juce::ignoreUnused (indices, numChoices); }
