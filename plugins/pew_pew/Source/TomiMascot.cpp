@@ -144,12 +144,12 @@ int TomiMascot::chooseFrame (float amount, float bypass, bool musicOn)
 
 juce::Rectangle<float> TomiMascot::drumArea (juce::Rectangle<float> fig) const noexcept
 {
-    // A low floor tom where the sticks land on the impact frames (measured
-    // on the sprites: 65-82 % of the width, 81-90 % of the height, feet at
-    // 97 %): its skin at ankle height, just behind his right foot
-    const float w = fig.getWidth() * 0.58f, h = fig.getHeight() * 0.17f;
-    const float skinY = fig.getY() + fig.getHeight() * 0.86f;
-    return { fig.getX() + fig.getWidth() * 0.78f - w * 0.5f, skinY - h * 0.18f, w, h };
+    // A floor tom in front of Tomi, its skin centred where the sticks land on
+    // the impact frames (measured on the sprites: 65-82 % of the width,
+    // 81-90 % of the height, feet at 97 %)
+    const float w = fig.getWidth() * 0.46f, h = fig.getHeight() * 0.2f;
+    const float skinY = fig.getY() + fig.getHeight() * 0.87f;
+    return { fig.getX() + fig.getWidth() * 0.70f - w * 0.5f, skinY - h * 0.18f, w, h };
 }
 
 void TomiMascot::paintBehind (juce::Graphics& g, const State& s, juce::Rectangle<float> fig)
@@ -179,6 +179,36 @@ void TomiMascot::paintBehind (juce::Graphics& g, const State& s, juce::Rectangle
         }
     }
 
+    // ECHO: ghosts of Tomi replaying the hit at the echo times
+    const float echo = proc.getEchoParameter().getValue() * awake;
+    if (echo > 0.02f && numFrames() > sleepFirst)
+    {
+        const int ghosts = juce::jlimit (1, 3, 1 + (int) std::floor (echo * 2.99f));
+        const double gap = echoSeconds();
+        const int n = juce::jmin (recentCount, (int) recentHits.size());
+        for (int k = 0; k < n; ++k)
+            for (int gIdx = 1; gIdx <= ghosts; ++gIdx)
+            {
+                const double age = s.time - (recentHits[(size_t) k] + gap * gIdx);
+                if (age < 0.0 || age > 0.25)
+                    continue;
+                const float alpha = (float) (1.0 - age / 0.25) * (0.22f + 0.28f * echo) * std::pow (0.7f, (float) (gIdx - 1));
+                const auto ghostFig = fig.translated (-fig.getWidth() * 0.16f * (float) gIdx, 0.0f);
+                drawFrame (g, recentPoses[(size_t) k], ghostFig, juce::AffineTransform(), alpha);
+            }
+    }
+}
+
+void TomiMascot::paintCharacter (juce::Graphics& g, juce::Rectangle<float> fig, const juce::AffineTransform& animation)
+{
+    drawFrame (g, getState().frame, fig, animation, 1.0f);
+}
+
+void TomiMascot::paintDrum (juce::Graphics& g, const State& s, juce::Rectangle<float> fig)
+{
+    juce::ignoreUnused (s);
+    const juce::Colour gold (0xffe8b531), cherry (0xffd7336b), indigo (0xff3b2e7e), cream (0xfff3e9d2);
+    const auto drum = drumArea (fig);
     // The drum: shell (indigo, gold hoops, cherry lugs) and the skin, which
     // swells and lifts with the pitch of the hit
     const float skinH = drum.getHeight() * 0.36f;
@@ -223,33 +253,28 @@ void TomiMascot::paintBehind (juce::Graphics& g, const State& s, juce::Rectangle
     g.setColour (palette (juce::Colour (0xff141414)));
     g.drawEllipse (top, 2.5f);
 
-    // ECHO: ghosts of Tomi replaying the hit at the echo times
-    const float echo = proc.getEchoParameter().getValue() * awake;
-    if (echo > 0.02f && numFrames() > sleepFirst)
-    {
-        const int ghosts = juce::jlimit (1, 3, 1 + (int) std::floor (echo * 2.99f));
-        const double gap = echoSeconds();
-        const int n = juce::jmin (recentCount, (int) recentHits.size());
-        for (int k = 0; k < n; ++k)
-            for (int gIdx = 1; gIdx <= ghosts; ++gIdx)
-            {
-                const double age = s.time - (recentHits[(size_t) k] + gap * gIdx);
-                if (age < 0.0 || age > 0.25)
-                    continue;
-                const float alpha = (float) (1.0 - age / 0.25) * (0.22f + 0.28f * echo) * std::pow (0.7f, (float) (gIdx - 1));
-                const auto ghostFig = fig.translated (-fig.getWidth() * 0.16f * (float) gIdx, 0.0f);
-                drawFrame (g, recentPoses[(size_t) k], ghostFig, juce::AffineTransform(), alpha);
-            }
-    }
-}
 
-void TomiMascot::paintCharacter (juce::Graphics& g, juce::Rectangle<float> fig, const juce::AffineTransform& animation)
-{
-    drawFrame (g, getState().frame, fig, animation, 1.0f);
+    // the impact on the skin (the sprite's own sparks are partly behind it)
+    if (hitEnv > 0.05f && s.bypass < 0.5f)
+    {
+        const auto c = top.getCentre().translated (0.0f, -4.0f * lift);
+        g.setColour (palette (cream).withAlpha (0.9f * hitEnv));
+        g.fillPath (star, juce::AffineTransform::scale (6.0f + 10.0f * hitEnv, 4.0f + 6.0f * hitEnv).translated (c));
+        g.setColour (palette (gold).withAlpha (0.8f * hitEnv));
+        for (int k = 0; k < 6; ++k)
+        {
+            const float ang = juce::MathConstants<float>::pi * (1.05f + 0.18f * (float) k);
+            const float r0 = 6.0f, r1 = 10.0f + 14.0f * hitEnv;
+            g.drawLine (c.x + std::cos (ang) * r0, c.y + std::sin (ang) * r0 * 0.6f, c.x + std::cos (ang) * r1, c.y + std::sin (ang) * r1 * 0.6f, 2.0f);
+        }
+    }
 }
 
 void TomiMascot::paintOverlay (juce::Graphics& g, const State& s, juce::Rectangle<float> fig)
 {
+    // The drum in front of Tomi, its skin where the sticks land
+    paintDrum (g, s, fig);
+
     const juce::Colour gold (0xffe8b531), cherry (0xffd7336b), cream (0xfff3e9d2);
     // Stars / sparkles from the hits
     for (const auto& st : stars)

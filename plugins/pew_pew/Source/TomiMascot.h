@@ -48,6 +48,7 @@ protected:
 
 private:
     juce::Rectangle<float> drumArea (juce::Rectangle<float> figure) const noexcept;
+    void paintDrum (juce::Graphics&, const State&, juce::Rectangle<float> figure);
     double echoSeconds() noexcept;
 
     PewPewProcessor& proc;
