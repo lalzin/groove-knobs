@@ -24,13 +24,14 @@ OneKnobProcessor::OneKnobProcessor (OneKnobConfig cfg, std::unique_ptr<OneKnobEn
     jassert (config.presets.size() > 0);
     engine->setPresets (config.presets);
 
-    amountParam = apvts.getParameter (amountId.getParamID());
-    presetParam = dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (presetId.getParamID()));
+    const auto mainId = config.amountParamId.isNotEmpty() ? config.amountParamId : amountId.getParamID();
+    amountParam = apvts.getParameter (mainId);
+    presetParam = config.hasPresetParameter ? dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (presetId.getParamID())) : nullptr;
     bypassParam = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (bypassId.getParamID()));
-    amountValue = apvts.getRawParameterValue (amountId.getParamID());
-    presetValue = apvts.getRawParameterValue (presetId.getParamID());
+    amountValue = apvts.getRawParameterValue (mainId);
+    presetValue = config.hasPresetParameter ? apvts.getRawParameterValue (presetId.getParamID()) : nullptr;
     bypassValue = apvts.getRawParameterValue (bypassId.getParamID());
-    jassert (amountParam && presetParam && bypassParam);
+    jassert (amountParam && (presetParam || ! config.hasPresetParameter) && bypassParam);
 
     jassert ((int) config.toggles.size() <= PresetData::maxToggles);
     for (const auto& t : config.toggles)
@@ -62,14 +63,16 @@ OneKnobProcessor::OneKnobProcessor (OneKnobConfig cfg, std::unique_ptr<OneKnobEn
         // Changing the preset applies its toggle defaults (not when a state
         // is restored: see setStateInformation).
         presetForToggles = 0;
-        presetParam->addListener (this);
+        if (presetParam != nullptr)
+            presetParam->addListener (this);
     }
 }
 
 OneKnobProcessor::~OneKnobProcessor()
 {
     if (! config.toggles.empty())
-        presetParam->removeListener (this);
+        if (presetParam != nullptr)
+            presetParam->removeListener (this);
     cancelPendingUpdate();
 }
 
@@ -98,6 +101,8 @@ void OneKnobProcessor::handleAsyncUpdate()
 
 void OneKnobProcessor::applyPresetToggleDefaults()
 {
+    if (presetParam == nullptr)
+        return;
     const int preset = presetParam->getIndex();
     if (presetForToggles.exchange (preset) == preset)
         return;
@@ -156,13 +161,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
 
     // "amount" first: it becomes the first mappable parameter in Ableton.
     layout.add (std::make_unique<juce::AudioParameterFloat> (
-        amountId, "Amount", juce::NormalisableRange<float> (0.0f, 1.0f), cfg.defaultAmount >= 0.0f ? cfg.defaultAmount : (cfg.bipolar ? 0.5f : 0.0f),
+        cfg.amountParamId.isNotEmpty() ? juce::ParameterID { cfg.amountParamId, 1 } : amountId,
+        cfg.amountParamName.isNotEmpty() ? cfg.amountParamName : juce::String ("Amount"), juce::NormalisableRange<float> (0.0f, 1.0f), cfg.defaultAmount >= 0.0f ? cfg.defaultAmount : (cfg.bipolar ? 0.5f : 0.0f),
         juce::AudioParameterFloatAttributes().withStringFromValueFunction (toText).withValueFromStringFunction (fromText)));
 
     // With toggles, a preset change also sets the toggles: hosts must know it
     // is a "meta" parameter (AU validation checks this).
-    layout.add (std::make_unique<juce::AudioParameterChoice> (presetId, "Preset", cfg.presets.getNames(), 0,
-                                                              juce::AudioParameterChoiceAttributes().withMeta (! cfg.toggles.empty())));
+    if (cfg.hasPresetParameter)
+        layout.add (std::make_unique<juce::AudioParameterChoice> (presetId, "Preset", cfg.presets.getNames(), 0,
+                                                                  juce::AudioParameterChoiceAttributes().withMeta (! cfg.toggles.empty())));
     for (const auto& t : cfg.toggles)
     {
         const bool def = cfg.presets.size() > 0 && (bool) cfg.presets[0].json.getProperty ("toggles", {}).getProperty (t.id, false);
@@ -328,14 +335,14 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
         for (int ch = 0; ch < numChannels; ++ch)
             buffer.clear (ch, 0, numSamples);
         chunkMidi = midi;
-        if (! knobParams.empty())
-        {
-            std::array<float, 8> v {}; // plain values (% knobs: 0..1, dB knobs: dB)
-            const int n = juce::jmin ((int) knobParams.size(), (int) v.size());
-            for (int k = 0; k < n; ++k)
-                v[(size_t) k] = knobValues[(size_t) k]->load();
-            engine->setKnobs (v.data(), n);
-        }
+    }
+    if (! knobParams.empty())
+    {
+        std::array<float, 8> v {}; // plain values (% knobs: 0..1, dB knobs: dB)
+        const int n = juce::jmin ((int) knobParams.size(), (int) v.size());
+        for (int k = 0; k < n; ++k)
+            v[(size_t) k] = knobValues[(size_t) k]->load();
+        engine->setKnobs (v.data(), n);
     }
 
     // Mono in, stereo out: the mono input feeds both channels.
@@ -344,7 +351,7 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
 
     const auto timing = hostSync.beginBlock (getPlayHead(), numSamples);
 
-    const int presetIndex = juce::jlimit (0, config.presets.size() - 1, juce::roundToInt (presetValue->load()));
+    const int presetIndex = presetValue != nullptr ? juce::jlimit (0, config.presets.size() - 1, juce::roundToInt (presetValue->load())) : 0;
     if (presetIndex != currentPreset)
     {
         engine->setPreset (presetIndex);
@@ -594,12 +601,12 @@ void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start
 //==============================================================================
 int OneKnobProcessor::getCurrentProgram()
 {
-    return presetParam->getIndex();
+    return presetParam != nullptr ? presetParam->getIndex() : 0;
 }
 
 void OneKnobProcessor::setCurrentProgram (int index)
 {
-    if (index < 0 || index >= config.presets.size())
+    if (presetParam == nullptr || index < 0 || index >= config.presets.size())
         return;
     presetParam->beginChangeGesture();
     presetParam->setValueNotifyingHost (presetParam->convertTo0to1 ((float) index));
@@ -618,9 +625,12 @@ void OneKnobProcessor::getStateInformation (juce::MemoryBlock& destData)
     state.setProperty ("version", stateVersion, nullptr);
     state.setProperty ("plugin", config.productName, nullptr);
     state.setProperty ("amount", amountParam->convertFrom0to1 (amountParam->getValue()), nullptr);
-    const int presetIndex = presetParam->getIndex();
-    state.setProperty ("preset", config.presets[presetIndex].name, nullptr);
-    state.setProperty ("presetIndex", presetIndex, nullptr);
+    if (presetParam != nullptr)
+    {
+        const int presetIndex = presetParam->getIndex();
+        state.setProperty ("preset", config.presets[presetIndex].name, nullptr);
+        state.setProperty ("presetIndex", presetIndex, nullptr);
+    }
     state.setProperty ("bypass", bypassParam->get(), nullptr);
     for (size_t t = 0; t < toggleParams.size(); ++t)
         state.setProperty (config.toggles[t].id, toggleParams[t]->get(), nullptr);
@@ -676,7 +686,8 @@ void OneKnobProcessor::setStateInformation (const void* data, int sizeInBytes)
         presetIndex = juce::jlimit (0, config.presets.size() - 1, (int) state.getProperty ("presetIndex", 0));
     // Restoring a state keeps the saved toggles: do not apply preset defaults.
     presetForToggles = presetIndex;
-    setParam (*presetParam, (float) presetIndex);
+    if (presetParam != nullptr)
+        setParam (*presetParam, (float) presetIndex);
     for (size_t t = 0; t < toggleParams.size(); ++t)
     {
         const bool on = state.hasProperty (config.toggles[t].id) ? (bool) state.getProperty (config.toggles[t].id)

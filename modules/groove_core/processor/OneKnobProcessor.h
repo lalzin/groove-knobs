@@ -66,6 +66,12 @@ struct OneKnobConfig
     bool isInstrument = false;
     /** Default of "amount" (< 0: 0, or the centre when bipolar). */
     float defaultAmount = -1.0f;
+    /** Host ID / name of the main knob (empty: "amount" / "Amount"). */
+    juce::String amountParamId, amountParamName;
+    /** false: no "preset" parameter (a plugin without presets; config.presets
+        still holds one entry, the internal defaults). The editor then shows no
+        preset bar (the plugin draws its own bottom bar). */
+    bool hasPresetParameter = true;
 
     /** Small global knobs, after the switches (before the choices); the
         engine gets their values every block (OneKnobEngine::setKnobs). */
@@ -136,7 +142,7 @@ public:
     bool isMidiEffect() const override { return false; }
     bool hasEditor() const override { return true; }
 
-    int getNumPrograms() override { return juce::jmax (1, config.presets.size()); }
+    int getNumPrograms() override { return config.hasPresetParameter ? juce::jmax (1, config.presets.size()) : 1; }
     int getCurrentProgram() override;
     void setCurrentProgram (int index) override;
     const juce::String getProgramName (int index) override;
@@ -150,7 +156,8 @@ public:
     //== Groove Knobs API ========================================================
     juce::AudioProcessorValueTreeState& getValueTreeState() noexcept { return apvts; }
     juce::RangedAudioParameter& getAmountParameter() noexcept { return *amountParam; }
-    juce::AudioParameterChoice& getPresetParameter() noexcept { return *presetParam; }
+    juce::AudioParameterChoice& getPresetParameter() noexcept { jassert (presetParam != nullptr); return *presetParam; }
+    bool hasPresetParameter() const noexcept { return presetParam != nullptr; }
     juce::AudioParameterBool& getBypassParameterObject() noexcept { return *bypassParam; }
     int getNumToggles() const noexcept { return (int) toggleParams.size(); }
     juce::AudioParameterBool& getToggleParameter (int index) noexcept { return *toggleParams[(size_t) index]; }

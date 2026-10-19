@@ -13,6 +13,7 @@ case "$PLUGIN" in
   "Boogie Trio")   ART="$BUILD/plugins/boogie_trio/BoogieTrio_artefacts/Release" ;;
   "Backwash")      ART="$BUILD/plugins/backwash/Backwash_artefacts/Release" ;;
   "Pew Pew")       ART="$BUILD/plugins/pew_pew/PewPew_artefacts/Release" ;;
+  "Sing It Back")  ART="$BUILD/plugins/sing_it_back/SingItBack_artefacts/Release" ;;
   *) echo "unknown plugin: $PLUGIN"; exit 2 ;;
 esac
 

@@ -38,3 +38,10 @@ set(PP_PLUGIN_CODE         "PwPw")
 set(PP_AU_TYPE             "aumu")          # kAudioUnitType_MusicDevice
 set(PP_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.pewpew")
 set(PP_VERSION             "0.1.0")
+
+# Sing It Back (vocal effect)
+set(SIB_PRODUCT_NAME       "Sing It Back")
+set(SIB_PLUGIN_CODE        "SItB")
+set(SIB_AU_TYPE            "aufx")          # kAudioUnitType_Effect
+set(SIB_BUNDLE_ID          "${GK_BUNDLE_ID_PREFIX}.singitback")
+set(SIB_VERSION            "0.1.0")

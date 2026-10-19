@@ -50,6 +50,17 @@ public:
         return v2;
     }
 
+    /** Returns the band-pass output (unity gain at the centre frequency). */
+    inline double processBandpass (double v0, const Coeffs& c) noexcept
+    {
+        const double v3 = v0 - ic2;
+        const double v1 = c.a1 * ic1 + c.a2 * v3;
+        const double v2 = ic2 + c.a2 * ic1 + c.a3 * v3;
+        ic1 = 2.0 * v1 - ic1;
+        ic2 = 2.0 * v2 - ic2;
+        return c.k * v1;
+    }
+
     /** Returns the high-pass output (used by analysis code). */
     inline double processHighpass (double v0, const Coeffs& c) noexcept
     {

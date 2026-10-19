@@ -153,14 +153,16 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
     knob = std::make_unique<BigKnob> (proc.getAmountParameter(), palette, cfg.bipolar,
                                       customLabels ? cfg.knobLowLabel : (cfg.bipolar ? cfg.lowSideLabel : juce::String()),
                                       customLabels ? cfg.knobHighLabel : (cfg.bipolar ? cfg.highSideLabel : juce::String()));
-    presetBar = std::make_unique<PresetBar> (proc.getPresetParameter(), palette);
+    if (proc.hasPresetParameter())
+        presetBar = std::make_unique<PresetBar> (proc.getPresetParameter(), palette);
     presetTags = std::make_unique<PresetTags> (palette);
     power = std::make_unique<PowerButton> (palette);
     powerAttachment = std::make_unique<juce::ButtonParameterAttachment> (proc.getBypassParameterObject(), *power);
 
     canvas->addAndMakeVisible (*mascot);
     canvas->addAndMakeVisible (*knob);
-    canvas->addAndMakeVisible (*presetBar);
+    if (presetBar != nullptr)
+        canvas->addAndMakeVisible (*presetBar);
     if (cfg.toggles.empty())
         canvas->addAndMakeVisible (*presetTags);
     else
@@ -200,7 +202,8 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
     mascot->setBounds (60, 60, 300, 170);
     // 262 = 230 (ring diameter) + room for the glow and the excitement dashes
     knob->setBounds (juce::Rectangle<int> (262, 262).withCentre ({ 210, 345 }));
-    presetBar->setBounds (0, 470, baseWidth, 50);
+    if (presetBar != nullptr)
+        presetBar->setBounds (0, 470, baseWidth, 50);
     presetTags->setBounds (juce::Rectangle<int> (200, 22).withCentre ({ 210, 448 })); // in the ring's opening
     if (toggleChips != nullptr)
         toggleChips->setBounds (juce::Rectangle<int> (200, 26).withCentre ({ 210, 448 }));
@@ -291,7 +294,7 @@ void OneKnobEditor::updateFromParameters (double dt, bool snap)
     knob->setBeatPhase (mascot->getState().playing ? mascot->getState().beatPhase : 0.0f);
 
     // Tags: the active side's signature (bipolar), nothing at the centre
-    const int preset = proc.getPresetParameter().getIndex();
+    const int preset = proc.hasPresetParameter() ? proc.getPresetParameter().getIndex() : 0;
     const float target = proc.macroFor (proc.getAmountParameter().getValue());
     const int side = proc.getConfig().bipolar ? (target < 0.0f ? -1 : (target > 0.0f ? 1 : 0)) : 1;
     if (preset != shownPreset || side != shownSide)
@@ -322,5 +325,14 @@ void OneKnobEditor::snapForSnapshot()
     updateFromParameters (0.0, true);
     lastSaturation = palette.saturation;
     canvas->repaint();
+}
+} // namespace gk
+
+namespace gk
+{
+void OneKnobEditor::addToCanvas (juce::Component& c, juce::Rectangle<int> bounds)
+{
+    canvas->addAndMakeVisible (c);
+    c.setBounds (bounds);
 }
 } // namespace gk
