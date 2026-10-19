@@ -31,6 +31,12 @@ PewPreset PewPreset::fromJson (const juce::var& root)
     p.damping = juce::jlimit (0.0f, 1.0f, num ("damping", p.damping));
     p.reverbMax = juce::jlimit (0.0f, 1.0f, num ("reverbMax", p.reverbMax));
     p.delayFeedback = juce::jlimit (0.0f, 0.9f, num ("delayFeedback", p.delayFeedback));
+    p.linearGlide = root.getProperty ("glide", "exp").toString() == "linear";
+    p.glideMs = juce::jlimit (5.0f, 2000.0f, num ("glideMs", p.glideMs));
+    p.holdMs = juce::jlimit (0.0f, 1000.0f, num ("holdMs", p.holdMs));
+    p.detuneCents = juce::jlimit (-100.0f, 100.0f, num ("detuneCents", p.detuneCents));
+    p.detuneMix = juce::jlimit (0.0f, 1.0f, num ("detuneMix", p.detuneMix));
+    p.drive = juce::jlimit (0.0f, 1.0f, num ("drive", p.drive));
     return p;
 }
 
@@ -47,7 +53,7 @@ void PewVoice::start (const Start& s) noexcept
     sr = s.sampleRate;
     osc = p.osc;
     order = s.order;
-    const double fBase = baseFrequency (p, s.note);
+    fBase = baseFrequency (p, s.note);
     const double nyquistGuard = 0.45 * sr;
     // The glide scales with the knob at both ends: at 0 % the tom is flat
     // (fStart = fEnd = fBase), at 100 % it falls from +sweepOct to endOct.
@@ -55,6 +61,20 @@ void PewVoice::start (const Start& s) noexcept
     fEnd = juce::jmin (nyquistGuard, fBase * std::pow (2.0, (double) p.endOct * s.amount));
     glide = fStart - fEnd;
     glideCoeff = std::exp (-1.0 / (p.pitchTauMs * 0.001 * sr));
+    // Linear glide (the disco lazer): from +sweepOct to endOct (both scaled
+    // by the knob) at a steady rate, reached at glideMs, and on
+    linear = p.linearGlide;
+    octNow = std::log2 (fStart / fBase);
+    octEnd = std::log2 (fEnd / fBase);
+    octStep = (octEnd - octNow) / juce::jmax (1.0, p.glideMs * 0.001 * sr);
+    holdLen = (int) std::round (p.holdMs * 0.001 * sr);
+    ratio2 = std::pow (2.0, p.detuneCents / 1200.0);
+    mix2 = p.detuneMix;
+    phase2 = 0.0;
+    lp2.reset();
+    driveK = 1.0 + 3.0 * p.drive;
+    driveBias = 0.2 * p.drive;
+    driveNorm = 1.0 / (driveK * (1.0 - std::pow (std::tanh (driveK * driveBias), 2.0)));
 
     env = 1.0;
     decayCoeff = std::exp (-1.0 / (p.decayMs * 0.001 * sr));
@@ -87,12 +107,6 @@ void PewVoice::fadeOut (int samples) noexcept
     fadeLeft = fadeLeft >= 0 ? juce::jmin (fadeLeft, fadeLen) : fadeLen;
 }
 
-float PewVoice::pitchPosition() const noexcept
-{
-    const double range = fStart - fEnd;
-    return range > 1.0e-9 ? (float) juce::jlimit (0.0, 1.0, glide / range) : 0.0f;
-}
-
 namespace
 {
     inline double polyBlep (double t, double dt) noexcept
@@ -111,43 +125,82 @@ namespace
     }
 } // namespace
 
+double PewVoice::oscillator (double ph, double inc, gk::TptSvf& filter) noexcept
+{
+    switch (osc)
+    {
+        case PewPreset::Osc::sine: return std::sin (juce::MathConstants<double>::twoPi * ph);
+        case PewPreset::Osc::triangle: return 1.0 - 4.0 * std::abs (ph - 0.5);
+        case PewPreset::Osc::square:
+        {
+            double sq = ph < 0.5 ? 1.0 : -1.0;
+            sq += polyBlep (ph, inc) - polyBlep (std::fmod (ph + 0.5, 1.0), inc);
+            return filter.processLowpass (sq, lpCoeffs);
+        }
+        case PewPreset::Osc::fm:
+        {
+            if (&filter == &lp) // the modulator follows the main oscillator
+            {
+                modPhase += inc * fmRatio;
+                modPhase -= std::floor (modPhase);
+                fmIndex *= fmCoeff;
+            }
+            return std::sin (juce::MathConstants<double>::twoPi * ph + fmIndex * std::sin (juce::MathConstants<double>::twoPi * modPhase));
+        }
+    }
+    return 0.0;
+}
+
+float PewVoice::pitchPosition() const noexcept
+{
+    if (linear)
+    {
+        const double range = std::log2 (fStart / fBase) - octEnd;
+        return std::abs (range) > 1.0e-9 ? (float) juce::jlimit (0.0, 1.0, (octNow - octEnd) / range) : 0.0f;
+    }
+    const double range = fStart - fEnd;
+    return range > 1.0e-9 ? (float) juce::jlimit (0.0, 1.0, glide / range) : 0.0f;
+}
+
+
 float PewVoice::render() noexcept
 {
     if (! active)
         return 0.0f;
 
-    // Pitch: fEnd + (fStart - fEnd) e^(-t / tau)
-    const double f = fEnd + glide;
-    glide *= glideCoeff;
+    // Pitch: exponential "pew", fEnd + (fStart - fEnd) e^(-t / tau), or the
+    // disco lazer's steady slide
+    double f;
+    if (linear)
+    {
+        // keeps sliding at the same rate past glideMs, as the reference does
+        // while it fades (glideMs sets the rate: the depth is reached there)
+        f = juce::jlimit (5.0, 0.45 * sr, fBase * std::exp2 (octNow));
+        octNow += octStep;
+    }
+    else
+    {
+        f = fEnd + glide;
+        glide *= glideCoeff;
+    }
     const double inc = f / sr;
     phase += inc; // advanced first: the very first sample is not a zero
     phase -= std::floor (phase);
-
-    double v = 0.0;
-    switch (osc)
+    double v = oscillator (phase, inc, lp);
+    if (mix2 > 0.0)
     {
-        case PewPreset::Osc::sine: v = std::sin (juce::MathConstants<double>::twoPi * phase); break;
-        case PewPreset::Osc::triangle: v = 1.0 - 4.0 * std::abs (phase - 0.5); break;
-        case PewPreset::Osc::square:
-        {
-            double sq = phase < 0.5 ? 1.0 : -1.0;
-            sq += polyBlep (phase, inc) - polyBlep (std::fmod (phase + 0.5, 1.0), inc);
-            v = lp.processLowpass (sq, lpCoeffs);
-            break;
-        }
-        case PewPreset::Osc::fm:
-        {
-            modPhase += inc * fmRatio;
-            modPhase -= std::floor (modPhase);
-            v = std::sin (juce::MathConstants<double>::twoPi * phase + fmIndex * std::sin (juce::MathConstants<double>::twoPi * modPhase));
-            fmIndex *= fmCoeff;
-            break;
-        }
+        // a second oscillator a few cents away: the slow beating of the reference
+        phase2 += inc * ratio2;
+        phase2 -= std::floor (phase2);
+        v = (1.0 - 0.5 * mix2) * v + 0.5 * mix2 * oscillator (phase2, inc * ratio2, lp2);
     }
+    if (driveK > 1.0)
+        v = (std::tanh (driveK * (v + driveBias)) - std::tanh (driveK * driveBias)) * driveNorm;
 
-    // Amplitude: 1 ms attack, then e^(-t / decay)
+    // Amplitude: 1 ms attack, held for holdMs, then e^(-t / decay)
     const double a = env * juce::jmin (1.0, (double) (n + 1) / attackLen);
-    env *= decayCoeff;
+    if (n >= holdLen)
+        env *= decayCoeff;
 
     // Laser click: high-passed noise, 4 ms, only when the knob is up
     double click = 0.0;

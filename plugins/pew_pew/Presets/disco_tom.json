@@ -13,5 +13,9 @@
   "damping": 0.4,
   "reverbMax": 0.45,
   "delayFeedback": 0.4,
-  "level": 0.9
+  "level": 1.38,
+  "holdMs": 15,
+  "drive": 0.2,
+  "detuneCents": 8,
+  "detuneMix": 0.3
 }

@@ -15,6 +15,13 @@ struct PewPreset
     float lpHz = 2200.0f;                                   // square: 2nd-order low-pass
     float fmRatio = 1.41f, fmIndex = 3.0f, fmTauMs = 120.0f;  // FM
     float roomSize = 0.55f, damping = 0.4f, reverbMax = 0.45f, delayFeedback = 0.40f;
+    // The disco "lazer" shape (from the reference, DECISIONS.md): a held note
+    // that slides down at a steady rate instead of a fast exponential drop
+    bool linearGlide = false;  // pitch: linear in octaves from start to end over glideMs
+    float glideMs = 120.0f;
+    float holdMs = 0.0f;       // amplitude: held at full level, then the decay
+    float detuneCents = 0.0f, detuneMix = 0.0f; // second oscillator (beating, width)
+    float drive = 0.0f;        // soft asymmetric saturation (2nd harmonic)
 
     static PewPreset fromJson (const juce::var& root);
 };
@@ -54,16 +61,21 @@ public:
     bool isFading() const noexcept { return fadeLeft >= 0; }
     std::int64_t getOrder() const noexcept { return order; }
     float pitchPosition() const noexcept;
-    double frequency() const noexcept { return fEnd + glide; }
+    double frequency() const noexcept { return linear ? fBase * std::pow (2.0, octNow) : fEnd + glide; }
 
     static double baseFrequency (const PewPreset& p, int note) noexcept;
 
 private:
+    double oscillator (double ph, double inc, gk::TptSvf& filter) noexcept;
+    gk::TptSvf lp2;
     PewPreset::Osc osc = PewPreset::Osc::sine;
     bool active = false;
     std::int64_t order = 0;
-    double sr = 48000.0, phase = 0.0, modPhase = 0.0;
+    double sr = 48000.0, phase = 0.0, modPhase = 0.0, phase2 = 0.0, ratio2 = 1.0, mix2 = 0.0;
     double fStart = 0.0, fEnd = 0.0, glide = 0.0, glideCoeff = 0.0;
+    bool linear = false;
+    double octNow = 0.0, octStep = 0.0, octEnd = 0.0, fBase = 0.0, driveK = 0.0, driveBias = 0.0, driveNorm = 1.0;
+    int holdLen = 0;
     double env = 0.0, decayCoeff = 0.0, fmIndex = 0.0, fmCoeff = 0.0, fmRatio = 1.41;
     int attackLen = 48, n = 0, clickLen = 192, releaseLeft = -1, releaseLen = 240, fadeLeft = -1, fadeLen = 1;
     float gain = 0.0f, clickGain = 0.0f;

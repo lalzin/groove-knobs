@@ -121,6 +121,110 @@ juce::AudioBuffer<float> renderPattern (const juce::MidiMessageSequence& beats, 
     return gk::MidiRenderer::render (proc, events, length, s.sr, opt);
 }
 
+/** analyze: onsets, then for each event a short-time spectral track
+    (strongest partial with parabolic interpolation, 2nd / 3rd partials,
+    spectral centroid, level), to describe a reference "pew". */
+int analyze (const juce::File& file, int maxEvents, double frameMs, double fromSeconds = -1.0, double toSeconds = -1.0)
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> r (fm.createReaderFor (file));
+    if (r == nullptr)
+    {
+        std::cerr << "cannot read " << file.getFullPathName() << "\n";
+        return 1;
+    }
+    const double sr = r->sampleRate;
+    const int n = (int) r->lengthInSamples;
+    juce::AudioBuffer<float> buf ((int) r->numChannels, n);
+    r->read (&buf, 0, n, 0, true, true);
+    std::vector<float> x ((size_t) n), side ((size_t) n);
+    for (int i = 0; i < n; ++i)
+    {
+        const float l = buf.getSample (0, i), rr = buf.getNumChannels() > 1 ? buf.getSample (1, i) : l;
+        x[(size_t) i] = 0.5f * (l + rr);
+        side[(size_t) i] = 0.5f * (l - rr);
+    }
+    double eM = 0, eS = 0;
+    for (int i = 0; i < n; ++i) { eM += x[(size_t) i] * x[(size_t) i]; eS += side[(size_t) i] * side[(size_t) i]; }
+    std::printf ("%s: %.2f s, %.0f Hz, %d ch, side/mid energy %.1f dB, peak %.1f dBFS\n", file.getFileName().toRawUTF8(), n / sr, sr,
+                 buf.getNumChannels(), 10 * std::log10 (eS / (eM + 1e-20) + 1e-20), juce::Decibels::gainToDecibels (buf.getMagnitude (0, n)));
+
+    // onsets: 2 ms RMS rising 12 dB over the previous 20 ms, 60 ms apart
+    const int hop = juce::jmax (1, (int) (0.002 * sr));
+    std::vector<double> env;
+    for (int i = 0; i + hop <= n; i += hop)
+    {
+        double e = 0;
+        for (int k = 0; k < hop; ++k) e += x[(size_t) (i + k)] * x[(size_t) (i + k)];
+        env.push_back (std::sqrt (e / hop));
+    }
+    std::vector<int> onsets;
+    if (fromSeconds >= 0.0)
+        onsets = { (int) (fromSeconds * sr), (int) (toSeconds * sr) };
+    else
+    for (size_t k = 10; k < env.size(); ++k)
+    {
+        double prev = 1e-9;
+        for (size_t j = k - 10; j < k; ++j) prev = std::max (prev, env[j]);
+        if (env[k] > 1e-3 && env[k] > 4.0 * prev && (onsets.empty() || (int) k * hop - onsets.back() > (int) (0.06 * sr)))
+            onsets.push_back ((int) k * hop);
+    }
+    std::printf ("%zu onsets:", onsets.size());
+    for (int o : onsets) std::printf (" %.3f", o / sr);
+    std::printf ("\n");
+
+    constexpr int order = 12, size = 1 << order;
+    juce::dsp::FFT fft (order);
+    std::vector<float> w ((size_t) (2 * size));
+    const int step = juce::jmax (1, (int) (frameMs * 0.001 * sr));
+    for (int e = 0; e < (int) onsets.size() && e < maxEvents; ++e)
+    {
+        const int start = fromSeconds >= 0.0 ? onsets[(size_t) e] : juce::jmax (0, onsets[(size_t) e] - (int) (0.005 * sr));
+        const int end = e + 1 < (int) onsets.size() ? onsets[(size_t) e + 1] : n;
+        double peakLevel = 0;
+        std::printf ("\n-- event %d at %.3f s (to %.3f s)\n   t(ms)  level(dB)  f1(Hz)  f2(Hz)  f3(Hz)  centroid(Hz)  hf>4k(%%)\n", e, onsets[(size_t) e] / sr, end / sr);
+        for (int pos = start; pos + 512 < end; pos += step)
+        {
+            std::fill (w.begin(), w.end(), 0.0f);
+            const int len = 1024; // ~23 ms analysis window, zero padded to 4096
+            double lvl = 0;
+            for (int i = 0; i < len && pos + i < n; ++i)
+            {
+                const float v = x[(size_t) (pos + i)];
+                lvl += v * v;
+                w[(size_t) i] = v * (0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * i / len));
+            }
+            lvl = std::sqrt (lvl / len);
+            peakLevel = std::max (peakLevel, lvl);
+            const double db = juce::Decibels::gainToDecibels (lvl, -120.0);
+            if (fromSeconds < 0.0 && db < juce::Decibels::gainToDecibels (peakLevel) - 50.0)
+                break;
+            fft.performFrequencyOnlyForwardTransform (w.data(), true);
+            // three strongest local maxima (above 30 Hz)
+            std::vector<std::pair<float, double>> peaks;
+            double num = 0, den = 0, hf = 0;
+            for (int k = 2; k < size / 2 - 1; ++k)
+            {
+                const double f = k * sr / size, m = w[(size_t) k];
+                num += f * m * m; den += m * m;
+                if (f > 4000.0) hf += m * m;
+                if (f > 30.0 && w[(size_t) k] > w[(size_t) k - 1] && w[(size_t) k] >= w[(size_t) k + 1])
+                {
+                    const double a = w[(size_t) k - 1], b = w[(size_t) k], c = w[(size_t) k + 1];
+                    const double d = 0.5 * (a - c) / (a - 2 * b + c + 1e-20);
+                    peaks.push_back ({ w[(size_t) k], (k + d) * sr / size });
+                }
+            }
+            std::sort (peaks.begin(), peaks.end(), [] (auto& a, auto& b) { return a.first > b.first; });
+            auto fq = [&] (size_t i) { return i < peaks.size() && peaks[i].first > 0.05f * peaks[0].first ? peaks[i].second : 0.0; };
+            std::printf ("  %6.1f   %7.1f  %7.1f %7.1f %7.1f   %8.0f      %5.1f\n", (pos - onsets[(size_t) e]) * 1000.0 / sr, db, fq (0), fq (1), fq (2),
+                         num / (den + 1e-20), 100.0 * hf / (den + 1e-20));
+        }
+    }
+    return 0;
+}
+
 int presetIndex (const juce::String& v)
 {
     if (v.containsOnly ("0123456789"))
@@ -163,6 +267,10 @@ int main (int argc, char** argv)
         }
         return writeWav (cwd.getChildFile (args.positional[2]), renderPattern (beats, s), s.sr) ? 0 : 1;
     }
+
+    if (cmd == "analyze" && args.positional.size() >= 2)
+        return analyze (juce::File (args.positional[1]), args.options.containsKey ("from") ? 1 : (int) args.num ("events", 3), args.num ("step", 5.0),
+                        args.num ("from", -1.0), args.num ("to", -1.0));
 
     if (cmd == "sweep")
     {

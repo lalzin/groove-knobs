@@ -241,10 +241,10 @@ TEST_CASE ("PP 3. Presets: five distinct spectral envelopes, none close to Laser
     WARN ("smallest distance between presets: " << minDistance);
 }
 
-TEST_CASE ("PP 4. Glide at 100 %: from fStart down to fEnd with pitchTauMs", "[pp][glide]")
+TEST_CASE ("PP 4. Glide at 100 %: from fStart to fEnd, exponential (pitchTauMs) or steady (glideMs)", "[pp][glide]")
 {
     const double sr = 48000.0;
-    for (int preset : { 0, 4 }) // sine presets
+    for (int preset : { 0, 1, 4 }) // sine presets: exponential (Disco Tom), steady (Laser Pew, Deep Drop)
     {
         auto p = makeProc (preset, 1.0f);
         const auto& pd = p->getPewDsp().getPresetData (preset);
@@ -256,9 +256,10 @@ TEST_CASE ("PP 4. Glide at 100 %: from fStart down to fEnd with pitchTauMs", "[p
         int checked = 0;
         for (const auto& [t, hz] : f)
         {
-            if (t > 0.3)
+            if (t > (pd.linearGlide ? 0.9 * pd.glideMs * 0.001 : 0.3))
                 break;
-            const double expected = fEnd + (fStart - fEnd) * std::exp (-t / (pd.pitchTauMs * 0.001));
+            const double expected = pd.linearGlide ? fStart * std::pow (fEnd / fStart, t / (pd.glideMs * 0.001))
+                                                   : fEnd + (fStart - fEnd) * std::exp (-t / (pd.pitchTauMs * 0.001));
             worst = juce::jmax (worst, std::abs (hz - expected) / expected);
             ++checked;
         }
