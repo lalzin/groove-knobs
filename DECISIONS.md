@@ -291,3 +291,10 @@ Une ligne par décision : **contexte** — choix — raison.
 - **5 presets de plus** : Syndrum 76 (sinus 294 Hz, +2 → −1 oct, τ 28 ms, 140 ms), Bubble Pop (sinus, glissement régulier 0,7 oct en 60 ms, UP par défaut), Arcade Zap (carré 440 Hz filtré à 6 kHz, +2 → −1 oct, drive), Disco Cowbell (deux carrés 540 Hz et +680 cents à parts égales, glissement infime, 90 ms ; `detuneCents` élargi à ±1200), Siren Sweep (triangle 392 Hz, −1 oct en 900 ms, tenue 400 ms, désaccord 25 cents).
 - **Distances** : Syndrum 76 était à 0,200 de Disco Tom et 0,202 de Deep Drop → plus aigu, plus court, chute plus vive ; plus petite distance des 10 : 0,205 (Disco Tom ↔ Space Toms, inchangée).
 - **Niveaux** : les 10 presets entre −21,6 et −19,6 dB RMS sur le pattern à 50 %, crêtes ≤ −1,5 dBFS (les sons courts — Bubble Pop, Disco Cowbell, Syndrum 76 — limités par leur crête).
+
+## Pew Pew — nouvelles frappes de Tomi selon l'énergie (2026-10-19)
+- **Planches d'Alan** : deux planches 4 × 4 de frappes (une main, deux mains) ; chaque ligne = une frappe en 4 temps (baguette levée, descente, impact avec étincelles, accompagnement). Remplacent toutes les poses éveillées ; on garde les 3 poses de sommeil.
+- **Énergie** = knob × (0,55 + 0,45 × vélocité) → 8 styles, du plus calme au plus fou : une main (joyeux, malin, yeux étoiles, crispé → étourdi), puis deux mains dans le même ordre (lignes 1, 3, 2, 4 de chaque planche).
+- **Déroulé** : l'impact s'affiche dès la note (le son commence avec elle) pendant 110 ms, puis l'accompagnement jusqu'à 260 ms, puis la baguette levée (prête) ; en lecture sans notes il bat le tempo (levée / descente). Les fantômes d'ECHO rejouent la frame d'impact.
+- **Tambour déplacé** là où les baguettes frappent : mesuré sur les frames d'impact (étincelles : 65–82 % de la largeur, 81–90 % de la hauteur, pieds à 97 %) → tom basse posé au sol juste derrière son pied droit, peau à 86 % de la hauteur, baguettes et étincelles par-dessus. Le grand saut et les anciennes poses ne sont plus utilisés.
+- Remarque : dans la ligne « yeux étoiles » à une main, la 3e frame garde la baguette levée (dessin de la planche) ; laissé tel quel.

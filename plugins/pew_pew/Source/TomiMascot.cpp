@@ -41,20 +41,6 @@ double TomiMascot::echoSeconds() noexcept
     return PewPewDsp::divisionBeats (proc.getDivisionParameter().getIndex()) * 60.0 / bpm;
 }
 
-int TomiMascot::hitPose (float amount) const noexcept
-{
-    // The knob sets how wild the hit is
-    if (amount < 0.12f)
-        return strikeHit;                                 // 0 %: a plain, quiet strike
-    if (amount < 0.37f)
-        return twirl;                                     // 25 %: stick twirl, smile
-    if (amount < 0.62f)
-        return sparkleFirst + (hitIndex & 1);             // 50 %: bigger, head in it
-    if (amount < 0.87f)
-        return sticksUpFirst + (hitIndex & 1);            // 75 %: full swing, stars
-    return jump;                                          // 100 %: euphoric jump
-}
-
 int TomiMascot::chooseFrame (float amount, float bypass, bool musicOn)
 {
     juce::ignoreUnused (musicOn);
@@ -72,6 +58,7 @@ int TomiMascot::chooseFrame (float amount, float bypass, bool musicOn)
             hitTime = s.time - hitOverride;
             hitVelocity = 1.0f;
             hitPitch = 1.0f;
+            hitLevel = levelFor (amount, 1.0f);
             ++hitIndex;
         }
     }
@@ -83,11 +70,12 @@ int TomiMascot::chooseFrame (float amount, float bypass, bool musicOn)
         hitPitch = juce::jmax (tel.pitchPosition.load (std::memory_order_relaxed), amount);
         ++hitIndex;
         recentHits[(size_t) (recentCount % (int) recentHits.size())] = s.time;
-        recentPoses[(size_t) (recentCount % (int) recentPoses.size())] = hitPose (amount);
+        hitLevel = levelFor (amount, hitVelocity);
+        recentPoses[(size_t) (recentCount % (int) recentPoses.size())] = frameOf (hitLevel, impact);
         ++recentCount;
-        mutableState().squash = -0.06f * hitVelocity; // the force of the hit
-        // stars from 75 %, sparkles everywhere at 100 %
-        int burst = amount >= 0.62f ? (int) (4 + 8 * amount * hitVelocity) : 0;
+        mutableState().squash = -0.05f * hitVelocity; // the force of the hit
+        // stars from the skin at high energy, everywhere at the top
+        int burst = hitLevel >= 5 ? 3 + 2 * (hitLevel - 4) : 0;
         const auto fig = getFigureArea();
         const auto drum = drumArea (fig);
         for (auto& st : stars)
@@ -96,7 +84,7 @@ int TomiMascot::chooseFrame (float amount, float bypass, bool musicOn)
                 break;
             if (st.life > 0.0f)
                 continue;
-            const bool everywhere = amount >= 0.87f && random.nextFloat() < 0.5f;
+            const bool everywhere = hitLevel >= 7 && random.nextFloat() < 0.5f;
             st.pos = everywhere ? juce::Point<float> (getWidth() * random.nextFloat(), getHeight() * random.nextFloat() * 0.8f)
                                 : drum.getCentre().translated ((random.nextFloat() - 0.5f) * drum.getWidth(), -drum.getHeight() * 0.3f);
             const float ang = juce::MathConstants<float>::pi * (1.1f + 0.8f * random.nextFloat());
@@ -136,35 +124,32 @@ int TomiMascot::chooseFrame (float amount, float bypass, bool musicOn)
     }
     bypassSince = -1.0;
 
-    // The hit: raised -> strike (knob pose) -> lift, ~170 ms
-    if (since >= 0.0 && since < 0.17)
-        return since < 0.11 ? hitPose (amount) : (amount < 0.12f ? strikeLift : hitPose (amount));
+    // The hit: impact at once (the sound starts with the note), then the
+    // follow-through, then the stick back up, ready
+    if (since >= 0.0 && since < 0.11)
+        return frameOf (hitLevel, impact);
+    if (since >= 0.0 && since < 0.26)
+        return frameOf (hitLevel, follow);
 
-    // Between hits
-    if (s.playing && since > 1.0 && amount < 0.62f)
+    // Between hits: ready, in the style of the knob's energy (velocity of
+    // the last hit kept); tapping the tempo while the host plays without notes
+    const int level = since >= 0.0 && since < 2.0 ? hitLevel : levelFor (amount, 0.8f);
+    if (s.playing && since > 1.0)
     {
-        // tapping along with the tempo
         const int beat = (int) std::floor (s.time * getFeatures().bpm.load() / 60.0);
-        return (beat & 1) ? strikeUp : strikeRaised;
+        return frameOf (level, (beat & 1) ? downswing : raised);
     }
-    if (amount >= 0.62f)
-        return since < 1.2 ? enthusiasm : (amount >= 0.87f ? enthusiasm : smile);
-    if (amount >= 0.12f)
-        return smile;
-    // calm: little glances / blinks every 2 to 6 s
-    if (s.time > idleFlip)
-    {
-        idleFrame = calmFirst + random.nextInt (4);
-        idleFlip = s.time + 2.0 + 4.0 * random.nextDouble();
-    }
-    return idleFrame;
+    return frameOf (level, raised);
 }
 
 juce::Rectangle<float> TomiMascot::drumArea (juce::Rectangle<float> fig) const noexcept
 {
-    // A disco floor tom at Tomi's side (to the right, half behind him)
-    const float w = fig.getHeight() * 0.62f, h = w * 0.62f;
-    return juce::Rectangle<float> (w, h).withCentre ({ fig.getCentreX() + fig.getWidth() * 0.36f, fig.getBottom() - h * 0.62f });
+    // A low floor tom where the sticks land on the impact frames (measured
+    // on the sprites: 65-82 % of the width, 81-90 % of the height, feet at
+    // 97 %): its skin at ankle height, just behind his right foot
+    const float w = fig.getWidth() * 0.58f, h = fig.getHeight() * 0.17f;
+    const float skinY = fig.getY() + fig.getHeight() * 0.86f;
+    return { fig.getX() + fig.getWidth() * 0.78f - w * 0.5f, skinY - h * 0.18f, w, h };
 }
 
 void TomiMascot::paintBehind (juce::Graphics& g, const State& s, juce::Rectangle<float> fig)
@@ -240,7 +225,7 @@ void TomiMascot::paintBehind (juce::Graphics& g, const State& s, juce::Rectangle
 
     // ECHO: ghosts of Tomi replaying the hit at the echo times
     const float echo = proc.getEchoParameter().getValue() * awake;
-    if (echo > 0.02f && numFrames() > jump)
+    if (echo > 0.02f && numFrames() > sleepFirst)
     {
         const int ghosts = juce::jlimit (1, 3, 1 + (int) std::floor (echo * 2.99f));
         const double gap = echoSeconds();
@@ -260,13 +245,7 @@ void TomiMascot::paintBehind (juce::Graphics& g, const State& s, juce::Rectangle
 
 void TomiMascot::paintCharacter (juce::Graphics& g, juce::Rectangle<float> fig, const juce::AffineTransform& animation)
 {
-    const auto& s = getState();
-    // 100 %: he jumps on every hit
-    const double since = s.time - hitTime;
-    float hop = 0.0f;
-    if (s.amount >= 0.87f && since >= 0.0 && since < 0.3 && s.bypass < 0.5f)
-        hop = -fig.getHeight() * 0.09f * (float) std::sin (juce::MathConstants<double>::pi * since / 0.3) * hitVelocity;
-    drawFrame (g, s.frame, fig, animation.followedBy (juce::AffineTransform::translation (0.0f, hop)), 1.0f);
+    drawFrame (g, getState().frame, fig, animation, 1.0f);
 }
 
 void TomiMascot::paintOverlay (juce::Graphics& g, const State& s, juce::Rectangle<float> fig)
