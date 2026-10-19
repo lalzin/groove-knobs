@@ -1,0 +1,25 @@
+{
+  "name": "Arcade Zap",
+  "osc": "square",
+  "baseHz": 440.0,
+  "tuneOffset": 0,
+  "sweepOct": 2.0,
+  "endOct": -1.0,
+  "pitchTauMs": 25,
+  "holdMs": 0,
+  "decayMs": 150,
+  "lpHz": 6000,
+  "drive": 0.4,
+  "clickDb": -18,
+  "velCurve": 1.2,
+  "roomSize": 0.3,
+  "damping": 0.6,
+  "reverbMax": 0.3,
+  "delayFeedback": 0.4,
+  "level": 2.11,
+  "toggles": {
+    "up": false,
+    "long": false,
+    "roll": false
+  }
+}

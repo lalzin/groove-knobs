@@ -34,7 +34,7 @@ PewPreset PewPreset::fromJson (const juce::var& root)
     p.linearGlide = root.getProperty ("glide", "exp").toString() == "linear";
     p.glideMs = juce::jlimit (5.0f, 2000.0f, num ("glideMs", p.glideMs));
     p.holdMs = juce::jlimit (0.0f, 1000.0f, num ("holdMs", p.holdMs));
-    p.detuneCents = juce::jlimit (-100.0f, 100.0f, num ("detuneCents", p.detuneCents));
+    p.detuneCents = juce::jlimit (-1200.0f, 1200.0f, num ("detuneCents", p.detuneCents));
     p.detuneMix = juce::jlimit (0.0f, 1.0f, num ("detuneMix", p.detuneMix));
     p.drive = juce::jlimit (0.0f, 1.0f, num ("drive", p.drive));
     return p;
@@ -50,6 +50,7 @@ double PewVoice::baseFrequency (const PewPreset& p, int note) noexcept
 void PewVoice::start (const Start& s) noexcept
 {
     const auto& p = *s.preset;
+    const double lengthScale = s.longer ? 2.0 : 1.0; // LONG: hold and decay doubled
     sr = s.sampleRate;
     osc = p.osc;
     order = s.order;
@@ -57,8 +58,11 @@ void PewVoice::start (const Start& s) noexcept
     const double nyquistGuard = 0.45 * sr;
     // The glide scales with the knob at both ends: at 0 % the tom is flat
     // (fStart = fEnd = fBase), at 100 % it falls from +sweepOct to endOct.
-    fStart = juce::jmin (nyquistGuard, fBase * std::pow (2.0, (double) p.sweepOct * s.amount));
-    fEnd = juce::jmin (nyquistGuard, fBase * std::pow (2.0, (double) p.endOct * s.amount));
+    // Velocity also sets the depth: harder hits glide further (60 % at the
+    // softest, all of it at full velocity); UP mirrors the glide upwards
+    const double depth = s.amount * (0.6 + 0.4 * juce::jlimit (0.0f, 1.0f, s.velocity)) * (s.up ? -1.0 : 1.0);
+    fStart = juce::jmin (nyquistGuard, fBase * std::pow (2.0, (double) p.sweepOct * depth));
+    fEnd = juce::jmin (nyquistGuard, fBase * std::pow (2.0, (double) p.endOct * depth));
     glide = fStart - fEnd;
     glideCoeff = std::exp (-1.0 / (p.pitchTauMs * 0.001 * sr));
     // Linear glide (the disco lazer): from +sweepOct to endOct (both scaled
@@ -67,7 +71,7 @@ void PewVoice::start (const Start& s) noexcept
     octNow = std::log2 (fStart / fBase);
     octEnd = std::log2 (fEnd / fBase);
     octStep = (octEnd - octNow) / juce::jmax (1.0, p.glideMs * 0.001 * sr);
-    holdLen = (int) std::round (p.holdMs * 0.001 * sr);
+    holdLen = (int) std::round (p.holdMs * lengthScale * 0.001 * sr);
     ratio2 = std::pow (2.0, p.detuneCents / 1200.0);
     mix2 = p.detuneMix;
     phase2 = 0.0;
@@ -77,7 +81,7 @@ void PewVoice::start (const Start& s) noexcept
     driveNorm = 1.0 / (driveK * (1.0 - std::pow (std::tanh (driveK * driveBias), 2.0)));
 
     env = 1.0;
-    decayCoeff = std::exp (-1.0 / (p.decayMs * 0.001 * sr));
+    decayCoeff = std::exp (-1.0 / (p.decayMs * lengthScale * 0.001 * sr));
     attackLen = juce::jmax (1, (int) std::round (0.001 * sr));
     releaseLen = juce::jmax (1, (int) std::round (0.005 * sr));
     releaseLeft = -1;
@@ -310,12 +314,16 @@ void PewPewDsp::reset()
             v = PewVoice();
         for (auto& v : tails)
             v = PewVoice();
+        for (auto& r : rolls)
+            r.left = 0;
         clearEffects();
     }
 }
 
 void PewPewDsp::panic()
 {
+    for (auto& r : rolls)
+        r.left = 0;
     for (auto& v : voices)
         v.fadeOut (panicLen);
     for (auto& v : tails)
@@ -336,7 +344,7 @@ void PewPewDsp::setKnobs (const float* values, int n)
     echo = n > echoKnob ? clamp01 (values[echoKnob]) : 0.0f;
 }
 
-void PewPewDsp::noteOn (int note, float velocity, float amountNow)
+void PewPewDsp::noteOn (int note, float velocity, float amountNow, bool up, bool longer)
 {
     PewVoice* target = nullptr;
     for (auto& v : voices)
@@ -368,6 +376,8 @@ void PewPewDsp::noteOn (int note, float velocity, float amountNow)
     s.note = note;
     s.velocity = velocity;
     s.amount = amountNow;
+    s.up = up;
+    s.longer = longer;
     s.sampleRate = sampleRate;
     s.seed = (seed = seed * 1664525u + 1013904223u) | 1u;
     s.order = ++noteOrder;
@@ -441,6 +451,33 @@ void PewPewDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, co
         renderVoices (d, pos, end);
         pos = end;
     };
+    // Events of this block, sample accurate: the MIDI notes and the ROLL
+    // repeats, in time order
+    const std::int64_t clock0 = telemetry.sampleClock.load (std::memory_order_relaxed);
+    auto nextRoll = [&] (int) -> Roll*
+    {
+        Roll* best = nullptr;
+        for (auto& r : rolls)
+            if (r.left > 0 && r.next - clock0 < numSamples && (best == nullptr || r.next < best->next))
+                best = &r;
+        return best;
+    };
+    auto fireRolls = [&] (int upTo) // every repeat before `upTo` (exclusive)
+    {
+        while (auto* r = nextRoll (pos))
+        {
+            const int at = juce::jmax (pos, (int) (r->next - clock0)); // (a late one plays now)
+            if (at >= upTo)
+                break;
+            advanceTo (at);
+            r->velocity *= rollDecay;
+            noteOn (r->note, r->velocity, amountForVoices.getCurrent(), r->up, r->longer);
+            telemetry.lastTriggerSample.store (clock0 + at, std::memory_order_relaxed);
+            r->nextExact += r->step;
+            r->next = (std::int64_t) std::llround (r->nextExact);
+            --r->left;
+        }
+    };
     if (midi != nullptr)
     {
         for (const auto meta : *midi)
@@ -450,12 +487,33 @@ void PewPewDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, co
                 continue;
             if (at >= midiCount || at >= numSamples)
                 break;
+            fireRolls (at);
             advanceTo (at);
             const auto msg = meta.getMessage();
             if (msg.isNoteOn()) // (velocity 0 counts as a note-off: ignored, the pew is a one-shot)
             {
-                noteOn (msg.getNoteNumber(), msg.getFloatVelocity(), amountForVoices.getCurrent());
-                telemetry.lastTriggerSample.store (telemetry.sampleClock.load (std::memory_order_relaxed) + at, std::memory_order_relaxed);
+                const bool up = toggleAt (upToggle, at), longer = toggleAt (longToggle, at);
+                noteOn (msg.getNoteNumber(), msg.getFloatVelocity(), amountForVoices.getCurrent(), up, longer);
+                telemetry.lastTriggerSample.store (clock0 + at, std::memory_order_relaxed);
+                if (toggleAt (rollToggle, at))
+                {
+                    // ROLL: sixteenths at the host tempo, each softer
+                    Roll* slot = &rolls[0];
+                    for (auto& r : rolls)
+                        if (r.left <= 0)
+                        {
+                            slot = &r;
+                            break;
+                        }
+                    slot->step = 0.25 / juce::jmax (1.0e-9, timing.beatsPerSample);
+                    slot->nextExact = (double) (clock0 + at) + slot->step;
+                    slot->next = (std::int64_t) std::llround (slot->nextExact);
+                    slot->note = msg.getNoteNumber();
+                    slot->velocity = msg.getFloatVelocity();
+                    slot->left = rollHits - 1;
+                    slot->up = up;
+                    slot->longer = longer;
+                }
             }
             else if (msg.isAllNotesOff() || msg.isAllSoundOff())
             {
@@ -463,10 +521,13 @@ void PewPewDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, co
                     v.fadeOut (panicLen);
                 for (auto& v : tails)
                     v.fadeOut (panicLen);
+                for (auto& r : rolls)
+                    r.left = 0;
             }
         }
         midi = nullptr;
     }
+    fireRolls (numSamples);
     advanceTo (numSamples);
 
     // --- Sends -------------------------------------------------------------

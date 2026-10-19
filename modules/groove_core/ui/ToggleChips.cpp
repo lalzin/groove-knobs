@@ -53,7 +53,7 @@ private:
     const Palette& palette;
 };
 
-ToggleChips::ToggleChips (OneKnobProcessor& proc, const Palette& palette, bool showSwitches) : vertical (showSwitches)
+ToggleChips::ToggleChips (OneKnobProcessor& proc, const Palette& palette, bool showSwitches, bool column) : vertical (showSwitches || column)
 {
     // The preset toggles (a row), or the global switches (a column)
     const auto& specs = showSwitches ? proc.getConfig().switches : proc.getConfig().toggles;

@@ -48,6 +48,8 @@ public:
         int note = 60;
         float velocity = 1.0f; // 0..1
         float amount = 0.6f;   // knob, smoothed
+        bool up = false;       // UP: the glide rises instead of falling
+        bool longer = false;   // LONG: hold and decay doubled
         double sampleRate = 48000.0;
         std::uint32_t seed = 1;
         std::int64_t order = 0;
@@ -95,6 +97,10 @@ class PewPewDsp final : public gk::OneKnobEngine
 public:
     static constexpr int numVoices = 8, numTails = 4;
     static constexpr int roomKnob = 0, echoKnob = 1, divChoice = 0;
+    static constexpr int upToggle = 0, longToggle = 1, rollToggle = 2;
+    /** ROLL: a note becomes this many sixteenths, each softer. */
+    static constexpr int rollHits = 5;
+    static constexpr float rollDecay = 0.72f;
     static constexpr double stealFadeSeconds = 0.002, panicFadeSeconds = 0.005, preDelaySeconds = 0.015,
                             maxDelaySeconds = 2.0, delayCrossfadeSeconds = 0.030, smoothSeconds = 0.030;
 
@@ -109,13 +115,23 @@ public:
     void setMidi (const juce::MidiBuffer& midi, int start, int numSamples) override;
     void setKnobs (const float* values, int n) override;
     void setChoices (const int* indices, int n) override { division = n > divChoice ? indices[divChoice] : 1; }
+    void setToggleValues (const float* const* perSample, int numToggles) override
+    {
+        numToggleData = juce::jmin (3, numToggles);
+        for (int t = 0; t < numToggleData; ++t)
+            toggleData[t] = perSample[t];
+    }
     void processWet (juce::AudioBuffer<float>& buffer, int numSamples, const float* amount, const gk::BlockTiming& timing) override;
 
     PewTelemetry& getTelemetry() noexcept { return telemetry; }
     const PewPreset& getPresetData (int index) const { return presets[(size_t) juce::jlimit (0, (int) presets.size() - 1, index)]; }
 
 private:
-    void noteOn (int note, float velocity, float amountNow);
+    void noteOn (int note, float velocity, float amountNow, bool up, bool longer);
+    bool toggleAt (int toggle, int offset) const noexcept
+    {
+        return numToggleData > toggle && toggleData[toggle] != nullptr && toggleData[toggle][offset] >= 0.5f;
+    }
     void panic();
     void clearEffects();
     void renderVoices (float* out, int from, int to);
@@ -129,6 +145,13 @@ private:
     std::array<PewVoice, numTails> tails; // stolen voices, fading out
     std::int64_t noteOrder = 0;
     std::uint32_t seed = 1;
+
+    const float* toggleData[3] { nullptr, nullptr, nullptr };
+    int numToggleData = 0;
+
+    // ROLL: pending repeats (sample clock of the next one, note, velocity, left)
+    struct Roll { std::int64_t next = 0; double step = 0.0, nextExact = 0.0; int note = 60; float velocity = 1.0f; int left = 0; bool up = false, longer = false; };
+    std::array<Roll, 16> rolls {};
 
     const juce::MidiBuffer* midi = nullptr;
     int midiStart = 0, midiCount = 0;

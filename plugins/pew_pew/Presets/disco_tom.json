@@ -17,5 +17,10 @@
   "holdMs": 15,
   "drive": 0.2,
   "detuneCents": 8,
-  "detuneMix": 0.3
+  "detuneMix": 0.3,
+  "toggles": {
+    "up": false,
+    "long": false,
+    "roll": false
+  }
 }

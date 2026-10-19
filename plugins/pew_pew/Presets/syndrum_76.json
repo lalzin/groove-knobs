@@ -1,0 +1,24 @@
+{
+  "name": "Syndrum 76",
+  "osc": "sine",
+  "baseHz": 293.7,
+  "tuneOffset": 0,
+  "sweepOct": 2.0,
+  "endOct": -1.0,
+  "pitchTauMs": 28,
+  "holdMs": 0,
+  "decayMs": 140,
+  "clickDb": -34,
+  "velCurve": 1.4,
+  "drive": 0.0,
+  "roomSize": 0.5,
+  "damping": 0.5,
+  "reverbMax": 0.45,
+  "delayFeedback": 0.35,
+  "level": 1.48,
+  "toggles": {
+    "up": false,
+    "long": false,
+    "roll": false
+  }
+}

@@ -18,5 +18,10 @@
   "glide": "linear",
   "glideMs": 220,
   "holdMs": 50,
-  "drive": 0.25
+  "drive": 0.25,
+  "toggles": {
+    "up": false,
+    "long": false,
+    "roll": false
+  }
 }

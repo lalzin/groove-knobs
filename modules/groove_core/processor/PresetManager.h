@@ -38,8 +38,9 @@ struct PresetData
 
     /** Plugins with on/off toggles (unipolar): one table per toggle
         combination, "makeupDb@<mask>" (bit 0 = first toggle). `makeup` is
-        mask 0; variants[mask - 1] the others. */
-    static constexpr int maxToggles = 2;
+        mask 0; variants[mask - 1] the others. Up to 3 toggles; the makeup
+        follows the first two (instruments have no makeup). */
+    static constexpr int maxToggles = 3;
     std::array<MakeupTable, (1 << maxToggles) - 1> variants;
     std::array<bool, (1 << maxToggles) - 1> hasVariant {};
 

@@ -19,5 +19,10 @@
   "damping": 0.4,
   "reverbMax": 0.6,
   "delayFeedback": 0.4,
-  "level": 2.14
+  "level": 2.14,
+  "toggles": {
+    "up": false,
+    "long": false,
+    "roll": false
+  }
 }

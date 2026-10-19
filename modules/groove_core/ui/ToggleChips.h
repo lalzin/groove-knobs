@@ -7,8 +7,9 @@ namespace gk
 class ToggleChips : public juce::Component
 {
 public:
-    /** `showSwitches`: the global switches, stacked in a column. */
-    ToggleChips (OneKnobProcessor& processor, const Palette& palette, bool showSwitches = false);
+    /** `showSwitches`: the global switches (always stacked in a column);
+        `column`: the toggles stacked in a column too. */
+    ToggleChips (OneKnobProcessor& processor, const Palette& palette, bool showSwitches = false, bool column = false);
 
     void resized() override;
 

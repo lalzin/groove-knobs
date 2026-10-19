@@ -4,6 +4,7 @@
 //       writes the test pattern (8 bars: off-beat pews, tom fill, bass over a held note)
 //   gb_render render <in.mid> <out.wav> [--preset NAME|INDEX] [--amount 0.6] [--reverb 0]
 //                    [--delay 0] [--div 1] [--bpm 124] [--sr 48000] [--tail 3]
+//                    [--up 0|1] [--long 0|1] [--roll 0|1]   (default: the preset's chips)
 //       --div: 0 = 1/16, 1 = 1/8 dotted, 2 = 1/8, 3 = 1/4. Output: stereo 24-bit WAV.
 //   gb_render sweep [--out-dir renders/pew_pew] [--bpm 124] [--sr 48000]
 //       the pattern for every preset at 0 / 50 / 100 %, ROOM and ECHO at 30 %
@@ -102,6 +103,7 @@ struct Settings
     float amount = 0.6f, reverb = 0.0f, delay = 0.0f;
     int division = 1;
     double bpm = 124.0, sr = 48000.0, tail = 3.0;
+    int up = -1, longer = -1, roll = -1; // -1: the preset's default
 };
 
 juce::AudioBuffer<float> renderPattern (const juce::MidiMessageSequence& beats, const Settings& s)
@@ -113,6 +115,10 @@ juce::AudioBuffer<float> renderPattern (const juce::MidiMessageSequence& beats, 
     set (proc.getRoomParameter(), s.reverb);
     set (proc.getEchoParameter(), s.delay);
     set (proc.getDivisionParameter(), (float) s.division);
+    proc.setCurrentProgram (s.preset); // the preset's chip defaults...
+    if (s.up >= 0) set (proc.getUpParameter(), (float) s.up); // ...unless forced
+    if (s.longer >= 0) set (proc.getLongParameter(), (float) s.longer);
+    if (s.roll >= 0) set (proc.getRollParameter(), (float) s.roll);
     const auto events = pp::beatsToSamples (beats, s.bpm, s.sr);
     const double lastBeat = beats.getNumEvents() > 0 ? beats.getEndTime() : 0.0;
     const int length = (int) std::ceil ((lastBeat * 60.0 / s.bpm + s.tail) * s.sr);
@@ -259,6 +265,9 @@ int main (int argc, char** argv)
         s.bpm = bpm;
         s.sr = args.num ("sr", 48000.0);
         s.tail = args.num ("tail", 3.0);
+        s.up = (int) args.num ("up", -1.0);
+        s.longer = (int) args.num ("long", -1.0);
+        s.roll = (int) args.num ("roll", -1.0);
         const auto beats = readMidi (cwd.getChildFile (args.positional[1]));
         if (beats.getNumEvents() == 0)
         {

@@ -168,6 +168,8 @@ Le **pew disco** en instrument : chaque note MIDI joue un tom électronique qui 
 - La note règle la hauteur (le Do 60 = la hauteur de base du preset), 8 voix ; une 9e note reprend la plus ancienne avec un fondu de 2 ms.
 - **ROOM** : la reverb (son mix maximal dépend du preset). **ECHO** : un écho stéréo calé sur le tempo, avec **SYNC** = 1/16, 1/8 pointée (défaut), 1/8 ou 1/4. Changer de preset ne touche ni ROOM, ni ECHO, ni SYNC.
 - All Notes Off / reset : coupure propre en 5 ms.
+- Chips (sous ROOM, chaque preset a ses valeurs par défaut) : **UP** retourne le glissement (le pew monte au lieu de descendre) ; **LONG** double la tenue et la décroissance ; **ROLL** transforme chaque note en roulement de doubles-croches au tempo (5 coups, chacun plus doux).
+- La **vélocité** règle aussi la profondeur du glissement : un coup fort glisse plus loin (60 % de la profondeur au plus doux).
 
 | Preset | Pour quoi |
 |---|---|
@@ -176,6 +178,11 @@ Le **pew disco** en instrument : chaque note MIDI joue un tom électronique qui 
 | Robo Zap | carré filtré qui glisse profond et régulier : effet robot, pour les fills |
 | Space Toms | FM métallique à longue queue, pour les breaks et les nappes rythmiques |
 | Deep Drop | un sub qui glisse lentement d'une octave et demie, pour les basses et les drops |
+| Syndrum 76 | le tom électronique de la fin des années 70 : sinus pur, chute vive, court |
+| Bubble Pop | un « bloop » court qui monte (UP par défaut), pour les fills funky |
+| Arcade Zap | carré brillant, glissement rapide, lo-fi : le laser de jeu d'arcade |
+| Disco Cowbell | deux carrés désaccordés (~540 / 800 Hz) : une cloche disco jouable en hauteur |
+| Siren Sweep | glissement très long et lent avec un léger flottement : la sirène dub, pour les breaks |
 
 Mascotte : **Tomi**, le batteur disco. Il frappe à chaque note, plus fort avec la vélocité ; sa pose suit le knob (coup tranquille à 0 %, tour de baguette, étincelles, baguettes en l'air, saut euphorique à 100 %). Son tambour (dessiné par le code) se soulève avec le pitch, des ondes au sol suivent ROOM, des « fantômes » de Tomi rejouent le coup aux temps de l'écho. En bypass, il s'endort à côté du tambour.
 

@@ -1,0 +1,28 @@
+{
+  "name": "Siren Sweep",
+  "osc": "triangle",
+  "baseHz": 392.0,
+  "tuneOffset": 0,
+  "glide": "linear",
+  "sweepOct": 0.0,
+  "endOct": -1.0,
+  "glideMs": 900,
+  "pitchTauMs": 20,
+  "holdMs": 400,
+  "decayMs": 600,
+  "detuneCents": 25,
+  "detuneMix": 0.5,
+  "drive": 0.25,
+  "clickDb": -60,
+  "velCurve": 1.1,
+  "roomSize": 0.75,
+  "damping": 0.4,
+  "reverbMax": 0.5,
+  "delayFeedback": 0.5,
+  "level": 0.85,
+  "toggles": {
+    "up": false,
+    "long": false,
+    "roll": false
+  }
+}

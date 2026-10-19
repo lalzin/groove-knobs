@@ -21,5 +21,8 @@ public:
     juce::RangedAudioParameter& getRoomParameter() noexcept { return getKnobParameter (PewPewDsp::roomKnob); }
     juce::RangedAudioParameter& getEchoParameter() noexcept { return getKnobParameter (PewPewDsp::echoKnob); }
     juce::AudioParameterChoice& getDivisionParameter() noexcept { return getChoiceParameter (PewPewDsp::divChoice); }
+    juce::AudioParameterBool& getUpParameter() noexcept { return getToggleParameter (PewPewDsp::upToggle); }
+    juce::AudioParameterBool& getLongParameter() noexcept { return getToggleParameter (PewPewDsp::longToggle); }
+    juce::AudioParameterBool& getRollParameter() noexcept { return getToggleParameter (PewPewDsp::rollToggle); }
 };
 } // namespace pp

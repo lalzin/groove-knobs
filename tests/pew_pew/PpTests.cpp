@@ -12,7 +12,7 @@ using pp::PewPewProcessor;
 
 namespace
 {
-constexpr int numPresets = 5;
+constexpr int numPresets = 10;
 
 struct Hit
 {
@@ -560,8 +560,8 @@ TEST_CASE ("PP 14. State round trip; presets keep ROOM / ECHO / division", "[pp]
     c.setCurrentProgram (2);
     CHECK (c.getRoomParameter().getValue() == Catch::Approx (0.5f)); // a preset does not touch the user's sends
     CHECK (c.getEchoParameter().getValue() == Catch::Approx (0.25f));
-    const char* ids[] { "amount", "preset", "reverb", "delay", "delayDiv", "bypass" };
-    for (int i = 0; i < 6; ++i)
+    const char* ids[] { "amount", "preset", "up", "long", "roll", "reverb", "delay", "delayDiv", "bypass" };
+    for (int i = 0; i < 9; ++i)
         CHECK (dynamic_cast<juce::RangedAudioParameter*> (c.getParameters()[i])->getParameterID() == ids[i]);
     // instrument bus: no input, stereo or mono output
     juce::AudioProcessor::BusesLayout stereo, mono, withInput;
@@ -611,6 +611,114 @@ TEST_CASE ("PP 15. All notes off / reset: clean 5 ms cut", "[pp][panic]")
     for (int i = (int) (0.006 * sr); i < after.getNumSamples(); ++i)
         late = juce::jmax (late, std::abs (after.getSample (0, i)));
     CHECK (juce::exactlyEqual (late, 0.0f));
+}
+
+TEST_CASE ("PP 17. UP mirrors the glide, LONG doubles the length, velocity sets the depth", "[pp][chips]")
+{
+    const double sr = 48000.0;
+    auto pitchAt = [&] (PewPewProcessor& p, int velocity, double t)
+    {
+        const auto out = render (p, { { 0, 60, velocity } }, (int) (0.3 * sr), sr);
+        const auto f = zeroCrossingFrequency (out.getReadPointer (0), (int) (0.006 * sr), out.getNumSamples(), sr);
+        double best = 0.0, dist = 1.0e9;
+        for (const auto& [time, hz] : f)
+            if (std::abs (time - t) < dist)
+            {
+                dist = std::abs (time - t);
+                best = hz;
+            }
+        return best;
+    };
+    // Laser Pew (steady glide, falls): with UP it rises by the same amount
+    {
+        auto down = makeProc (0, 1.0f), up = makeProc (0, 1.0f);
+        setParam (up->getUpParameter(), 1.0f);
+        const double f0 = pp::PewVoice::baseFrequency (down->getPewDsp().getPresetData (0), 60);
+        const double fd = pitchAt (*down, 127, 0.1), fu = pitchAt (*up, 127, 0.1);
+        INFO ("at 100 ms: down " << fd << " Hz, up " << fu << " Hz, base " << f0);
+        CHECK (fd < 0.85 * f0);
+        CHECK (fu > 1.15 * f0);
+        CHECK (std::log2 (fu / f0) == Catch::Approx (-std::log2 (fd / f0)).epsilon (0.05));
+    }
+    // velocity: a soft hit glides less far (60 % of the depth at the softest)
+    {
+        auto p = makeProc (0, 1.0f);
+        const double f0 = pp::PewVoice::baseFrequency (p->getPewDsp().getPresetData (0), 60);
+        auto q = makeProc (0, 1.0f);
+        const double hard = std::log2 (pitchAt (*p, 127, 0.1) / f0), soft = std::log2 (pitchAt (*q, 32, 0.1) / f0);
+        INFO ("depth at 100 ms: hard " << hard << " oct, soft " << soft << " oct");
+        CHECK (std::abs (soft) < 0.85 * std::abs (hard));
+        CHECK (std::abs (soft) > 0.6 * std::abs (hard));
+    }
+    // LONG: the hit lasts about twice as long (-40 dB point)
+    for (int preset : { 0, 1, 5 })
+    {
+        auto shortP = makeProc (preset, 0.6f), longP = makeProc (preset, 0.6f);
+        setParam (longP->getLongParameter(), 1.0f);
+        auto endOf = [&] (PewPewProcessor& p)
+        {
+            const auto out = render (p, { { 0, 60 } }, (int) (3.0 * sr), sr);
+            const float peak = out.getMagnitude (0, 0, out.getNumSamples());
+            int last = 0;
+            for (int i = 0; i < out.getNumSamples(); ++i)
+                if (std::abs (out.getSample (0, i)) > 0.01f * peak)
+                    last = i;
+            return last / sr;
+        };
+        const double a = endOf (*shortP), b = endOf (*longP);
+        INFO ("preset " << preset << ": " << a << " s, LONG " << b << " s");
+        CHECK (b / a == Catch::Approx (2.0).epsilon (0.15));
+    }
+}
+
+TEST_CASE ("PP 18. ROLL: one note becomes sixteenths at the host tempo, each softer", "[pp][chips]")
+{
+    const double sr = 48000.0;
+    for (double bpm : { 120.0, 124.0 })
+    {
+        auto p = makeProc (1, 0.0f); // Disco Tom, flat: clean onsets
+        setParam (p->getRollParameter(), 1.0f);
+        const int at = 1000;
+        const auto out = render (*p, { { at, 60 } }, (int) (1.5 * sr), sr, 512, bpm);
+        const int counter = p->getPewDsp().getTelemetry().triggerCounter.load();
+        CHECK (counter == pp::PewPewDsp::rollHits);
+        // each repeat starts exactly one sixteenth after the previous one:
+        // the output jumps away from the decaying sum right there
+        auto single = makeProc (1, 0.0f);
+        const double step = 0.25 * 60.0 / bpm * sr;
+        float firstPeak = 0.0f;
+        for (int k = 0; k < pp::PewPewDsp::rollHits; ++k)
+        {
+            const int start = at + (int) std::llround (k * step);
+            // the peak of the k-th hit, compared with the previous one
+            float peak = 0.0f;
+            for (int i = start; i < start + (int) (0.01 * sr); ++i)
+                peak = juce::jmax (peak, std::abs (out.getSample (0, i)));
+            INFO ("bpm " << bpm << ", hit " << k << " at " << start << ": peak " << peak);
+            CHECK (peak > 0.01f); // every repeat sounds (the overlap of their tails makes peaks a poor loudness measure)
+            if (k == 0)
+                firstPeak = peak;
+        }
+        juce::ignoreUnused (firstPeak);
+        // each repeat is softer: the last one plays at rollDecay^(hits - 1) of the note
+        CHECK (p->getPewDsp().getTelemetry().lastTriggerVelocity.load()
+               == Catch::Approx (std::pow (pp::PewPewDsp::rollDecay, (float) (pp::PewPewDsp::rollHits - 1))).epsilon (0.01));
+        // the first repeat starts exactly one sixteenth after the note: until
+        // then the output is the single hit, sample for sample
+        const auto alone = render (*single, { { at, 60 } }, (int) (1.5 * sr), sr, 512, bpm);
+        const int firstRepeat = at + (int) std::llround (step);
+        int firstDiff = -1;
+        for (int i = 0; i < out.getNumSamples() && firstDiff < 0; ++i)
+            if (! juce::exactlyEqual (out.getSample (0, i), alone.getSample (0, i)))
+                firstDiff = i;
+        INFO ("first repeat expected at " << firstRepeat << ", output departs at " << firstDiff);
+        CHECK (firstDiff == firstRepeat);
+        // nothing starts before the first repeat
+        bool quietBefore = true;
+        for (int i = 0; i < at; ++i)
+            quietBefore = quietBefore && juce::exactlyEqual (out.getSample (0, i), 0.0f);
+        CHECK (quietBefore);
+    }
 }
 
 TEST_CASE ("PP 16. CPU: 8 voices + reverb + delay, stereo 48 kHz", "[pp][cpu]")

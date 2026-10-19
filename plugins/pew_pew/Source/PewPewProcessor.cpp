@@ -14,6 +14,9 @@ namespace
         cfg.companyName = GK_COMPANY_NAME;
         cfg.presets = std::move (presets);
         cfg.isInstrument = true;
+        // UP: the glide rises; LONG: hold and decay doubled; ROLL: a note
+        // becomes a tempo roll of sixteenths. Each preset gives its defaults.
+        cfg.toggles = { { "up", "Up", "UP" }, { "long", "Long", "LONG" }, { "roll", "Roll", "ROLL" } };
         cfg.defaultAmount = 0.6f;
         cfg.knobs = { { "reverb", "Room", "ROOM", 0.0f }, { "delay", "Echo", "ECHO", 0.0f } };
         cfg.choices = { { "delayDiv", "Echo division", "SYNC", { "1/16", "1/8 D", "1/8", "1/4" }, 1 } };
@@ -35,6 +38,11 @@ gk::PresetManager PewPewProcessor::loadBuiltInPresets()
         { PPPresets::robo_zap_json, PPPresets::robo_zap_jsonSize },
         { PPPresets::space_toms_json, PPPresets::space_toms_jsonSize },
         { PPPresets::deep_drop_json, PPPresets::deep_drop_jsonSize },
+        { PPPresets::syndrum_76_json, PPPresets::syndrum_76_jsonSize },
+        { PPPresets::bubble_pop_json, PPPresets::bubble_pop_jsonSize },
+        { PPPresets::arcade_zap_json, PPPresets::arcade_zap_jsonSize },
+        { PPPresets::disco_cowbell_json, PPPresets::disco_cowbell_jsonSize },
+        { PPPresets::siren_sweep_json, PPPresets::siren_sweep_jsonSize },
     };
     gk::PresetManager pm;
     for (const auto& e : entries)

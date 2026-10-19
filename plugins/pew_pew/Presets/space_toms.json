@@ -19,5 +19,10 @@
   "level": 0.62,
   "holdMs": 20,
   "detuneCents": -14,
-  "detuneMix": 0.35
+  "detuneMix": 0.35,
+  "toggles": {
+    "up": false,
+    "long": false,
+    "roll": false
+  }
 }
