@@ -391,7 +391,7 @@ void BigKnob::mouseUp (const juce::MouseEvent&)
 void BigKnob::mouseDoubleClick (const juce::MouseEvent& e)
 {
     if (! e.mods.isPopupMenu())
-        setFromUser (origin());
+        setFromUser (param.getDefaultValue()); // the default (= the rest position, except e.g. Pew Pew's 60 %)
 }
 
 void BigKnob::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)

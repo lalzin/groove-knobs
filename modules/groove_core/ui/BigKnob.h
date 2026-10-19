@@ -10,8 +10,8 @@ namespace gk
     dragged.
 
     Interaction: vertical drag (250 px = full travel), Shift or Cmd/Ctrl for
-    ×10 finer control, wheel (1 % per notch), double-click = rest position
-    (0 %, or the centre when bipolar, with a small magnet there), arrow keys
+    ×10 finer control, wheel (1 % per notch), double-click = the parameter's default
+    (usually 0 %, or the centre when bipolar, with a small magnet there), arrow keys
     when focused, right-click = host context menu (MIDI learn, automation).
     Every edit is wrapped in begin/endChangeGesture via ParameterAttachment. */
 class BigKnob : public juce::Component
