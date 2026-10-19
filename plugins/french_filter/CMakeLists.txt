@@ -73,6 +73,11 @@ juce_add_plugin(FrenchFilter
     NEEDS_MIDI_OUTPUT           FALSE
     IS_MIDI_EFFECT              FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    # Standalone app: audio input under the hardened runtime (signed builds)
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT  "The standalone app processes your audio input."
+    HARDENED_RUNTIME_ENABLED    TRUE
+    HARDENED_RUNTIME_OPTIONS    com.apple.security.device.audio-input
     AU_MAIN_TYPE                kAudioUnitType_Effect
     VST3_CATEGORIES             Fx Filter
     DESCRIPTION                 "One-knob French Touch filter (${GK_SUITE_NAME})"

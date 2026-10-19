@@ -4,13 +4,13 @@
 #   scripts/make_installer_mac.sh [--skip-build] [FF|BT]
 #   FF = French Filter (default), BT = Boogie Trio, BW = Backwash
 #
-# Free public download: without an Apple Developer ID the package is only
-# ad-hoc signed and Gatekeeper will block it on other Macs (users would have
-# to right-click → Open, or allow it in System Settings → Privacy & Security). To sign and
-# notarise, export before running:
-#   DEV_ID_APP="Developer ID Application: Your Name (TEAMID)"
-#   DEV_ID_INSTALLER="Developer ID Installer: Your Name (TEAMID)"
-#   NOTARY_PROFILE="profile-name"   # created once with: xcrun notarytool store-credentials
+# Signing: the "Developer ID Application" and "Developer ID Installer"
+# certificates are found in the keychain automatically (or set DEV_ID_APP /
+# DEV_ID_INSTALLER). Notarisation uses the keychain profile NOTARY_PROFILE
+# (default "groove-knobs-notary", created once with
+#   xcrun notarytool store-credentials groove-knobs-notary --apple-id <email> --team-id <TEAMID>
+# ). Without certificates the package is ad-hoc signed: fine on your own Macs,
+# blocked by Gatekeeper on others. UNSIGNED=1 forces the ad-hoc build.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ids="$ROOT/cmake/GrooveIds.cmake"
@@ -23,6 +23,14 @@ get() {
   done
   printf '%s' "$v"
 }
+# Developer ID identities from the keychain, unless given
+if [[ "${UNSIGNED:-0}" != 1 ]]; then
+  : "${DEV_ID_APP:=$(security find-identity -v -p codesigning 2>/dev/null | sed -nE 's/.*"(Developer ID Application: [^"]+)".*/\1/p' | head -1)}"
+  : "${DEV_ID_INSTALLER:=$(security find-identity -v 2>/dev/null | sed -nE 's/.*"(Developer ID Installer: [^"]+)".*/\1/p' | head -1)}"
+  : "${NOTARY_PROFILE:=groove-knobs-notary}"
+else
+  DEV_ID_APP=""; DEV_ID_INSTALLER=""; NOTARY_PROFILE=""
+fi
 SKIP_BUILD=0; P=FF
 for a in "$@"; do
   case "$a" in
@@ -55,7 +63,10 @@ cp -R "$ART/Standalone/$PRODUCT.app" "$WORK/app/"
 for b in "$WORK/vst3/$PRODUCT.vst3" "$WORK/au/$PRODUCT.component" "$WORK/app/$PRODUCT.app"; do
   lipo -info "$b/Contents/MacOS/$PRODUCT" | grep -q "x86_64 arm64\|arm64 x86_64" || { echo "not universal: $b"; exit 1; }
   if [[ -n "${DEV_ID_APP:-}" ]]; then
-    codesign --force --deep --timestamp --options runtime --sign "$DEV_ID_APP" "$b"
+    ent=()
+    [[ "$b" == *.app ]] && ent=(--entitlements "$ROOT/installer/mac/standalone.entitlements")
+    codesign --force --deep --timestamp --options runtime ${ent[@]+"${ent[@]}"} --sign "$DEV_ID_APP" "$b"
+    codesign --verify --strict --deep "$b"
   else
     codesign --force --deep --sign - "$b"
   fi
@@ -90,9 +101,18 @@ sign=()
 [[ -n "${DEV_ID_INSTALLER:-}" ]] && sign=(--sign "$DEV_ID_INSTALLER" --timestamp)
 productbuild --distribution "$WORK/distribution.xml" --resources "$WORK/res" --package-path "$WORK" ${sign[@]+"${sign[@]}"} "$OUT"
 
-if [[ -n "${NOTARY_PROFILE:-}" && -n "${DEV_ID_INSTALLER:-}" ]]; then
-  xcrun notarytool submit "$OUT" --keychain-profile "$NOTARY_PROFILE" --wait
-  xcrun stapler staple "$OUT"
+if [[ -n "${DEV_ID_INSTALLER:-}" ]]; then
+  pkgutil --check-signature "$OUT" | sed -n 1,4p
+  if [[ -n "${NOTARY_PROFILE:-}" ]] && xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
+    # Apple scans the package; "Accepted" or the script stops
+    xcrun notarytool submit "$OUT" --keychain-profile "$NOTARY_PROFILE" --wait | tee "$WORK/notary.log"
+    grep -q "status: Accepted" "$WORK/notary.log" || { echo "notarisation failed: xcrun notarytool log <id> --keychain-profile $NOTARY_PROFILE"; exit 1; }
+    xcrun stapler staple "$OUT"
+    xcrun stapler validate "$OUT"
+    spctl --assess --type install -vv "$OUT"
+  else
+    echo "NOTE: signed but NOT notarised (no notary profile \"$NOTARY_PROFILE\" in the keychain)."
+  fi
 fi
 
 # Companion zip for the website: pkg + licences
