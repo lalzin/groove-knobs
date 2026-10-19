@@ -128,18 +128,21 @@ int TomiMascot::chooseFrame (float amount, float bypass, bool musicOn)
     // follow-through, then the stick back up, ready
     if (since >= 0.0 && since < 0.11)
         return frameOf (hitLevel, impact);
-    if (since >= 0.0 && since < 0.26)
-        return frameOf (hitLevel, follow);
+    if (since >= 0.0 && since < 0.6)
+        return frameOf (hitLevel, follow); // the release holds, in the hit's style
 
-    // Between hits: ready, in the style of the knob's energy (velocity of
-    // the last hit kept); tapping the tempo while the host plays without notes
-    const int level = since >= 0.0 && since < 2.0 ? hitLevel : levelFor (amount, 0.8f);
-    if (s.playing && since > 1.0)
+    // Between hits: the energy of now (knob, velocity of the last note), no
+    // jump after a while. The rest pose matches it: the stick raised, except
+    // in the strained -> dizzy rows whose first frame is a tired face (wrong
+    // right after a wild hit): there he stays dizzy.
+    const int level = levelFor (amount, hitTime > -5.0 ? hitVelocity : 0.8f);
+    const bool dizzyRow = level == 3 || level == 7;
+    if (s.playing && since > 1.0 && ! dizzyRow)
     {
         const int beat = (int) std::floor (s.time * getFeatures().bpm.load() / 60.0);
         return frameOf (level, (beat & 1) ? downswing : raised);
     }
-    return frameOf (level, raised);
+    return frameOf (level, dizzyRow ? follow : raised);
 }
 
 juce::Rectangle<float> TomiMascot::drumArea (juce::Rectangle<float> fig) const noexcept

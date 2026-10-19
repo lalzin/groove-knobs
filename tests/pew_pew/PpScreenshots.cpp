@@ -99,7 +99,7 @@ int main (int argc, char** argv)
     {
         std::vector<std::pair<juce::String, juce::Image>> row;
         setParam (proc.getAmountParameter(), amount);
-        for (float ago : { 0.03f, 0.12f, 0.6f })
+        for (float ago : { 0.03f, 0.3f, 1.5f })
         {
             const auto img = shoot (proc, 1.0f, ago);
             row.push_back ({ juce::String (juce::roundToInt (amount * 100.0f)) + " %, " + juce::String (juce::roundToInt (ago * 1000.0f)) + " ms after the hit", img });
