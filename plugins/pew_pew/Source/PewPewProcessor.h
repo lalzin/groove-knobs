@@ -20,6 +20,7 @@ public:
     PewPewDsp& getPewDsp() noexcept { return static_cast<PewPewDsp&> (getEngine()); }
     juce::RangedAudioParameter& getRoomParameter() noexcept { return getKnobParameter (PewPewDsp::roomKnob); }
     juce::RangedAudioParameter& getEchoParameter() noexcept { return getKnobParameter (PewPewDsp::echoKnob); }
+    juce::RangedAudioParameter& getVolumeParameter() noexcept { return getKnobParameter (PewPewDsp::volumeKnob); }
     juce::AudioParameterChoice& getDivisionParameter() noexcept { return getChoiceParameter (PewPewDsp::divChoice); }
     juce::AudioParameterBool& getUpParameter() noexcept { return getToggleParameter (PewPewDsp::upToggle); }
     juce::AudioParameterBool& getLongParameter() noexcept { return getToggleParameter (PewPewDsp::longToggle); }

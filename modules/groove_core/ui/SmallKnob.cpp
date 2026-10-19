@@ -45,7 +45,7 @@ void SmallKnob::paint (juce::Graphics& g)
     const bool showValue = isMouseOverOrDragging();
     g.setFont (GrooveFonts::font (showValue ? 12.0f : 11.0f).withExtraKerningFactor (0.08f));
     g.setColour (pal (showValue ? pal.text : colour).withAlpha (0.95f));
-    g.drawText (showValue ? juce::String (juce::roundToInt (v * 100.0f)) + " %" : caption, b.withTop (b.getBottom() - captionH), juce::Justification::centred);
+    g.drawText (showValue ? getParameter().getCurrentValueAsText() : caption, b.withTop (b.getBottom() - captionH), juce::Justification::centred);
     if (hasKeyboardFocus (false))
     {
         g.setColour (pal (pal.text).withAlpha (0.5f));

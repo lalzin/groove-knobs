@@ -171,12 +171,29 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
     for (const auto& t : cfg.switches)
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { t.id, 1 }, t.name, t.defaultOn));
     for (const auto& k : cfg.knobs)
+    {
+        juce::NormalisableRange<float> range (k.minimum, k.maximum);
+        range.skew = k.skew;
+        const bool db = k.unit == "dB";
+        const float minimum = k.minimum;
         layout.add (std::make_unique<juce::AudioParameterFloat> (
-            juce::ParameterID { k.id, 1 }, k.name, juce::NormalisableRange<float> (0.0f, 1.0f), k.defaultValue,
+            juce::ParameterID { k.id, 1 }, k.name, range, k.defaultValue,
             juce::AudioParameterFloatAttributes()
-                .withStringFromValueFunction ([] (float v, int) { return juce::String (juce::roundToInt (v * 100.0f)) + " %"; })
-                .withValueFromStringFunction ([] (const juce::String& t)
-                                              { return juce::jlimit (0.0f, 1.0f, t.trim().trimCharactersAtEnd ("% ").getFloatValue() / 100.0f); })));
+                .withLabel (db ? "dB" : "%")
+                .withStringFromValueFunction ([db, minimum] (float v, int)
+                                              {
+                                                  if (! db)
+                                                      return juce::String (juce::roundToInt (v * 100.0f)) + " %";
+                                                  return v <= minimum + 0.01f ? juce::String ("-inf") : juce::String (v, 1) + " dB";
+                                              })
+                .withValueFromStringFunction ([db, minimum] (const juce::String& t)
+                                              {
+                                                  const auto x = t.trim().trimCharactersAtEnd ("%dB ").trim();
+                                                  if (db)
+                                                      return x.containsIgnoreCase ("inf") ? minimum : x.getFloatValue();
+                                                  return juce::jlimit (0.0f, 1.0f, x.getFloatValue() / 100.0f);
+                                              })));
+    }
     for (const auto& c : cfg.choices)
         layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { c.id, 1 }, c.name, c.options, c.defaultIndex));
     layout.add (std::make_unique<juce::AudioParameterBool> (bypassId, "Bypass", false));
@@ -313,7 +330,7 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
         chunkMidi = midi;
         if (! knobParams.empty())
         {
-            std::array<float, 8> v {};
+            std::array<float, 8> v {}; // plain values (% knobs: 0..1, dB knobs: dB)
             const int n = juce::jmin ((int) knobParams.size(), (int) v.size());
             for (int k = 0; k < n; ++k)
                 v[(size_t) k] = knobValues[(size_t) k]->load();
@@ -670,7 +687,8 @@ void OneKnobProcessor::setStateInformation (const void* data, int sizeInBytes)
     for (size_t t = 0; t < switchParams.size(); ++t)
         setParam (*switchParams[t], (bool) state.getProperty (config.switches[t].id, config.switches[t].defaultOn) ? 1.0f : 0.0f);
     for (size_t k = 0; k < knobParams.size(); ++k)
-        setParam (*knobParams[k], juce::jlimit (0.0f, 1.0f, (float) state.getProperty (config.knobs[k].id, config.knobs[k].defaultValue)));
+        setParam (*knobParams[k], juce::jlimit (config.knobs[k].minimum, config.knobs[k].maximum,
+                                                (float) state.getProperty (config.knobs[k].id, config.knobs[k].defaultValue)));
     for (size_t c = 0; c < choiceParams.size(); ++c)
     {
         // Saved by name (options may be reordered later)

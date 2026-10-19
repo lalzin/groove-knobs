@@ -18,8 +18,13 @@ namespace
         // becomes a tempo roll of sixteenths. Each preset gives its defaults.
         cfg.toggles = { { "up", "Up", "UP" }, { "long", "Long", "LONG" }, { "roll", "Roll", "ROLL" } };
         cfg.defaultAmount = 0.6f;
-        cfg.knobs = { { "reverb", "Room", "ROOM", 0.0f }, { "delay", "Echo", "ECHO", 0.0f } };
-        cfg.choices = { { "delayDiv", "Echo division", "SYNC", { "1/16", "1/8 D", "1/8", "1/4" }, 1 } };
+        // VOL: an instrument has no dry signal to balance, it needs a level
+        // (-inf .. +6 dB, 0 dB at three quarters of the travel)
+        cfg.knobs = { { "reverb", "Room", "ROOM", 0.0f },
+                      { "delay", "Echo", "ECHO", 0.0f },
+                      { "volume", "Volume", "VOL", 0.0f, -60.0f, 6.0f, 3.02f, "dB" } };
+        // shortest to longest (saved by name: older sessions keep their value)
+        cfg.choices = { { "delayDiv", "Echo division", "SYNC", { "1/16 T", "1/16", "1/8 T", "1/8", "1/8 D", "1/4" }, 4 } };
         cfg.knobLowLabel = "PLAIN";
         cfg.knobHighLabel = "PEW";
         cfg.engineAlwaysRuns = true;   // voices and tails keep ringing at any knob position

@@ -166,7 +166,7 @@ Le **pew disco** en instrument : chaque note MIDI joue un tom électronique qui 
 
 - **La note-off est ignorée** : chaque coup est un one-shot qui se joue jusqu'au bout de son enveloppe, comme un vrai tom. La longueur de la note MIDI ne change rien ; la vélocité règle la force du coup (courbe propre à chaque preset).
 - La note règle la hauteur (le Do 60 = la hauteur de base du preset), 8 voix ; une 9e note reprend la plus ancienne avec un fondu de 2 ms.
-- **ROOM** : la reverb (son mix maximal dépend du preset). **ECHO** : un écho stéréo calé sur le tempo, avec **SYNC** = 1/16, 1/8 pointée (défaut), 1/8 ou 1/4. Changer de preset ne touche ni ROOM, ni ECHO, ni SYNC.
+- **ROOM** : la reverb (son mix maximal dépend du preset). **ECHO** : un écho stéréo calé sur le tempo, avec **SYNC** = 1/16 T, 1/16, 1/8 T, 1/8, 1/8 pointée (défaut) ou 1/4. **VOL** : le niveau de sortie, de −∞ à +6 dB (0 dB par défaut, aux trois quarts). Changer de preset ne touche ni ROOM, ni ECHO, ni SYNC, ni VOL.
 - All Notes Off / reset : coupure propre en 5 ms.
 - Chips (sous ROOM, chaque preset a ses valeurs par défaut) : **UP** retourne le glissement (le pew monte au lieu de descendre) ; **LONG** double la tenue et la décroissance ; **ROLL** transforme chaque note en roulement de doubles-croches au tempo (5 coups, chacun plus doux).
 - La **vélocité** règle aussi la profondeur du glissement : un coup fort glisse plus loin (60 % de la profondeur au plus doux).

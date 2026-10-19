@@ -183,7 +183,7 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
     }
     for (size_t k = 0; k < cfg.knobs.size(); ++k)
     {
-        const float along = cfg.knobs.size() > 1 ? (float) k / (float) (cfg.knobs.size() - 1) : 0.5f;
+        const float along = cfg.knobs.size() > 1 ? juce::jmin (1.0f, (float) k) : 0.5f; // left: start of the arc, right: its end
         smallKnobs.push_back (std::make_unique<SmallKnob> (proc.getKnobParameter ((int) k), palette, cfg.knobs[k].caption, palette.arcColour (along)));
         canvas->addAndMakeVisible (*smallKnobs.back());
     }
@@ -215,6 +215,8 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
         smallKnobs[0]->setBounds (10, 296, 64, 68);
         if (smallKnobs.size() > 1)
             smallKnobs[1]->setBounds (346, 296, 64, 68);
+        if (smallKnobs.size() > 2)
+            smallKnobs[2]->setBounds (346, 226, 64, 68); // a third one above the second (e.g. the volume)
         if (choiceChips != nullptr)
             choiceChips->setBounds (338, 368, 78, 40);
         if (toggleChips != nullptr)

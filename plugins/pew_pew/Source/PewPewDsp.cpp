@@ -240,10 +240,12 @@ double PewPewDsp::divisionBeats (int index) noexcept
 {
     switch (index)
     {
-        case 0: return 0.25; // 1/16
-        case 1: return 0.75; // dotted 1/8
-        case 2: return 0.5;  // 1/8
-        default: return 1.0; // 1/4
+        case 0: return 1.0 / 6.0; // 1/16 triplet
+        case 1: return 0.25;      // 1/16
+        case 2: return 1.0 / 3.0; // 1/8 triplet
+        case 3: return 0.5;       // 1/8
+        case 4: return 0.75;      // dotted 1/8
+        default: return 1.0;      // 1/4
     }
 }
 
@@ -273,7 +275,7 @@ void PewPewDsp::prepare (double newSampleRate, int maxBlockSize, int newNumChann
     echoLp = gk::TptSvf::Coeffs::make (3000.0, sampleRate, 0.7071);
     delayFadeStep = (float) (1.0 / (delayCrossfadeSeconds * sampleRate));
     panicLen = juce::jmax (1, (int) std::round (panicFadeSeconds * sampleRate));
-    for (auto* s : { &roomMix, &echoMix, &amountForVoices, &feedback })
+    for (auto* s : { &roomMix, &echoMix, &amountForVoices, &feedback, &volume })
         s->prepare (sampleRate, smoothSeconds);
 
     for (auto& v : voices)
@@ -284,7 +286,7 @@ void PewPewDsp::prepare (double newSampleRate, int maxBlockSize, int newNumChann
     soundRecently = false;
     silentSamples = std::int64_t (1) << 40;
     panicLeft = -1;
-    for (auto* s : { &roomMix, &echoMix, &amountForVoices, &feedback })
+    for (auto* s : { &roomMix, &echoMix, &amountForVoices, &feedback, &volume })
         s->invalidate();
     amountReady = false;
     delayTime = delayTimeOld = 0.0;
@@ -342,6 +344,7 @@ void PewPewDsp::setKnobs (const float* values, int n)
 {
     room = n > roomKnob ? clamp01 (values[roomKnob]) : 0.0f;
     echo = n > echoKnob ? clamp01 (values[echoKnob]) : 0.0f;
+    volumeDb = n > volumeKnob ? values[volumeKnob] : 0.0f;
 }
 
 void PewPewDsp::noteOn (int note, float velocity, float amountNow, bool up, bool longer)
@@ -559,6 +562,7 @@ void PewPewDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, co
             roomMix.setTarget (room * p.reverbMax);
             echoMix.setTarget (echo * 0.5f);
             feedback.setTarget (p.delayFeedback);
+            volume.setTarget (volumeDb <= -59.9f ? 0.0f : dbToGain (volumeDb)); // VOL: -inf at the bottom
         }
         const float x = d[i];
         anySound = anySound || x != 0.0f;
@@ -592,8 +596,9 @@ void PewPewDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, co
             }
         }
         const float rm = roomMix.next() * fx, em = echoMix.next() * fx;
-        const float outL = x + rm * rl[i] + em * dl;
-        const float outR = x + rm * rr[i] + em * dr;
+        const float vol = volume.next();
+        const float outL = vol * (x + rm * rl[i] + em * dl);
+        const float outR = vol * (x + rm * rr[i] + em * dr);
         if (numChannels == 2 && buffer.getNumChannels() > 1)
         {
             buffer.getWritePointer (0)[i] = outL;

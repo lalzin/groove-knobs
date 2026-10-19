@@ -96,7 +96,7 @@ class PewPewDsp final : public gk::OneKnobEngine
 {
 public:
     static constexpr int numVoices = 8, numTails = 4;
-    static constexpr int roomKnob = 0, echoKnob = 1, divChoice = 0;
+    static constexpr int roomKnob = 0, echoKnob = 1, volumeKnob = 2, divChoice = 0;
     static constexpr int upToggle = 0, longToggle = 1, rollToggle = 2;
     /** ROLL: a note becomes this many sixteenths, each softer. */
     static constexpr int rollHits = 5;
@@ -114,7 +114,7 @@ public:
     void setPreset (int index) override { presetIndex = juce::jlimit (0, (int) presets.size() - 1, index); }
     void setMidi (const juce::MidiBuffer& midi, int start, int numSamples) override;
     void setKnobs (const float* values, int n) override;
-    void setChoices (const int* indices, int n) override { division = n > divChoice ? indices[divChoice] : 1; }
+    void setChoices (const int* indices, int n) override { division = n > divChoice ? indices[divChoice] : 4; }
     void setToggleValues (const float* const* perSample, int numToggles) override
     {
         numToggleData = juce::jmin (3, numToggles);
@@ -137,7 +137,7 @@ private:
     void renderVoices (float* out, int from, int to);
 
     std::vector<PewPreset> presets;
-    int presetIndex = 0, appliedReverbPreset = -1, division = 1;
+    int presetIndex = 0, appliedReverbPreset = -1, division = 4;
     double sampleRate = 48000.0;
     int numChannels = 2;
 
@@ -155,7 +155,7 @@ private:
 
     const juce::MidiBuffer* midi = nullptr;
     int midiStart = 0, midiCount = 0;
-    float room = 0.0f, echo = 0.0f;
+    float room = 0.0f, echo = 0.0f, volumeDb = 0.0f;
 
     // Effects
     juce::Reverb reverb;
@@ -167,7 +167,7 @@ private:
     float delayFade = 1.0f, delayFadeStep = 0.001f;
     gk::TptSvf echoLpL, echoLpR;
     gk::TptSvf::Coeffs echoLp;
-    gk::SmoothParam roomMix, echoMix, amountForVoices, feedback;
+    gk::SmoothParam roomMix, echoMix, amountForVoices, feedback, volume;
     std::uint32_t counter = 0;
     bool amountReady = false;
 

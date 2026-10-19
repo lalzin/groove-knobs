@@ -21,7 +21,7 @@ struct Hit
     int offAfter = -1; // note-off this many samples later (-1: none)
 };
 
-std::unique_ptr<PewPewProcessor> makeProc (int preset, float amount, float room = 0.0f, float echo = 0.0f, int div = 1)
+std::unique_ptr<PewPewProcessor> makeProc (int preset, float amount, float room = 0.0f, float echo = 0.0f, int div = 4)
 {
     auto p = std::make_unique<PewPewProcessor>();
     setParam (p->getPresetParameter(), (float) preset);
@@ -394,10 +394,10 @@ TEST_CASE ("PP 9. Note-off is ignored: one-shot", "[pp][noteoff]")
     }
 }
 
-TEST_CASE ("PP 10. Echo locked to the tempo: 1/8 = 250 ms, dotted 1/8 = 375 ms at 120 BPM", "[pp][delay]")
+TEST_CASE ("PP 10. Echo locked to the tempo at 120 BPM: 1/16 T 83 ms ... 1/8 D 375 ms, 1/4 500 ms", "[pp][delay]")
 {
     const double sr = 48000.0;
-    for (const auto& [div, ms] : std::vector<std::pair<int, double>> { { 2, 250.0 }, { 1, 375.0 }, { 0, 125.0 }, { 3, 500.0 } })
+    for (const auto& [div, ms] : std::vector<std::pair<int, double>> { { 3, 250.0 }, { 4, 375.0 }, { 1, 125.0 }, { 5, 500.0 }, { 2, 500.0 / 3.0 }, { 0, 250.0 / 3.0 } })
     {
         auto dryP = makeProc (1, 1.0f, 0.0f, 0.0f, div), wetP = makeProc (1, 1.0f, 0.0f, 1.0f, div);
         const int at = 1000;
@@ -560,8 +560,8 @@ TEST_CASE ("PP 14. State round trip; presets keep ROOM / ECHO / division", "[pp]
     c.setCurrentProgram (2);
     CHECK (c.getRoomParameter().getValue() == Catch::Approx (0.5f)); // a preset does not touch the user's sends
     CHECK (c.getEchoParameter().getValue() == Catch::Approx (0.25f));
-    const char* ids[] { "amount", "preset", "up", "long", "roll", "reverb", "delay", "delayDiv", "bypass" };
-    for (int i = 0; i < 9; ++i)
+    const char* ids[] { "amount", "preset", "up", "long", "roll", "reverb", "delay", "volume", "delayDiv", "bypass" };
+    for (int i = 0; i < 10; ++i)
         CHECK (dynamic_cast<juce::RangedAudioParameter*> (c.getParameters()[i])->getParameterID() == ids[i]);
     // instrument bus: no input, stereo or mono output
     juce::AudioProcessor::BusesLayout stereo, mono, withInput;
@@ -718,6 +718,34 @@ TEST_CASE ("PP 18. ROLL: one note becomes sixteenths at the host tempo, each sof
         for (int i = 0; i < at; ++i)
             quietBefore = quietBefore && juce::exactlyEqual (out.getSample (0, i), 0.0f);
         CHECK (quietBefore);
+    }
+}
+
+TEST_CASE ("PP 19. VOL: 0 dB by default (unchanged), -6 dB halves the level, the bottom is silence", "[pp][volume]")
+{
+    const double sr = 48000.0;
+    auto ref = makeProc (0, 0.6f, 0.4f, 0.4f);
+    CHECK (ref->getVolumeParameter().convertFrom0to1 (ref->getVolumeParameter().getValue()) == Catch::Approx (0.0f).margin (1.0e-4));
+    CHECK (ref->getVolumeParameter().getValue() == Catch::Approx (0.75f).margin (0.01)); // 0 dB at three quarters
+    const auto base = render (*ref, { { 100, 60 } }, (int) (0.6 * sr), sr);
+    for (float db : { -6.0f, -60.0f, 6.0f })
+    {
+        auto p = makeProc (0, 0.6f, 0.4f, 0.4f);
+        setParam (p->getVolumeParameter(), db);
+        const auto out = render (*p, { { 100, 60 } }, (int) (0.6 * sr), sr);
+        double err = 0.0, peak = 0.0;
+        const float g = db <= -59.9f ? 0.0f : juce::Decibels::decibelsToGain (db);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < out.getNumSamples(); ++i)
+            {
+                // (the output safety clip only acts near 0 dBFS, not reached here)
+                err = juce::jmax (err, (double) std::abs (out.getSample (ch, i) - g * base.getSample (ch, i)));
+                peak = juce::jmax (peak, (double) std::abs (out.getSample (ch, i)));
+            }
+        INFO (db << " dB: max deviation " << err << ", peak " << peak);
+        CHECK (err < 1.0e-4);
+        if (db <= -59.9f)
+            CHECK (juce::exactlyEqual (peak, 0.0));
     }
 }
 

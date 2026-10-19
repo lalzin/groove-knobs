@@ -25,6 +25,9 @@ struct KnobSpec
 {
     juce::String id, name, caption;
     float defaultValue = 0.0f;
+    /** Range and unit: percent 0..1 by default; "dB": minimum = -inf. */
+    float minimum = 0.0f, maximum = 1.0f, skew = 1.0f;
+    juce::String unit { "%" };
 };
 
 /** Static description of a Groove Knobs plugin. */

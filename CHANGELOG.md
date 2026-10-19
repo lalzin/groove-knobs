@@ -1,6 +1,7 @@
 # Changelog
 
 ## [Unreleased] — Pew Pew 0.1.0 (nouveau, premier instrument)
+- SYNC avec les triolets (1/16 T, 1/8 T) ; petit knob **VOL** (−∞ … +6 dB) : un instrument n'a pas de signal sec à doser, il lui faut un niveau.
 - Tom « pew » disco : 8 voix, glissement exponentiel ou régulier (le *disco lazer*), tenue, désaccord, saturation douce, clic laser ; ROOM (reverb) et ECHO (écho stéréo calé sur le tempo, SYNC) ; 5 presets, Laser Pew calé sur une référence d'Alan.
 - UI « Mirror » : knob PEW en peau de tambour (anneaux indigo / or, bord cerise) qui se soulève avec le pitch, halo à chaque coup au-delà de 80 %, petits knobs ROOM / ECHO, sélecteur SYNC ; mascotte Tomi (19 poses, tambour vectoriel, ondes de ROOM, fantômes d'ECHO, sommeil en bypass).
 - `gb_render` (rendu et analyse MIDI), 16 tests, pluginval 10 et auval OK.
