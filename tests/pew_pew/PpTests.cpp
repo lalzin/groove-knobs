@@ -627,7 +627,8 @@ TEST_CASE ("PP 16. CPU: 8 voices + reverb + delay, stereo 48 kHz", "[pp][cpu]")
         const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
         const double pct = 100.0 * ms / (1000.0 * length / sr);
         WARN ("preset " << preset << ": " << pct << " % of one core");
-        CHECK (pct < 5.0);
+        if (timingChecksEnforced())
+            CHECK (pct < 5.0);
         CHECK (out.getMagnitude (0, length) > 0.0f);
     }
 }

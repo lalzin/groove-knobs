@@ -7,6 +7,10 @@
 
 namespace gktest
 {
+/** Speed measurements (CPU, drawing time) fail locally but only warn on CI
+    machines (shared runners: timings are not reliable there). */
+inline bool timingChecksEnforced() { return std::getenv ("CI") == nullptr; }
+
 using Buffer = juce::AudioBuffer<float>;
 
 inline const std::array<double, 4> sampleRates { 44100.0, 48000.0, 96000.0, 192000.0 };

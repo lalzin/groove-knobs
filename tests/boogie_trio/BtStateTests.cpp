@@ -100,5 +100,6 @@ TEST_CASE ("BT UI: drawing the full trio stays cheap", "[bt][ui]")
     const double msPerFrame = (juce::Time::getMillisecondCounterHiRes() - start) / frames;
     INFO ("mascot: " << msPerFrame << " ms per frame");
     WARN ("mascot draw time at 200 %: " << msPerFrame << " ms per frame");
-    CHECK (msPerFrame < 4.0);
+    if (gktest::timingChecksEnforced())
+        CHECK (msPerFrame < 4.0);
 }

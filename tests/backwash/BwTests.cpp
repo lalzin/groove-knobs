@@ -797,7 +797,8 @@ TEST_CASE ("BW 13. CPU: cost of the convolution, stereo 48 kHz", "[bw][cpu]")
         const double audioMs = 1000.0 * in.getNumSamples() / sr;
         WARN ("preset " << preset << ": " << juce::String (100.0 * ms / audioMs, 2) << " % of one core (" << ms << " ms for "
                         << audioMs << " ms of audio)");
-        CHECK (ms < audioMs * 0.2);
+        if (timingChecksEnforced())
+            CHECK (ms < audioMs * 0.2);
     }
 }
 
