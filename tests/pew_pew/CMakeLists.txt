@@ -15,3 +15,11 @@ catch_discover_tests(pp_tests
     TEST_PREFIX "pp_"
     DISCOVERY_MODE PRE_TEST
     PROPERTIES TIMEOUT 900)
+
+# Editor screenshots: build/tests/pew_pew/pp_screenshots_artefacts/Release/pp_screenshots
+juce_add_console_app(pp_screenshots PRODUCT_NAME "pp_screenshots")
+target_sources(pp_screenshots PRIVATE PpScreenshots.cpp)
+target_include_directories(pp_screenshots PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../common)
+target_link_libraries(pp_screenshots PRIVATE PewPewCode juce::juce_recommended_config_flags)
+target_compile_definitions(pp_screenshots PRIVATE JUCE_STANDALONE_APPLICATION=1)
+gk_enable_warnings(pp_screenshots)

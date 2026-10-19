@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased] — Pew Pew 0.1.0 (nouveau, premier instrument)
+- Tom « pew » disco : 8 voix, glissement exponentiel ou régulier (le *disco lazer*), tenue, désaccord, saturation douce, clic laser ; ROOM (reverb) et ECHO (écho stéréo calé sur le tempo, SYNC) ; 5 presets, Laser Pew calé sur une référence d'Alan.
+- UI « Mirror » : knob PEW en peau de tambour (anneaux indigo / or, bord cerise) qui se soulève avec le pitch, halo à chaque coup au-delà de 80 %, petits knobs ROOM / ECHO, sélecteur SYNC ; mascotte Tomi (19 poses, tambour vectoriel, ondes de ROOM, fantômes d'ECHO, sommeil en bypass).
+- `gb_render` (rendu et analyse MIDI), 16 tests, pluginval 10 et auval OK.
+
 ## [Unreleased] — Backwash 0.1.0 (nouveau)
 - Corrigé : en LIVE, seul le premier changement de SWELL s'appliquait (le fondu du convolueur, arrêté en LIVE, mettait les IR suivantes en attente pour toujours).
 - HITS : nouvelle option « 1 2 3 4 » ; niveleur sur l'envoi (coups faibles jusqu'à +12 dB vers le plus fort) : ALL et BEAT 1 donnent enfin des souffles audibles devant les kicks. SWELL renommé en temps (1/4 BEAT … 2 BEATS, 1 BAR).
@@ -19,6 +24,7 @@
 - UI « 70s sunset » et mascotte Velvet avec ses clones.
 
 ## groove_core (suite)
+- Instruments (`isInstrument` : sortie seule, MIDI au moteur, pas de chemin sec), petits knobs globaux (`knobs`, `SmallKnob`), knob en peau de tambour (`Palette::knobRings` / `knobRim`, `BigKnob::setSkinLift`), `gk::MidiRenderer` ; `asset_prep` : régions de planche, grilles par planche, mise à l'échelle sur la première planche, effacement des lignes de grille.
 - « made by LALZIN » cliquable dans les trois plugins : ouvre www.lalzin.com/links (curseur main, soulignement au survol, `OneKnobConfig::companyUrl`).
 - Choix globaux (`OneKnobConfig::choices`, sélecteurs légendés `ChoiceChips`, `OneKnobEngine::setChoices`), interrupteurs activables par défaut ; interrupteurs globaux (`OneKnobConfig::switches`, chips en colonne), latence variable selon ces interrupteurs (`latencyForSwitches` / `setSwitches`), état additionnel par plugin (`saveExtraState` / `loadExtraState`), signature rythmique dans `BlockTiming`, `IntegerDelay` à délai variable.
 - Toggles avec valeurs par défaut par preset, bus mono → stéréo, makeup par combinaison de toggles, moteur toujours actif, télémétrie en sortie, mode hors temps réel, convolueur partitionné, chips cliquables, libellés d'extrémité, knob aux bandes ondulées et lueur qui « respire », hooks de mascotte, outil `gk_render` commun, `asset_prep` (fond uni, grilles irrégulières, fragments voisins).

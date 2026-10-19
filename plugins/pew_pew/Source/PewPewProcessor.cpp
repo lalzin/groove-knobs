@@ -16,7 +16,7 @@ namespace
         cfg.isInstrument = true;
         cfg.defaultAmount = 0.6f;
         cfg.knobs = { { "reverb", "Room", "ROOM", 0.0f }, { "delay", "Echo", "ECHO", 0.0f } };
-        cfg.choices = { { "delayDiv", "Echo division", "ECHO", { "1/16", "1/8 D", "1/8", "1/4" }, 1 } };
+        cfg.choices = { { "delayDiv", "Echo division", "SYNC", { "1/16", "1/8 D", "1/8", "1/4" }, 1 } };
         cfg.knobLowLabel = "PLAIN";
         cfg.knobHighLabel = "PEW";
         cfg.engineAlwaysRuns = true;   // voices and tails keep ringing at any knob position
@@ -30,8 +30,8 @@ gk::PresetManager PewPewProcessor::loadBuiltInPresets()
 {
     struct Entry { const char* data; int size; };
     const Entry entries[] = {
+        { PPPresets::laser_pew_json, PPPresets::laser_pew_jsonSize }, // the reference (DECISIONS.md), default
         { PPPresets::disco_tom_json, PPPresets::disco_tom_jsonSize },
-        { PPPresets::laser_pew_json, PPPresets::laser_pew_jsonSize },
         { PPPresets::robo_zap_json, PPPresets::robo_zap_jsonSize },
         { PPPresets::space_toms_json, PPPresets::space_toms_jsonSize },
         { PPPresets::deep_drop_json, PPPresets::deep_drop_jsonSize },

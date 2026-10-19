@@ -51,6 +51,16 @@ void BigKnob::setBeatPhase (float phase)
     }
 }
 
+void BigKnob::setSkinLift (float amount)
+{
+    amount = juce::jlimit (0.0f, 1.0f, amount);
+    if (std::abs (amount - skinLift) > 0.004f || (juce::exactlyEqual (amount, 0.0f) && skinLift > 0.0f))
+    {
+        skinLift = amount;
+        repaint();
+    }
+}
+
 void BigKnob::setPulse (float amount)
 {
     amount = dspmath::clamp01 (amount);
@@ -247,6 +257,32 @@ void BigKnob::paint (juce::Graphics& g)
     // Body: drop shadow, bands, outline
     g.setColour (juce::Colours::black.withAlpha (0.35f));
     g.fillEllipse (juce::Rectangle<float> (bodyRadius * 2.0f, bodyRadius * 2.0f).withCentre (centre.translated (0.0f, 5.0f)));
+    if (! palette.knobRings.empty())
+    {
+        // Drum skin seen from above: a rim, concentric rings; the centre
+        // lifts (bigger, lighter, its shadow grows) with setSkinLift
+        juce::Graphics::ScopedSaveState s (g);
+        g.reduceClipRegion (bodyOutline);
+        g.setColour (pal (palette.knobRim));
+        g.fillPath (bodyOutline);
+        const float skin = bodyRadius * 0.86f;
+        const int n = (int) palette.knobRings.size();
+        for (int i = 0; i < n; ++i)
+        {
+            const float t = (float) i / (float) n;                       // 0 outside .. 1 centre
+            const float lift = 1.0f + 0.03f * skinLift * t;               // the centre rises most
+            const float r = skin * (1.0f - t) * lift;
+            const auto c = centre.translated (0.0f, -2.5f * skinLift * t);
+            if (i > 0)
+            {
+                g.setColour (juce::Colours::black.withAlpha (0.10f + 0.12f * skinLift));
+                g.fillEllipse (juce::Rectangle<float> (2.0f * r, 2.0f * r).withCentre (c.translated (0.0f, 1.5f + 2.0f * skinLift)));
+            }
+            g.setColour (pal (palette.knobRings[(size_t) i]).brighter (0.25f * skinLift * t));
+            g.fillEllipse (juce::Rectangle<float> (2.0f * r, 2.0f * r).withCentre (c));
+        }
+    }
+    else
     {
         juce::Graphics::ScopedSaveState s (g);
         g.reduceClipRegion (bodyOutline);
@@ -255,6 +291,10 @@ void BigKnob::paint (juce::Graphics& g)
             g.setColour (pal (palette.knobBands[i % palette.knobBands.size()]));
             g.fillPath (bandPaths[i]);
         }
+    }
+    {
+        juce::Graphics::ScopedSaveState s (g);
+        g.reduceClipRegion (bodyOutline);
         // soft shading for volume
         g.setGradientFill (juce::ColourGradient (juce::Colours::white.withAlpha (0.18f), centre.x - bodyRadius * 0.5f, centre.y - bodyRadius * 0.7f,
                                                  juce::Colours::black.withAlpha (0.25f), centre.x + bodyRadius * 0.5f, centre.y + bodyRadius, true));

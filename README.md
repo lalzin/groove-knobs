@@ -160,6 +160,27 @@ Mascotte : **Swell**, le surfeur. La vague derrière lui suit le knob et le ryth
 
 Outils : `bw_render` (rendus à 100 %), captures `bw_screenshots`, installateur `scripts/make_installer_mac.sh BW`.
 
+# Pew Pew
+
+Le **pew disco** en instrument : chaque note MIDI joue un tom électronique qui glisse vers le bas, façon *disco lazer*. Le knob **PEW** va du tom plat (0 %) au pew le plus fou (100 %). Se charge sur une piste MIDI (instrument ou drum rack), **latence nulle**.
+
+- **La note-off est ignorée** : chaque coup est un one-shot qui se joue jusqu'au bout de son enveloppe, comme un vrai tom. La longueur de la note MIDI ne change rien ; la vélocité règle la force du coup (courbe propre à chaque preset).
+- La note règle la hauteur (le Do 60 = la hauteur de base du preset), 8 voix ; une 9e note reprend la plus ancienne avec un fondu de 2 ms.
+- **ROOM** : la reverb (son mix maximal dépend du preset). **ECHO** : un écho stéréo calé sur le tempo, avec **SYNC** = 1/16, 1/8 pointée (défaut), 1/8 ou 1/4. Changer de preset ne touche ni ROOM, ni ECHO, ni SYNC.
+- All Notes Off / reset : coupure propre en 5 ms.
+
+| Preset | Pour quoi |
+|---|---|
+| Laser Pew (défaut) | le pew disco de référence : la note tenue qui glisse doucement vers le bas, grosse reverb |
+| Disco Tom | le tom disco : chute rapide, un peu de chaleur |
+| Robo Zap | carré filtré qui glisse profond et régulier : effet robot, pour les fills |
+| Space Toms | FM métallique à longue queue, pour les breaks et les nappes rythmiques |
+| Deep Drop | un sub qui glisse lentement d'une octave et demie, pour les basses et les drops |
+
+Mascotte : **Tomi**, le batteur disco. Il frappe à chaque note, plus fort avec la vélocité ; sa pose suit le knob (coup tranquille à 0 %, tour de baguette, étincelles, baguettes en l'air, saut euphorique à 100 %). Son tambour (dessiné par le code) se soulève avec le pitch, des ondes au sol suivent ROOM, des « fantômes » de Tomi rejouent le coup aux temps de l'écho. En bypass, il s'endort à côté du tambour.
+
+Outils : `gb_render` (rendu MIDI : `pattern`, `render`, `sweep`, `analyze`), captures `pp_screenshots`, poses de Tomi `scripts/make_tomi_frames.sh`.
+
 ## Installateurs de la suite
 
 ```bash

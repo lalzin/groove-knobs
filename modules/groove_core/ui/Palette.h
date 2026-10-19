@@ -22,6 +22,10 @@ struct Palette
     std::vector<juce::Colour> arcStops { juce::Colour (0xfff5f3ee), juce::Colour (0xff3d7bff) };
     /** Vertical bands of the knob body (left to right); one colour = plain. */
     std::vector<juce::Colour> knobBands { juce::Colour (0xff16264f) };
+    /** Drum-skin body instead of bands: concentric rings, outside → centre,
+        inside a rim (empty = the bands). */
+    std::vector<juce::Colour> knobRings;
+    juce::Colour knobRim { 0x00000000 };
     /** Wavy band edges (amplitude in px, 0 = straight). */
     float knobBandWave = 0.0f;
     /** Colour of the knob's "breathing" glow (BigKnob::setPulse). */

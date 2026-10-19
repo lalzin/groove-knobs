@@ -37,3 +37,19 @@ baseline, ≥ 30 px between characters):
 | 2 | same sheet, row 3 | Rocking on the board while surfing, 4 poses (for the beat) | — |
 | 2 | same sheet, row 4 | **Asleep lying on the board**, floating, 4 poses (today: the bored beach pose + "Zzz") | — |
 | 3 | `swell_sheet_hd.png` | The current 12 poses in higher resolution (~330 px per character today, slightly soft at 200 % on Retina) | ≥ 2400 × 1800 px |
+
+
+# ASSETS_TODO — Pew Pew (Tomi)
+
+Tomi works today with Alan's two sheets (`plugins/pew_pew/Assets/source/tomi_sheet_1.png`,
+`tomi_sheet_2.png`, 19 poses cut by `scripts/make_tomi_frames.sh`). Nothing is blocking.
+These would make him better (same style, flat green background, 4 × 4 grid of 256 px
+cells **without grid lines**, common foot line, ≥ 2048 × 2048 for a sharp 200 % window):
+
+| Priority | File | Poses | Why |
+|---|---|---|---|
+| 1 | `tomi_hits.png`, row 1 | Strike cycle seen from the side, **the drum under the sticks**: stick raised → hitting the skin → rebound → back, 4 poses | Today the hit is a pose change in front of a drawn drum; sticks actually on the skin would read much better |
+| 1 | same sheet, row 2 | The same at full force (big smile, sticks higher), 4 poses | For 50–100 % |
+| 2 | same sheet, row 3 | Swaying and tapping the tempo, 4 poses | Today: two poses of sheet 2 alternate |
+| 2 | same sheet, row 4 | Asleep by the drum, **head on a stick**, 2 poses + 2 blinking (eyes half / closed) for the idle | The spec's sleep pose; today he sleeps sitting, sticks on his knees |
+| 3 | `tomi_sheet_hd.png` | Sheet 1 in higher resolution, without grid lines | ~250 px per character today |

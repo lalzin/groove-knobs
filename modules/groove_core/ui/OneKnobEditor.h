@@ -27,6 +27,7 @@ public:
     BigKnob& getKnob() noexcept { return *knob; }
     ToggleChips* getToggleChips() noexcept { return toggleChips.get(); }
     ToggleChips* getSwitchChips() noexcept { return switchChips.get(); }
+    SmallKnob* getSmallKnob (int index) noexcept { return juce::isPositiveAndBelow (index, (int) smallKnobs.size()) ? smallKnobs[(size_t) index].get() : nullptr; }
     PresetBar& getPresetBar() noexcept { return *presetBar; }
     MascotComponent& getMascot() noexcept { return *mascot; }
     Palette& getPalette() noexcept { return palette; }
@@ -55,6 +56,7 @@ private:
     std::unique_ptr<PresetTags> presetTags;
     std::unique_ptr<ToggleChips> toggleChips, switchChips;
     std::unique_ptr<ChoiceChips> choiceChips;
+    std::vector<std::unique_ptr<SmallKnob>> smallKnobs;
     class CreditLink;
     std::unique_ptr<CreditLink> creditLink;
     int shownPreset = -1, shownSide = -2;

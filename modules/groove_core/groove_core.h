@@ -56,6 +56,7 @@
 #include "ui/GrooveFonts.h"
 #include "ui/GrooveLookAndFeel.h"
 #include "ui/BigKnob.h"
+#include "ui/SmallKnob.h"
 #include "ui/PresetBar.h"
 #include "ui/PresetTags.h"
 #include "ui/ToggleChips.h"

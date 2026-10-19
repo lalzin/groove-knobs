@@ -179,6 +179,12 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
         choiceChips = std::make_unique<ChoiceChips> (proc, palette);
         canvas->addAndMakeVisible (*choiceChips);
     }
+    for (size_t k = 0; k < cfg.knobs.size(); ++k)
+    {
+        const float along = cfg.knobs.size() > 1 ? (float) k / (float) (cfg.knobs.size() - 1) : 0.5f;
+        smallKnobs.push_back (std::make_unique<SmallKnob> (proc.getKnobParameter ((int) k), palette, cfg.knobs[k].caption, palette.arcColour (along)));
+        canvas->addAndMakeVisible (*smallKnobs.back());
+    }
     canvas->addAndMakeVisible (*power);
     if (cfg.companyUrl.isNotEmpty())
     {
@@ -200,6 +206,16 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
         switchChips->setBounds (8, 300, 68, 60); // left of the knob
     if (choiceChips != nullptr)
         choiceChips->setBounds (336, 290, 78, 90); // right of the knob
+    if (! smallKnobs.empty())
+    {
+        // Small knobs: the first left of the big knob, the second right of
+        // it (with the choices, if any, underneath)
+        smallKnobs[0]->setBounds (10, 296, 64, 68);
+        if (smallKnobs.size() > 1)
+            smallKnobs[1]->setBounds (346, 296, 64, 68);
+        if (choiceChips != nullptr)
+            choiceChips->setBounds (338, 368, 78, 40);
+    }
     power->setBounds (baseWidth - 44, 12, 32, 32);
 
     const double frameRate = 60.0;

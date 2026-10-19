@@ -6,6 +6,10 @@
 // corners) instead of a green screen.
 // --auto-cells: characters are found automatically (irregular grids); cell
 // numbers then follow the detected characters, row by row.
+// A sheet may give a region, its own grid and a size factor:
+//   <sheet>#<x>,<y>,<w>,<h>@<cols>x<rows>*<factor>^<inset>:<cells>   (inset: see --inset, this sheet only)
+// (e.g. a single big drawing: big.png@1x1*1.1:0). --scale-to-first: every sheet
+// is brought to the first sheet's character size (default: to the largest).
 // Cells are numbered row by row. Frames are written in the order given
 // (mascot_0.png, mascot_1.png, ...); a sheet may appear several times.
 // Different sheets are scaled so the character has the same size.
@@ -353,6 +357,50 @@ std::vector<juce::Rectangle<int>> findCells (const juce::Image& keyed, int cols,
 }
 
 bool autoCells = false;
+int cellInset = 0; // --inset N: pixels trimmed from every cell edge (grid lines drawn on the sheet)
+bool eraseGrid = false; // --erase-grid: dark lines across (almost) the whole sheet become background
+
+/** Repaints grid lines (rows / columns dark over > 85 % of their length) in
+    the background colour, so the cells can be cut without trimming. */
+juce::Image eraseGridLines (const juce::Image& src, juce::Colour bg)
+{
+    auto img = src.createCopy();
+    juce::Image::BitmapData d (img, juce::Image::BitmapData::readWrite);
+    auto dark = [&d] (int x, int y)
+    {
+        const auto c = d.getPixelColour (x, y);
+        return (int) c.getRed() + c.getGreen() + c.getBlue() < 250;
+    };
+    const int w = img.getWidth(), h = img.getHeight();
+    // find the lines first (a dark row / column over > 85 % of its length),
+    // then paint them and their anti-aliased neighbours
+    std::vector<int> rowsToErase, colsToErase;
+    for (int y = 0; y < h; ++y)
+    {
+        int n = 0;
+        for (int x = 0; x < w; ++x)
+            n += dark (x, y) ? 1 : 0;
+        if (n > w * 85 / 100)
+            rowsToErase.push_back (y);
+    }
+    for (int x = 0; x < w; ++x)
+    {
+        int n = 0;
+        for (int y = 0; y < h; ++y)
+            n += dark (x, y) ? 1 : 0;
+        if (n > h * 85 / 100)
+            colsToErase.push_back (x);
+    }
+    for (int y0 : rowsToErase)
+        for (int y = juce::jmax (0, y0 - 2); y <= juce::jmin (h - 1, y0 + 2); ++y)
+            for (int x = 0; x < w; ++x)
+                d.setPixelColour (x, y, bg);
+    for (int x0 : colsToErase)
+        for (int x = juce::jmax (0, x0 - 2); x <= juce::jmin (w - 1, x0 + 2); ++x)
+            for (int y = 0; y < h; ++y)
+                d.setPixelColour (x, y, bg);
+    return img;
+}
 
 /** Cuts cell `index` (row by row) of a cols × rows sheet and keys it. */
 Frame cutFrame (const juce::Image& sheet, int cols, int rows, int index)
@@ -379,7 +427,7 @@ Frame cutFrame (const juce::Image& sheet, int cols, int rows, int index)
     }
     else
     {
-        const auto cell = sheet.getClippedImage ({ x0, y0, x1 - x0, y1 - y0 });
+        const auto cell = sheet.getClippedImage (juce::Rectangle<int> { x0, y0, x1 - x0, y1 - y0 }.reduced (cellInset));
         f.image = keyFlatBackground ? keyColour (cell, sampleBackground (sheet)) : keyGreen (cell);
         keepMainBand (f.image);
     }
@@ -411,6 +459,8 @@ int main (int argc, char** argv)
     const int targetHeight = argInt (args, "--height", 560);
     keyFlatBackground = args.contains ("--key-flat");
     autoCells = args.contains ("--auto-cells");
+    cellInset = argInt (args, "--inset", 0);
+    eraseGrid = args.contains ("--erase-grid");
 
     juce::StringArray specs;
     juce::File outDir;
@@ -427,7 +477,7 @@ int main (int argc, char** argv)
         outDir = cwd.getChildFile (args[0]);
         for (int i = 1; i < args.size(); ++i)
         {
-            if (args[i] == "--key-flat" || args[i] == "--auto-cells")
+            if (args[i] == "--key-flat" || args[i] == "--auto-cells" || args[i] == "--scale-to-first" || args[i] == "--erase-grid")
                 continue;
             if (args[i].startsWith ("--"))
             {
@@ -446,37 +496,70 @@ int main (int argc, char** argv)
     std::vector<float> sheetMedians;
     for (const auto& spec : specs)
     {
-        const auto path = spec.upToLastOccurrenceOf (":", false, false);
-        const auto sheet = juce::ImageFileFormat::loadFrom (cwd.getChildFile (path));
+        auto path = spec.upToLastOccurrenceOf (":", false, false);
+        int sheetCols = cols, sheetRows = rows;
+        float factor = 1.0f;
+        cellInset = argInt (args, "--inset", 0);
+        if (path.contains ("^"))
+        {
+            cellInset = path.fromLastOccurrenceOf ("^", false, false).getIntValue();
+            path = path.upToLastOccurrenceOf ("^", false, false);
+        }
+        if (path.contains ("@"))
+        {
+            auto grid = path.fromLastOccurrenceOf ("@", false, false);
+            path = path.upToLastOccurrenceOf ("@", false, false);
+            if (grid.contains ("*"))
+            {
+                factor = grid.fromFirstOccurrenceOf ("*", false, false).getFloatValue();
+                grid = grid.upToFirstOccurrenceOf ("*", false, false);
+            }
+            sheetCols = juce::jmax (1, grid.upToFirstOccurrenceOf ("x", false, false).getIntValue());
+            sheetRows = juce::jmax (1, grid.fromFirstOccurrenceOf ("x", false, false).getIntValue());
+        }
+        juce::Rectangle<int> region;
+        if (path.contains ("#"))
+        {
+            const auto r = juce::StringArray::fromTokens (path.fromLastOccurrenceOf ("#", false, false), ",", "");
+            path = path.upToLastOccurrenceOf ("#", false, false);
+            if (r.size() == 4)
+                region = { r[0].getIntValue(), r[1].getIntValue(), r[2].getIntValue(), r[3].getIntValue() };
+        }
+        auto sheet = juce::ImageFileFormat::loadFrom (cwd.getChildFile (path));
         if (! sheet.isValid())
         {
             std::cerr << "cannot load " << path << "\n";
             return 1;
         }
+        if (! region.isEmpty())
+            sheet = sheet.getClippedImage (region.getIntersection (sheet.getBounds())).createCopy();
+        if (eraseGrid)
+            sheet = eraseGridLines (sheet, sampleBackground (sheet));
         std::vector<int> heights;
         std::vector<Frame> sheetFrames;
         for (const auto& t : juce::StringArray::fromTokens (spec.fromLastOccurrenceOf (":", false, false), ",", ""))
         {
-            sheetFrames.push_back (cutFrame (sheet, cols, rows, t.getIntValue()));
+            sheetFrames.push_back (cutFrame (sheet, sheetCols, sheetRows, t.getIntValue()));
             heights.push_back (sheetFrames.back().box.getHeight());
         }
         // Reference height: median over all the sheet's cells (not only the selected ones)
         std::vector<int> all;
-        for (int i = 0; i < cols * rows; ++i)
-            all.push_back (cutFrame (sheet, cols, rows, i).box.getHeight());
+        for (int i = 0; i < sheetCols * sheetRows; ++i)
+            all.push_back (cutFrame (sheet, sheetCols, sheetRows, i).box.getHeight());
         std::sort (all.begin(), all.end());
         const float median = (float) all[all.size() / 2];
         sheetMedians.push_back (median);
         for (auto& f : sheetFrames)
         {
-            f.scale = 1.0f / median; // normalised later
+            f.scale = factor / median; // normalised later
             frames.push_back (std::move (f));
         }
     }
 
     // Normalise all sheets to the largest median height (no upscaling of the
     // biggest drawing), then build one canvas around the anchors.
-    const float refHeight = *std::max_element (sheetMedians.begin(), sheetMedians.end());
+    const float refHeight = args.contains ("--scale-to-first") ? sheetMedians.front()
+                                                              : *std::max_element (sheetMedians.begin(), sheetMedians.end());
     int left = 0, right = 0, up = 0, down = 0;
     for (auto& f : frames)
     {

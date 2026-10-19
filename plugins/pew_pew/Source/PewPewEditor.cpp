@@ -1,4 +1,5 @@
 #include "PewPewEditor.h"
+#include "TomiMascot.h"
 
 namespace pp
 {
@@ -17,7 +18,11 @@ gk::Palette PewPewEditor::makePalette()
     p.pointer = juce::Colour (0xff1a1a1d);
     p.plaque = juce::Colour (0xffefe6d0);
     p.arcStops = { gold, cherry };
-    p.knobBands = { indigo, gold, indigo };
+    // The PEW knob is a drum skin seen from above: cherry rim, indigo / gold rings
+    p.knobBands = { indigo };
+    p.knobRings = { indigo, gold, indigo, gold, indigo };
+    p.knobRim = cherry;
+    p.pulse = cherry; // the halo on every hit above 80 %
     p.arrowLeft = gold;
     p.arrowRight = cherry;
     p.frameLeft = gold;
@@ -28,8 +33,24 @@ gk::Palette PewPewEditor::makePalette()
 }
 
 PewPewEditor::PewPewEditor (PewPewProcessor& p)
-    : OneKnobEditor (p, makePalette(), PP_PRODUCT_NAME,
-                     [] (gk::AudioFeatures& f, const gk::Palette& palette) { return std::make_unique<gk::MascotComponent> (f, palette); })
+    : OneKnobEditor (p, makePalette(), "Pew Pew",
+                     [&p] (gk::AudioFeatures&, const gk::Palette& palette) { return std::make_unique<TomiMascot> (p, palette); }),
+      proc (p)
 {
+    getMascot().setBounds (10, 58, 400, 172); // Tomi and his drum need the whole band
+}
+
+void PewPewEditor::setHitOverride (float secondsAgo)
+{
+    static_cast<TomiMascot&> (getMascot()).setHitOverride (secondsAgo);
+}
+
+void PewPewEditor::editorTick (double)
+{
+    auto& tomi = static_cast<TomiMascot&> (getMascot());
+    const float amount = proc.getAmountParameter().getValue();
+    // The skin breathes with the pitch of each hit; above 80 % a halo pulses
+    getKnob().setSkinLift (tomi.skinLift());
+    getKnob().setPulse (amount > 0.8f ? tomi.hitEnvelope() : 0.0f);
 }
 } // namespace pp
