@@ -258,6 +258,8 @@ void OneKnobProcessor::prepareToPlay (double newSampleRate, int samplesPerBlock)
         switchGain.snap (1.0f);
         latencySwitchPending = false;
     }
+    outputGain.prepare (sampleRate, 0.02);
+    outputGain.snap (outputGainTarget());
     latency = engine->getLatencySamples();
     pendingLatency.store (latency);
     setLatencySamples (latency);
@@ -343,6 +345,8 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
         for (int k = 0; k < n; ++k)
             v[(size_t) k] = knobValues[(size_t) k]->load();
         engine->setKnobs (v.data(), n);
+        if (config.outputGainKnob >= 0)
+            outputGain.setTarget (outputGainTarget());
     }
 
     // Mono in, stereo out: the mono input feeds both channels.
@@ -573,12 +577,14 @@ void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start
             }
             const float w = dspmath::smoothstep (0.0f, 1.0f, wetGate.next()) * weightBuffer[(size_t) i];
             const float bp = bypassBuffer[(size_t) i];
+            const float vol = config.outputGainKnob >= 0 ? outputGain.next() : 1.0f;
 
             for (int ch = 0; ch < numChannels; ++ch)
             {
                 const float dry = dryBuffer.getReadPointer (ch)[i];
                 const float wet = wetBuffer.getReadPointer (ch)[i] * makeup;
-                const float mixed = SafetyClipper::process ((1.0f - w) * dry + w * wet);
+                const float sum = (1.0f - w) * dry + w * wet;
+                const float mixed = SafetyClipper::process (juce::exactlyEqual (vol, 1.0f) ? sum : sum * vol);
                 buffer.getWritePointer (ch, start)[i] = (1.0f - bp) * mixed + bp * dry;
             }
         }
@@ -589,10 +595,12 @@ void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start
         for (int i = 0; i < n; ++i)
         {
             const float bp = bypassBuffer[(size_t) i];
+            const float vol = config.outputGainKnob >= 0 ? outputGain.next() : 1.0f;
             for (int ch = 0; ch < numChannels; ++ch)
             {
                 const float dry = dryBuffer.getReadPointer (ch)[i];
-                buffer.getWritePointer (ch, start)[i] = bp >= 1.0f ? dry : (1.0f - bp) * SafetyClipper::process (dry) + bp * dry;
+                const float d = juce::exactlyEqual (vol, 1.0f) ? dry : dry * vol;
+                buffer.getWritePointer (ch, start)[i] = bp >= 1.0f ? dry : (1.0f - bp) * SafetyClipper::process (d) + bp * dry;
             }
         }
     }
@@ -712,5 +720,21 @@ void OneKnobProcessor::setStateInformation (const void* data, int sizeInBytes)
     editorScale.store (juce::jlimit (0.75f, 2.0f, (float) state.getProperty ("editorScale", 1.0f)));
 
     snapToTargets();
+}
+} // namespace gk
+
+namespace gk
+{
+float OneKnobProcessor::outputGainTarget() const noexcept
+{
+    const int k = config.outputGainKnob;
+    if (k < 0 || k >= (int) knobValues.size())
+        return 1.0f;
+    const float db = knobValues[(size_t) k]->load();
+    if (db <= config.knobs[(size_t) k].minimum + 0.01f)
+        return 0.0f;
+    // 0 dB is exactly 1 (the stored default comes back as ~-1e-6 dB through
+    // the skewed range): the 0 % bit-exact must hold
+    return std::abs (db) < 0.005f ? 1.0f : juce::Decibels::decibelsToGain (db);
 }
 } // namespace gk

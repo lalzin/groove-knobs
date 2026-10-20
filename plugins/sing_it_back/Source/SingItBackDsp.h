@@ -87,7 +87,7 @@ public:
     static constexpr int maxVoices = 12;
     static constexpr int chunk = 32; // control rate (samples), on a global grid
     // knobs / switches / choices (OneKnobConfig order)
-    static constexpr int spreadKnob = 0, humanizeKnob = 1, dropoutsKnob = 2, roomKnob = 3;
+    static constexpr int spreadKnob = 0, humanizeKnob = 1, dropoutsKnob = 2, roomKnob = 3, volumeKnob = 4; // VOL: applied by the processor
     static constexpr int snapSwitch = 0;
     static constexpr int keyChoice = 0, scaleChoice = 1, harmonyChoice = 2, voicesChoice = 3, roomSizeChoice = 4, styleChoice = 5,
                          responseChoice = 6;
@@ -99,6 +99,7 @@ public:
         std::array<Harmony::Role, 12> roles;
         float vibrato = 1.0f, offsets = 1.0f, detune = 1.0f; // x the humanized values
         float formant = 1.0f, formantSpread = 0.0f;          // grain time scale: > 1 smaller singers
+        float tune = 0.0f; // pull towards the exact scale note: 0 = the singer's own pitch (natural), 1 = hard (Robots)
     };
     static const StyleSpec& styleSpec (int style) noexcept;
     /** Response delay in beats (0 = together, 1/2 bar, 1 bar). */
@@ -142,6 +143,12 @@ private:
         bool running = false;
         float formantJitter = 0.0f; // -1..1: its own voice size within the style
         float level = 0.0f;         // telemetry: RMS of its last chunks
+        // a human singer: the harmony interval glides, each note is scooped
+        // into, the vibrato comes after the attack, the pitch and level wander
+        double interval = 0.0, scoop = 0.0, scoopTau = 0.08, noteAge = 0.0;
+        std::uint32_t lastNote = 0;
+        double wanderPhase[2] {}, wanderRate[2] { 0.2, 0.3 }, ampPhase = 0.0, ampRate = 0.25;
+        juce::Random rng { 1 };
         Harmony::Role role = Harmony::unison;
         double offsetMs = 10.0, driftPhase = 0.0, driftRate = 0.2;
         double detune = 0.0, vibHz = 5.5, vibCents = 12.0, vibPhase = 0.0;
@@ -150,7 +157,10 @@ private:
         float audible = 0.0f;            // crowd count fade (60 ms)
         float drop = 1.0f, dropTarget = 1.0f; int dropLeft = 0; // dropouts
     };
-    struct Mark { std::int64_t pos; float period, midi; }; // an analysis pitch mark (input time; midi < 0: unvoiced)
+    /** An analysis pitch mark (input time): its period, the sung pitch (< 0:
+        unvoiced) and the note it belongs to (scale note, held with hysteresis;
+        noteId changes with each new note). */
+    struct Mark { std::int64_t pos; float period, midi, note; std::uint32_t noteId; };
     static constexpr int markRing = 8192;                  // > 4 s of marks at 1100 Hz
     void designVoices();
     void makeMarks (std::int64_t available);
@@ -162,6 +172,7 @@ private:
     std::array<Voice, maxVoices> voices;
     double sampleRate = 48000.0;
     int numChannels = 2, latency = 0, halfMax = 512, gateLag = 960, maxResponse = 192000;
+    int markLag = 768; // marks trail the input by the detector's delay: each gets the pitch of its own moment
     std::int64_t clock = 0;
 
     // parameters
@@ -177,6 +188,11 @@ private:
     std::vector<Mark> marks;
     std::int64_t markCount = 0;
     double nextMark = 0.0;
+    float heldNote = -1.0f;              // the note being sung (hysteresis: no flicker on vibrato / slides)
+    std::uint32_t noteId = 0;
+    std::int64_t lastVoicedMark = -1000000;
+    juce::Random markRandom { 99 };       // unvoiced marks: irregular (no buzz)
+    float limiterEnv = 0.0f, limiterRelease = 0.001f;
     std::array<float, chunk> outL {}, outR {}, revL {}, revR {}; // the crowd of the next chunk
     double bpm = 120.0, beatsPerBar = 4.0;
     double responseDelay = 0.0; // samples

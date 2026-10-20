@@ -82,6 +82,12 @@ struct OneKnobConfig
         their indices every block (OneKnobEngine::setChoices). */
     std::vector<ChoiceSpec> choices;
 
+    /** Index of a small knob (unit "dB") used as the plugin's output volume,
+        applied after the dry / wet mix, before the safety clip (-1: none).
+        At 0 dB it is exactly transparent (the 0 % bit-exact still holds);
+        bypass stays the exact dry signal. */
+    int outputGainKnob = -1;
+
     /** false: the editor does not create or place the switch chips, small
         knobs and choice selectors (the plugin's editor lays them out itself). */
     bool editorBuildsControls = true;
@@ -250,6 +256,8 @@ private:
     std::array<const float*, PresetData::maxToggles> togglePointers {};
     LinearSmoother amountSmoother, bypassSmoother, wetGate, wetInputFade;
     SmoothParam makeupSmoother;
+    LinearSmoother outputGain; // OneKnobConfig::outputGainKnob
+    float outputGainTarget() const noexcept;
     float crossfadeWeight = 0.0f, crossfadeMaxStep = 1.0f;
     int maxBlock = 0, latency = 0, warmupRemaining = 0, currentPreset = -1;
     bool wetRunning = false;

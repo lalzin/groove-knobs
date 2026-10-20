@@ -27,7 +27,10 @@ namespace
         cfg.knobs = { { "spread", "Spread", "SPREAD", 0.6f },
                       { "humanize", "Humanize", "HUMAN", 0.5f },
                       { "dropouts", "Dropouts", "DROPS", 0.3f },
-                      { "room", "Room", "ROOM", 0.4f } };
+                      { "room", "Room", "ROOM", 0.4f },
+                      // VOL: the output level, -inf .. +12 dB (0 dB at ~70 % of the travel)
+                      { "volume", "Volume", "VOL", 0.0f, -60.0f, 12.0f, 1.96f, "dB" } };
+        cfg.outputGainKnob = 4;
         cfg.choices = { { "key", "Key", "KEY", { "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" }, 0 },
                         { "scale", "Scale", "SCALE", { "Majeure", "Mineure", "Dorienne", "Mixolydienne", "Penta majeure", "Penta mineure" }, 0 },
                         { "harmony", "Harmony", "HARMONY", { "Auto", "Octaves", "Tierces", "Quintes", "Quartes" }, 0 },

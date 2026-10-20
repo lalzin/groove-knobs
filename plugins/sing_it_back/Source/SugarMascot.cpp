@@ -14,6 +14,7 @@ SugarMascot::SugarMascot (SingItBackProcessor& p, const gk::Palette& pal) : Masc
 {
     setFrames (loadFrames());
     showSleepZ = false; // the sleeping poses have their own "Zzz"
+    motion = 0.3f;      // a diva, not a bouncing ball (Alan: "trop d'animation")
     // a quaver: head + stem + flag
     note.addEllipse (-4.0f, -2.5f, 6.5f, 5.0f);
     note.addRectangle (1.6f, -13.0f, 1.4f, 11.5f);
@@ -66,7 +67,7 @@ int SugarMascot::chooseFrame (float crowd, float bypass, bool musicOn)
         const float a = snapshot ? 1.0f : 1.0f - std::exp (-(float) dt / 0.06f);
         sg.gain += (gain - sg.gain) * a;
         sg.level += (level - sg.level) * (level > sg.level ? a * 2.0f : a * 0.5f);
-        sg.bob += (float) dt * (3.0f + 0.4f * (float) k);
+        sg.bob += (float) dt * (1.6f + 0.15f * (float) k); // a gentle sway, not a jig
         answer = juce::jmax (answer, sg.level * sg.gain);
     }
     crowdAnswer = answer;
@@ -78,7 +79,6 @@ int SugarMascot::chooseFrame (float crowd, float bypass, bool musicOn)
     {
         ++syllables;
         beatAtSyllable = beat;
-        mutableState().squash = 0.03f; // a little lift on each syllable
         if (s.time - lastVoiced > 0.6)
             phraseStart = s.time;
     }
@@ -102,34 +102,50 @@ int SugarMascot::chooseFrame (float crowd, float bypass, bool musicOn)
     }
     bypassSince = -1.0;
 
-    // Singing (or between two syllables of the same phrase): her energy is CROWD
-    const bool singing = voiced || (! preview && s.time - lastVoiced < 0.15);
+    // The pose: a "mood" (singing at an energy, answered, waiting, ...) and,
+    // within it, a pose held at least ~1.5 s (singing) or ~3 s (waiting):
+    // she moves with the phrases, not with every syllable
+    const bool singing = voiced || (! preview && s.time - lastVoiced < 0.6); // word gaps keep her singing
+    int mood = 0;
     if (singing)
+        mood = 1 + tierFor (crowd);
+    else if (s.time < heartUntil)
+        mood = 10;
+    else if (crowdAnswer > 0.15f)
+        mood = 11;
+    else
+        mood = crowd >= 0.5f ? 12 : 13;
+    const double hold = singing ? 1.5 : 3.0;
+    if (mood != currentMood)
     {
-        const int step = syllables + juce::jmax (0, beat - beatAtSyllable); // a new pose per syllable, then per beat
-        switch (tierFor (crowd))
-        {
-            case 0: return armOut + step % 4;
-            case 1: { static const int poses[] { pointingA, pointingB + 1, pointingA + 2, pointingB, pointingA + 1, pointingB + 2, pointingA + 3, pointingB + 3 };
-                      return poses[step % 8]; }
-            default: { static const int poses[] { jumpA, jumpWink, jumpA + 1, jumpA + 2, jumpWink + 1, jumpA + 3 };
-                       return poses[step % 6]; }
-        }
+        currentMood = mood;
+        poseStep = preview ? syllables : 0;
+        poseSince = s.time;
     }
-    if (s.time < heartUntil)
-        return heart;
-
-    // Silent: the crowd answering (RÉPONSE) → she points at it, arm out
-    if (crowdAnswer > 0.15f)
-        return inviting + (beat & 1);
-    // Waiting: inviting the crowd when it is big, calm otherwise (a blink now and then)
-    const int slow = (int) std::floor (s.time / 1.6);
-    if (crowd >= 0.5f)
-        return inviting + 2 + ((s.playing ? beat : slow) & 1);
+    else if (! snapshot && s.time - poseSince > hold)
+    {
+        ++poseStep;
+        poseSince = s.time;
+    }
+    const int step = poseStep;
+    switch (mood)
+    {
+        case 1: return armOut + step % 4;
+        case 2: { static const int poses[] { pointingA, pointingB + 1, pointingA + 2, pointingB, pointingA + 1, pointingB + 2, pointingA + 3, pointingB + 3 };
+                  return poses[step % 8]; }
+        case 3: { // the top: arm up, and a jump now and then
+                  static const int poses[] { pointingA, jumpA, pointingB + 1, pointingA + 2, jumpWink, pointingB };
+                  return poses[step % 6]; }
+        case 10: return heart;
+        case 11: return inviting + (step & 1);
+        case 12: return inviting + 2 + (step & 1);
+        default: break;
+    }
     const double blink = std::fmod (s.time, 4.3);
     if (! snapshot && blink < 0.16)
         return calmB + 1; // eyes closed
-    return (slow % 3 == 2) ? calmB : calmA + (slow & 1) * 2;
+    static const int calm[] { calmA, calmA + 2, calmB, calmA + 1 };
+    return calm[step % 4];
 }
 
 void SugarMascot::paintBehind (juce::Graphics& g, const State& s, juce::Rectangle<float> fig)
@@ -199,7 +215,7 @@ void SugarMascot::paintOverlay (juce::Graphics& g, const State& s, juce::Rectang
             r = r.withSizeKeepingCentre (r.getWidth() * sizeMul, r.getHeight() * sizeMul).withBottomY (r.getBottom());
             const float sing = sg.level * awake;
             // bob with what it sings, sink on a dropout
-            const float bob = (2.0f + 3.0f * sing) * std::sin (sg.bob) * awake;
+            const float bob = (0.8f + 1.4f * sing) * std::sin (sg.bob) * awake;
             r = r.translated (0.0f, -bob + (1.0f - juce::jmin (1.0f, present * 1.4f)) * r.getHeight() * 0.35f);
             const float alpha = s.bypass > 0.5f ? 0.25f : juce::jlimit (0.0f, 1.0f, 0.35f + 0.65f * present);
 

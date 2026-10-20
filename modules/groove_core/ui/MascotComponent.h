@@ -88,6 +88,9 @@ protected:
     juce::Rectangle<float> getFigureArea() const { return figureArea(); }
 
     bool showSleepZ = true; // generic floating "Zzz" in bypass
+    /** Strength of the body motion (transient bounce, stretch on a pose
+        change, beat nod): 1 = the suite's default, lower = calmer. */
+    float motion = 1.0f;
 
     /** Plugin-specific decorations, in component coordinates. `figure` is the
         area the character is drawn into (before the animation transform). */

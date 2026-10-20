@@ -33,6 +33,7 @@ private:
     std::unique_ptr<ScaleBar> scaleBar;
     std::unique_ptr<AdvancedPanel> advanced;
     std::unique_ptr<MoreButton> more;
+    std::unique_ptr<gk::SmallKnob> volume;
     float pulse = 0.0f;
     int previewDegree = -3; // screenshots: the note shown (-3 = live)
 };

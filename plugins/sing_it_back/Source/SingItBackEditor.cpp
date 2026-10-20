@@ -359,6 +359,9 @@ SingItBackEditor::SingItBackEditor (SingItBackProcessor& p)
     addToCanvas (*harmony, { 334, 290, 80, 38 });
     addToCanvas (*voices, { 334, 340, 80, 38 });
 
+    volume = std::make_unique<gk::SmallKnob> (p.getVolumeParameter(), pal, "VOL", orange);
+    addToCanvas (*volume, { 10, 386, 64, 68 });
+
     scaleBar = std::make_unique<ScaleBar> (p, pal);
     addToCanvas (*scaleBar, { 0, 460, baseWidth, 60 });
 

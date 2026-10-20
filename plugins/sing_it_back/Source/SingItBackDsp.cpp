@@ -206,7 +206,9 @@ void PitchTracker::analyse() noexcept
         }
     }
     aperiodic = bestValue;
-    isVoiced = best > 0 && bestValue < 0.25f && frameRms > 0.004;
+    // voiced: a clear period (real voices with breath / reverb reach 0.3),
+    // with hysteresis so a held note does not flicker
+    isVoiced = best > 0 && bestValue < (isVoiced ? 0.4f : 0.3f) && frameRms > 0.004;
     if (! isVoiced)
         return;
     // parabolic interpolation
@@ -246,7 +248,7 @@ const SingItBackDsp::StyleSpec& SingItBackDsp::styleSpec (int st) noexcept
         // Club: the reference crowd (unison, harmony, an octave below)
         { { H::unison, H::harmonyUp, H::unison, H::harmonyUp, H::octaveDown, H::unison, H::harmonyUp, H::harmonyDown, H::unison, H::octaveDown,
             H::harmonyUp, H::unison },
-          1.0f, 1.0f, 1.0f, 1.0f, 0.0f },
+          1.0f, 1.0f, 1.0f, 1.0f, 0.05f },
         // Gospel: stacked triads, wide vibrato
         { { H::unison, H::harmonyUp, H::fifthUp, H::octaveDown, H::harmonyUp, H::unison, H::fifthUp, H::harmonyDown, H::unison, H::harmonyUp,
             H::octaveDown, H::fifthUp },
@@ -258,7 +260,7 @@ const SingItBackDsp::StyleSpec& SingItBackDsp::styleSpec (int st) noexcept
         // Chorale: a trained choir, tight and in tune, four parts
         { { H::unison, H::harmonyUp, H::octaveDown, H::fifthUp, H::unison, H::harmonyUp, H::harmonyDown, H::fifthUp, H::unison, H::octaveDown,
             H::harmonyUp, H::unison },
-          0.6f, 0.5f, 0.6f, 1.0f, 0.03f },
+          0.6f, 0.5f, 0.6f, 1.0f, 0.03f, 0.5f },
         // Enfants: a children's choir, an octave up, small voices
         { { H::octaveUp, H::unison, H::octaveUp, H::harmonyUp, H::octaveUp, H::unison, H::octaveUp, H::harmonyUp, H::unison, H::octaveUp,
             H::harmonyUp, H::octaveUp },
@@ -270,7 +272,7 @@ const SingItBackDsp::StyleSpec& SingItBackDsp::styleSpec (int st) noexcept
         // Robots: dead-straight chords (no vibrato, no detune, lockstep)
         { { H::unison, H::fifthUp, H::octaveDown, H::harmonyUp, H::unison, H::fifthUp, H::octaveDown, H::harmonyUp, H::unison, H::octaveUp,
             H::fifthUp, H::octaveDown },
-          0.0f, 0.15f, 0.0f, 1.0f, 0.0f },
+          0.0f, 0.15f, 0.0f, 1.0f, 0.0f, 1.0f },
     };
     return specs[juce::jlimit (0, numStyles - 1, st)];
 }
@@ -291,15 +293,17 @@ double SingItBackDsp::roleTarget (double midi, Harmony::Role role) const noexcep
 
 float SingItBackDsp::crowdDb (float crowd) noexcept
 {
-    // -1.5 dB at 100 % (headroom: unison voices peak together): with the lead stepping back, the crowd takes over (Alan:
-    // "à 100 % on entend presque que l'effet"); -12 dB at 0 %
-    return -1.5f - 10.5f * (1.0f - clamp01 (crowd));
+    // +1.5 dB at 100 %: with the lead stepping back, the crowd takes over
+    // (Alan: "à 100 % on entend presque que l'effet", then "plus fort");
+    // -9 dB at 0 %; the output ceiling keeps the peaks in check
+    return 1.5f - 10.5f * (1.0f - clamp01 (crowd));
 }
 
 float SingItBackDsp::leadDb (float crowd) noexcept
 {
-    // untouched up to 40 %, then steps back to -10 dB at 100 % (still the guide)
-    return -10.0f * smoothstep (0.4f, 1.0f, crowd);
+    // untouched up to 30 %, then steps back to -18 dB at 100 %: nearly all
+    // crowd, the voice a faint guide (Alan: "le dry / wet doit être plus fort")
+    return -18.0f * smoothstep (0.3f, 1.0f, crowd);
 }
 
 float SingItBackDsp::audibleVoices (float crowd, int maxCount) noexcept
@@ -337,6 +341,12 @@ void SingItBackDsp::designVoices()
         v.pan = (float) (rng.nextDouble() * 2.0 - 1.0);
         v.send = (float) (0.55 + 0.45 * rng.nextDouble());
         v.formantJitter = (float) (rng.nextDouble() * 2.0 - 1.0);
+        v.wanderRate[0] = 0.11 + 0.17 * rng.nextDouble();
+        v.wanderRate[1] = 0.37 + 0.41 * rng.nextDouble();
+        v.wanderPhase[0] = rng.nextDouble() * juce::MathConstants<double>::twoPi;
+        v.wanderPhase[1] = rng.nextDouble() * juce::MathConstants<double>::twoPi;
+        v.ampRate = 0.15 + 0.3 * rng.nextDouble();
+        v.ampPhase = rng.nextDouble() * juce::MathConstants<double>::twoPi;
     }
 }
 
@@ -364,6 +374,7 @@ void SingItBackDsp::prepare (double sr, int maxBlock, int nch)
     latency = latencyFor (sr);
     halfMax = latency / 2;
     gateLag = (int) (0.02 * sr); // the tracker's decision comes ~20 ms after the sound
+    markLag = (int) (0.016 * sr); // the YIN window's centre (32 ms window)
     designVoices();
     // history: the oldest read is ~ L + 65 ms (Stade offsets) + the response
     // delay (up to 4 s) + a grain before the newest input
@@ -374,7 +385,7 @@ void SingItBackDsp::prepare (double sr, int maxBlock, int nch)
     mask = size - 1;
     history.assign ((size_t) size, 0.0f);
     gateHistory.assign ((size_t) size, 0.0f);
-    marks.assign ((size_t) markRing, Mark { 0, 1.0f, -1.0f });
+    marks.assign ((size_t) markRing, Mark { 0, 1.0f, -1.0f, -1.0f, 0 });
     // overlap-add ring: grains reach at most 2 x halfMax x 1.3 past the chunk
     std::int64_t accSize = 1;
     while (accSize < 4 * latency + 4 * chunk)
@@ -390,6 +401,7 @@ void SingItBackDsp::prepare (double sr, int maxBlock, int nch)
     rmsCoeff = (float) (1.0 - std::exp (-1.0 / (0.04 * sr)));
     gateCoeff = (float) (1.0 - std::exp (-1.0 / (0.02 * sr / 3.0))); // ~20 ms to settle
     leadCoeff = (float) (1.0 - std::exp (-1.0 / (0.01 * sr)));
+    limiterRelease = (float) (1.0 - std::exp (-1.0 / (0.15 * sr)));
     for (auto* s : { &crowdLevel, &width, &roomMix })
         s->prepare (sr, 0.030);
     reset();
@@ -407,7 +419,15 @@ void SingItBackDsp::reset()
         v.drop = v.dropTarget = 1.0f;
         v.dropLeft = 0;
         v.level = 0.0f;
+        v.interval = v.scoop = v.noteAge = 0.0;
+        v.lastNote = 0;
+        v.rng.setSeed (1000 + (juce::int64) (&v - voices.data()));
     }
+    heldNote = -1.0f;
+    noteId = 0;
+    lastVoicedMark = -1000000;
+    markRandom.setSeed (99);
+    limiterEnv = 0.0f;
     std::fill (history.begin(), history.end(), 0.0f);
     std::fill (gateHistory.begin(), gateHistory.end(), 0.0f);
     markCount = 0;
@@ -490,13 +510,20 @@ void SingItBackDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples
             leadGain = leadTarget; // lands exactly (1 = the input, bit for bit)
         else
             leadGain += (leadTarget - leadGain) * leadCoeff;
-        if (nch == 2)
+        float outA = leadGain * lead.getSample (0, i) + (nch == 2 ? l : 0.5f * (l + r));
+        float outB = nch == 2 ? leadGain * lead.getSample (1, i) + r : outA;
+        // soft ceiling at -1.5 dBFS (a big crowd peaks with the voice): only
+        // above it, so a normal level stays untouched
+        const float pk = juce::jmax (std::abs (outA), std::abs (outB));
+        limiterEnv = pk > limiterEnv ? pk : limiterEnv + (pk - limiterEnv) * limiterRelease; // instant attack: never above the ceiling
+        if (constexpr float ceiling = 0.84f; limiterEnv > ceiling)
         {
-            buffer.getWritePointer (0)[i] = leadGain * lead.getSample (0, i) + l;
-            buffer.getWritePointer (1)[i] = leadGain * lead.getSample (1, i) + r;
+            outA *= ceiling / limiterEnv;
+            outB *= ceiling / limiterEnv;
         }
-        else
-            buffer.getWritePointer (0)[i] = leadGain * lead.getSample (0, i) + 0.5f * (l + r);
+        buffer.getWritePointer (0)[i] = outA;
+        if (nch == 2)
+            buffer.getWritePointer (1)[i] = outB;
 
         // Input: level, pitch, voicing (consonants, breath, silence: the crowd
         // fades out in 20 ms), history
@@ -540,16 +567,18 @@ void SingItBackDsp::makeMarks (std::int64_t available)
 {
     // Analysis marks one period apart, each moved onto the waveform's peak
     // within ±1/4 period (the grains are then centred on the glottal pulses);
-    // unvoiced: every 10 ms
+    // unvoiced: every ~8 ms, irregularly (regular grains would buzz)
     for (;;)
     {
         const bool voiced = tracker.voiced();
-        const double period = voiced ? juce::jlimit (sampleRate / 1100.0, sampleRate / 60.0, sampleRate / (double) tracker.frequency()) : 0.01 * sampleRate;
+        const double period = voiced ? juce::jlimit (sampleRate / 1100.0, sampleRate / 60.0, sampleRate / (double) tracker.frequency())
+                                     : 0.008 * sampleRate * (0.7 + 0.6 * markRandom.nextDouble());
         const int radius = voiced ? (int) (period * 0.25) : 0;
         const auto predicted = (std::int64_t) std::llround (nextMark);
-        if (predicted + radius > available)
+        if (predicted + radius + markLag > available)
             return;
         auto pos = predicted;
+        float midi = -1.0f;
         if (voiced)
         {
             const std::int64_t floorPos = markCount > 0 ? marks[(size_t) ((markCount - 1) % markRing)].pos + (std::int64_t) (period * 0.5) : 0;
@@ -560,9 +589,19 @@ void SingItBackDsp::makeMarks (std::int64_t available)
                     best = a;
                     pos = t;
                 }
+            midi = (float) (69.0 + 12.0 * std::log2 (sampleRate / period / 440.0));
+            // the note being sung, held with hysteresis: a vibrato or a slide
+            // across the boundary between two notes does not flip the harmony
+            const float nearest = snap ? (float) Harmony::snapToScale (midi, key, scale) : std::round (midi);
+            const bool newPhrase = pos - lastVoicedMark > (std::int64_t) (0.08 * sampleRate);
+            if (heldNote < 0.0f || newPhrase || (! juce::exactlyEqual (nearest, heldNote) && std::abs (midi - heldNote) - std::abs (midi - nearest) > 0.3f))
+            {
+                heldNote = nearest;
+                ++noteId;
+            }
+            lastVoicedMark = pos;
         }
-        const float midi = voiced ? (float) (69.0 + 12.0 * std::log2 (sampleRate / period / 440.0)) : -1.0f;
-        marks[(size_t) (markCount % markRing)] = { pos, (float) period, midi };
+        marks[(size_t) (markCount % markRing)] = { pos, (float) period, midi, voiced ? heldNote : -1.0f, noteId };
         ++markCount;
         nextMark = (double) pos + period;
     }
@@ -656,9 +695,15 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
 
         const auto info = voiceInfo (k);
         v.role = st.roles[(size_t) k];
-        // its own tuning and vibrato (the harmony interval comes with each grain)
+        // its own tuning, slow wander and vibrato (which only comes once the
+        // note is held, as singers do); the harmony interval comes with each grain
         v.vibPhase += juce::MathConstants<double>::twoPi * info.vibratoHz * dt;
-        const float semis = (float) ((info.detuneCents + info.vibratoCents * std::sin (v.vibPhase)) * 0.01);
+        for (int w2 = 0; w2 < 2; ++w2)
+            v.wanderPhase[w2] += juce::MathConstants<double>::twoPi * v.wanderRate[w2] * dt;
+        v.ampPhase += juce::MathConstants<double>::twoPi * v.ampRate * dt;
+        const double wander = 9.0 * h * (double) st.detune * (0.6 * std::sin (v.wanderPhase[0]) + 0.4 * std::sin (v.wanderPhase[1]));
+        const double vibOnset = smoothstep (0.12f, 0.5f, (float) v.noteAge);
+        const float semis = (float) ((info.detuneCents + wander + vibOnset * info.vibratoCents * std::sin (v.vibPhase)) * 0.01);
         if (! v.running)
         {
             std::fill (v.acc.begin(), v.acc.end(), 0.0f);
@@ -690,10 +735,32 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
             const int half = juce::jmin ((int) period, halfMax);
             if (ts - half >= (double) outEnd)
                 break;
-            // the pitch of the grain: the role's note for the note of that
-            // very moment (its own mark), plus the voice's tuning and vibrato
-            const double interval = m->midi >= 0.0f ? roleTarget (m->midi, v.role) - m->midi : 0.0;
-            const double ratio = std::exp2 ((interval + (double) v.semis) / 12.0);
+            double ratio = 1.0; // unvoiced (consonants, breath): not transposed, just doubled
+            if (m->midi >= 0.0f)
+            {
+                // the interval of its part for the note being sung, gliding
+                // (~30 ms) from one note to the next, applied to the singer's
+                // own pitch: the crowd keeps the singer's slides and vibrato
+                // (no auto-tune), unless the style pulls it in tune
+                const double base = snap ? (double) m->note : (double) m->midi;
+                const double target = roleTarget (base, v.role) - base;
+                const double pull = snap ? (double) st.tune * ((double) m->note - (double) m->midi) : 0.0; // not smoothed: it follows the vibrato
+                if (m->noteId != v.lastNote)
+                {
+                    // a new note: some voices scoop into it from below
+                    const bool firstNote = v.lastNote == 0;
+                    v.lastNote = m->noteId;
+                    v.noteAge = 0.0;
+                    v.scoop = v.rng.nextDouble() < 0.6 ? -(12.0 + 38.0 * v.rng.nextDouble()) * h * (double) st.detune : 0.0;
+                    v.scoopTau = 0.05 + 0.1 * v.rng.nextDouble();
+                    if (firstNote)
+                        v.interval = target;
+                }
+                v.interval += (target - v.interval) * (1.0 - std::exp (-period / (0.03 * sampleRate)));
+                ratio = std::exp2 ((v.interval + pull + (double) v.semis + 0.01 * v.scoop) / 12.0);
+                v.scoop *= std::exp (-period / ratio / sampleRate / v.scoopTau);
+            }
+            v.noteAge += period / ratio / sampleRate;
             // level: one grain per output period (the harmonics keep the
             // input's envelope; power follows the pitch by sqrt)
             const float norm = (float) (period / half / std::sqrt (ratio));
@@ -720,7 +787,7 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
         if (solo >= 0)
             v.dropTarget = 1.0f;
 
-        const float g = level * (float) info.gain * v.audible;
+        const float g = level * (float) info.gain * v.audible * (float) (1.0 + 0.12 * h * (double) st.detune * std::sin (v.ampPhase));
         const float panPos = (float) info.pan * w;
         const float send = (float) info.send;
         const float gl = std::cos ((panPos + 1.0f) * 0.25f * juce::MathConstants<float>::pi) * 1.41421356f;
@@ -734,7 +801,8 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
             const float y = a;
             a = 0.0f;
             // its voicing, read where its own (late) copy of the input is
-            const float gt = gateHistory[(size_t) (juce::jmin (available, t - gateDelay) & mask)];
+            // consonants and breaths are doubled at half level, not cut
+            const float gt = 0.5f + 0.5f * gateHistory[(size_t) (juce::jmin (available, t - gateDelay) & mask)];
             v.drop += juce::jlimit (-dropStep, dropStep, v.dropTarget - v.drop);
             const float s = y * g * v.drop * gt;
             sumSq += (y * v.drop * gt) * (y * v.drop * gt);

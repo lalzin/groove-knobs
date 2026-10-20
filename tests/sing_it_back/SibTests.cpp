@@ -367,11 +367,15 @@ TEST_CASE ("SIB 8. Anti-robot: every voice different, never in lockstep", "[sib]
     }
 }
 
-TEST_CASE ("SIB 9. Voicing: no crowd on an unvoiced consonant, no click", "[sib][voicing]")
+TEST_CASE ("SIB 9. Consonants: doubled at half level, not transposed, no buzz", "[sib][voicing]")
 {
+    // (DECISIONS.md: the crowd used to go silent on unvoiced sound; Alan found
+    // the cut-outs robotic. Consonants are now doubled, untransposed, with
+    // irregular grains: no pitched buzz.)
     const double sr = 48000.0;
     auto p = makeProc (1, sr, 1.0f);
     setParam (p->getRoomParameter(), 0.0f);
+    setParam (p->getDropoutsParameter(), 0.0f);
     // a sustained "sss": high-passed noise only
     Buffer in (1, (int) (1.5 * sr));
     gk::testsignals::Rng rng (5);
@@ -380,15 +384,28 @@ TEST_CASE ("SIB 9. Voicing: no crowd on an unvoiced consonant, no click", "[sib]
     for (int i = 0; i < in.getNumSamples(); ++i)
         in.setSample (0, i, 0.3f * (float) hp.processHighpass (rng.bipolar(), c));
     const auto out = run (*p, in);
-    const auto w = crowdOf (out, in, p->getLatencySamples(), p->getCrowdParameter().getValue());
+    const auto w = crowdOf (out, in, p->getLatencySamples(), 1.0f);
     double e = 0.0, ein = 0.0;
     for (int i = (int) (0.3 * sr); i < in.getNumSamples(); ++i)
     {
         e += (double) w[(size_t) i] * w[(size_t) i];
         ein += (double) in.getSample (0, i) * in.getSample (0, i);
     }
-    INFO ("crowd / input energy on the consonant: " << 10.0 * std::log10 (e / ein + 1.0e-30) << " dB");
-    CHECK (e < 1.0e-4 * ein);
+    // no periodicity in the crowd's consonant (a regular grain train would buzz)
+    sib::PitchTracker t;
+    t.prepare (sr);
+    int hops = 0, voiced = 0;
+    for (int i = 0; i < (int) w.size(); ++i)
+        if (t.push (w[(size_t) i]) && i > (int) (0.3 * sr))
+        {
+            ++hops;
+            voiced += t.voiced() ? 1 : 0;
+        }
+    const double db = 10.0 * std::log10 (e / ein + 1.0e-30);
+    INFO ("crowd / input energy on the consonant: " << db << " dB; crowd voiced " << voiced << " / " << hops << " hops");
+    CHECK (db < 0.0);
+    CHECK (db > -20.0);
+    CHECK (voiced <= hops / 20);
 }
 
 TEST_CASE ("SIB 10. Crowd automation 0 -> 1 -> 0 in 100 ms: no click", "[sib][automation]")
@@ -643,4 +660,108 @@ TEST_CASE ("SIB 18. RÉPONSE: the crowd sings the phrase back half a bar / a bar
         CHECK (onset < 0.2 + L + delay + 0.12);
         CHECK (p->getDsp().getTelemetry().responseSeconds.load() == Catch::Approx (delay).margin (0.001));
     }
+}
+
+TEST_CASE ("diag: pitch track of a file (SIB_DIAG_FILE)", "[.diagfile]")
+{
+    const char* path = std::getenv ("SIB_DIAG_FILE");
+    REQUIRE (path != nullptr);
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> r (fm.createReaderFor (juce::File (path)));
+    REQUIRE (r != nullptr);
+    Buffer b ((int) r->numChannels, (int) r->lengthInSamples);
+    r->read (&b, 0, b.getNumSamples(), 0, true, true);
+    sib::PitchTracker t;
+    t.prepare (r->sampleRate);
+    int hops = 0, voiced = 0, jumps = 0;
+    float last = 0.0f;
+    juce::String line;
+    for (int i = 0; i < b.getNumSamples(); ++i)
+    {
+        const float x = 0.5f * (b.getSample (0, i) + b.getSample (b.getNumChannels() - 1, i));
+        if (t.push (x))
+        {
+            ++hops;
+            if (t.voiced())
+            {
+                ++voiced;
+                const float m = (float) (69.0 + 12.0 * std::log2 (t.frequency() / 440.0));
+                if (last > 0.0f && std::abs (m - last) > 0.7f)
+                    ++jumps;
+                last = m;
+            }
+            else
+                last = 0.0f;
+            if (hops % 20 == 0)
+                line << juce::String (i / r->sampleRate, 1) << "s:" << (t.voiced() ? juce::String (69.0 + 12.0 * std::log2 (t.frequency() / 440.0), 1) : juce::String ("-"))
+                     << "(" << juce::String (t.aperiodicity(), 2) << ") ";
+        }
+    }
+    WARN ("voiced " << voiced << " / " << hops << " hops, note jumps > 0.7 st: " << jumps << "\n" << line);
+}
+
+TEST_CASE ("SIB 19. VOL: 0 dB = untouched (bit-exact at 0 %), -6 dB halves, the bottom is silence; the dry path too", "[sib][volume]")
+{
+    const double sr = 48000.0;
+    auto p = makeProc (2, sr, 0.0f);
+    CHECK (p->getVolumeParameter().convertFrom0to1 (p->getVolumeParameter().getDefaultValue()) == Catch::Approx (0.0f).margin (0.001));
+    const int L = p->getLatencySamples();
+    const auto in = vocalsynth::sing (vocalsynth::phrase ({ 60, 62, 64, 65, 67, 69, 71 }), sr, 120.0);
+    for (float db : { -6.0206f, -60.0f, 6.0206f })
+    {
+        auto q = makeProc (2, sr, 0.0f);
+        setParam (q->getVolumeParameter(), db);
+        const float g = db <= -59.0f ? 0.0f : juce::Decibels::decibelsToGain (db);
+        const auto out = run (*q, in);
+        double err = 0.0;
+        for (int c = 0; c < 2; ++c)
+            for (int i = (int) (0.05 * sr); i < out.getNumSamples(); ++i)
+            {
+                const float x = g * (i >= L ? in.getSample (c, i - L) : 0.0f);
+                if (std::abs (x) < 0.8f) // below the safety clip
+                    err = juce::jmax (err, (double) std::abs (out.getSample (c, i) - x));
+            }
+        INFO ("VOL " << db << " dB: max error " << err);
+        CHECK (err < 1.0e-6);
+    }
+}
+
+TEST_CASE ("SIB 20. Natural: the crowd keeps the singer's own vibrato and slides (no auto-tune)", "[sib][natural]")
+{
+    // a sung A4 with a wide vibrato (35 cents): the unison voice follows it
+    // (pitch spread close to the singer's), Robots flattens it (style pull)
+    const double sr = 48000.0;
+    const auto in = mono (vocalsynth::sustained (69, 2.0, sr, 'a', 35.0));
+    auto spreadOf = [&] (const float* x, int n)
+    {
+        sib::PitchTracker t;
+        t.prepare (sr);
+        std::vector<double> c;
+        for (int i = 0; i < n; ++i)
+            if (t.push (x[i]) && i > (int) (0.7 * sr) && t.voiced())
+                c.push_back (1200.0 * std::log2 (t.frequency() / 440.0));
+        double mean = 0.0, var = 0.0;
+        for (auto v : c)
+            mean += v / (double) c.size();
+        for (auto v : c)
+            var += (v - mean) * (v - mean) / (double) c.size();
+        return std::sqrt (var);
+    };
+    const double singer = spreadOf (in.getReadPointer (0), in.getNumSamples());
+    double voices[2] {};
+    for (int style : { 0, (int) sib::SingItBackDsp::robots })
+    {
+        auto p = makeProc (1, sr, 1.0f);
+        setParam (p->getStyleParameter(), (float) style);
+        setParam (p->getHumanizeParameter(), 0.0f);
+        setParam (p->getRoomParameter(), 0.0f);
+        p->getDsp().soloVoice (0); // unison
+        const auto out = run (*p, in);
+        const auto w = crowdOf (out, in, p->getLatencySamples(), 1.0f);
+        voices[style == 0 ? 0 : 1] = spreadOf (w.data(), (int) w.size());
+    }
+    INFO ("pitch spread: singer " << singer << " c, unison voice (Club) " << voices[0] << " c, Robots " << voices[1] << " c");
+    CHECK (voices[0] > 0.7 * singer);
+    CHECK (voices[1] < 0.4 * singer);
 }

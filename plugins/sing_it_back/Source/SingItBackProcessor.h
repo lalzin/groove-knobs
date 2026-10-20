@@ -20,6 +20,7 @@ public:
     juce::RangedAudioParameter& getHumanizeParameter() noexcept { return getKnobParameter (SingItBackDsp::humanizeKnob); }
     juce::RangedAudioParameter& getDropoutsParameter() noexcept { return getKnobParameter (SingItBackDsp::dropoutsKnob); }
     juce::RangedAudioParameter& getRoomParameter() noexcept { return getKnobParameter (SingItBackDsp::roomKnob); }
+    juce::RangedAudioParameter& getVolumeParameter() noexcept { return getKnobParameter (SingItBackDsp::volumeKnob); }
     juce::AudioParameterChoice& getKeyParameter() noexcept { return getChoiceParameter (SingItBackDsp::keyChoice); }
     juce::AudioParameterChoice& getScaleParameter() noexcept { return getChoiceParameter (SingItBackDsp::scaleChoice); }
     juce::AudioParameterChoice& getHarmonyParameter() noexcept { return getChoiceParameter (SingItBackDsp::harmonyChoice); }

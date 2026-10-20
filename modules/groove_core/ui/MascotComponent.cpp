@@ -206,8 +206,8 @@ void MascotComponent::advance (double dt, float amount, float bypass)
     if (target != state.frame)
     {
         state.frame = target;
-        state.pop = 1.0f;
-        springV -= 2.5f; // a little stretch on pose change
+        state.pop = 1.0f * motion;
+        springV -= 2.5f * motion; // a little stretch on pose change
     }
     state.pop *= std::exp (-fdt / 0.12f);
 
@@ -222,7 +222,7 @@ void MascotComponent::advance (double dt, float amount, float bypass)
     // Transients: damped spring (≈ 150 ms back to rest)
     const auto count = features.transientCount.load (std::memory_order_relaxed);
     if (count != lastTransients && bypass < 0.5f)
-        springV += 9.0f * (0.6f + 0.4f * amount);
+        springV += 9.0f * (0.6f + 0.4f * amount) * motion;
     lastTransients = count;
     {
         const float w = 2.0f * juce::MathConstants<float>::pi * 5.0f, zeta = 0.45f;
@@ -245,7 +245,7 @@ void MascotComponent::advance (double dt, float amount, float bypass)
         beatsUi = hostBeats;
     state.beatPhase = (float) dspmath::frac (beatsUi);
     const float openness = 1.0f - dspmath::smoothstep (0.2f, 0.8f, mag);
-    const float nodTarget = state.playing && bypass < 0.5f ? (0.35f + 0.65f * juce::jmax (openness, state.joy)) * std::exp (-6.0f * state.beatPhase) : 0.0f;
+    const float nodTarget = state.playing && bypass < 0.5f ? motion * (0.35f + 0.65f * juce::jmax (openness, state.joy)) * std::exp (-6.0f * state.beatPhase) : 0.0f;
     state.nod += (nodTarget - state.nod) * (1.0f - std::exp (-fdt / 0.02f));
 
     // Sway with the engine LFO above 80 %
