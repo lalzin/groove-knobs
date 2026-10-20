@@ -6,6 +6,7 @@
 
 #include "PewPewEditor.h"
 #include <iostream>
+#include "WebAssets.h"
 
 namespace
 {
@@ -48,11 +49,49 @@ juce::Image sheetOf (const std::vector<std::vector<std::pair<juce::String, juce:
         }
     return sheet;
 }
+
+juce::File repoRoot()
+{
+    for (auto d = juce::File::getCurrentWorkingDirectory(); d.exists() && ! d.isRoot(); d = d.getParentDirectory())
+        if (d.getChildFile ("plugins").isDirectory() && d.getChildFile ("modules/groove_core").isDirectory())
+            return d;
+    return juce::File::getCurrentWorkingDirectory();
+}
+
+// --web: visuals for lalzin.com (web-assets/pew-pew)
+int runWeb (const juce::File& out)
+{
+    pp::PewPewProcessor proc;
+    setParam (proc.getPresetParameter(), 0.0f); // Laser Pew
+    setParam (proc.getRoomParameter(), 0.5f);
+    setParam (proc.getEchoParameter(), 0.4f);
+    auto at = [&] (float amount, float scale, float ago)
+    {
+        setParam (proc.getAmountParameter(), amount);
+        return shoot (proc, scale, ago);
+    };
+    std::vector<gkweb::Shot> shots { { "hero", at (0.75f, 3.0f, 0.04f) }, { "25", at (0.25f, 2.0f, 0.3f) }, { "100", at (1.0f, 2.0f, 0.04f) } };
+    gkweb::PluginInfo info;
+    info.slug = "pew-pew";
+    info.name = "Pew Pew";
+    info.taglineFr = juce::String::fromUTF8 ("Le pew disco, en instrument \xc3\xa0 un knob");
+    info.taglineEn = "The disco pew, as a one-knob instrument";
+    info.palette = pp::PewPewEditor::makePalette();
+    info.assetsDir = repoRoot().getChildFile ("plugins/pew_pew/Assets");
+    info.framePrefix = "tomi_";
+    info.heroFrame = std::atoi (std::getenv ("GK_HERO") != nullptr ? std::getenv ("GK_HERO") : "26");
+    for (int i = 0; i < 35; ++i)
+        info.poses.push_back (i);
+    gkweb::writePlugin (info, shots, out);
+    return 0;
+}
 } // namespace
 
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
+    if (argc > 1 && juce::String (argv[1]) == "--web")
+        return runWeb (juce::File::getCurrentWorkingDirectory().getChildFile (argc > 2 ? argv[2] : "web-assets"));
     const auto outDir = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 ? argv[1] : "screenshots/pew_pew");
     outDir.createDirectory();
 

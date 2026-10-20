@@ -6,6 +6,7 @@
 
 #include "SingItBackEditor.h"
 #include <iostream>
+#include "WebAssets.h"
 
 namespace
 {
@@ -50,11 +51,54 @@ juce::Image sheetOf (const std::vector<Row>& rows)
         }
     return sheet;
 }
+
+juce::File repoRoot()
+{
+    for (auto d = juce::File::getCurrentWorkingDirectory(); d.exists() && ! d.isRoot(); d = d.getParentDirectory())
+        if (d.getChildFile ("plugins").isDirectory() && d.getChildFile ("modules/groove_core").isDirectory())
+            return d;
+    return juce::File::getCurrentWorkingDirectory();
+}
+
+// --web: visuals for lalzin.com (web-assets/sing-it-back) and, last, the
+// suite visuals with the five plugins
+int runWeb (const juce::File& out)
+{
+    sib::SingItBackProcessor proc;
+    setParam (proc.getKeyParameter(), 9.0f);   // A minor
+    setParam (proc.getScaleParameter(), 1.0f);
+    auto at = [&] (float crowd, float scale, int syllable, int voices = 1)
+    {
+        setParam (proc.getCrowdParameter(), crowd);
+        setParam (proc.getVoicesParameter(), (float) voices);
+        return shoot (proc, scale, true, syllable);
+    };
+    std::vector<gkweb::Shot> shots { { "hero", at (0.75f, 3.0f, 2) }, { "25", at (0.25f, 2.0f, 1) }, { "100", at (1.0f, 2.0f, 3, 2) } };
+    setParam (proc.getStyleParameter(), 1.0f); // Gospel
+    shots.push_back ({ "gospel", at (0.75f, 2.0f, 4) });
+    gkweb::PluginInfo info;
+    info.slug = "sing-it-back";
+    info.name = "Sing It Back";
+    info.taglineFr = juce::String::fromUTF8 ("Une foule qui chante avec ta voix, en un knob");
+    info.taglineEn = "A crowd singing along with your voice, in one knob";
+    info.palette = sib::SingItBackEditor::makePalette();
+    info.assetsDir = repoRoot().getChildFile ("plugins/sing_it_back/Assets");
+    info.framePrefix = "sugar_";
+    info.heroFrame = std::atoi (std::getenv ("GK_HERO") != nullptr ? std::getenv ("GK_HERO") : "8");
+    for (int i = 0; i < 33; ++i)
+        info.poses.push_back (i);
+    gkweb::writePlugin (info, shots, out);
+
+    gkweb::writeSuite (out, { { "french-filter", "" }, { "boogie-trio", "" }, { "backwash", "" }, { "pew-pew", "" }, { "sing-it-back", "" } }, info.palette);
+    return 0;
+}
 } // namespace
 
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
+    if (argc > 1 && juce::String (argv[1]) == "--web")
+        return runWeb (juce::File::getCurrentWorkingDirectory().getChildFile (argc > 2 ? argv[2] : "web-assets"));
     const auto outDir = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 ? argv[1] : "screenshots/sing_it_back");
     outDir.createDirectory();
     sib::SingItBackProcessor proc;

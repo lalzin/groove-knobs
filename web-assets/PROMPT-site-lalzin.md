@@ -16,8 +16,8 @@ fonts Bricolage Grotesque (titres) + Hanken Grotesk (texte). Respecte l'existant
 (composants, conventions, i18n, style), ne casse rien.
 
 LALZIN publie **Groove Knobs**, une suite de plugins audio gratuits à un seul knob :
-**French Filter**, **Boogie Trio**, **Backwash** (VST3 / AU / standalone, macOS universel +
-Windows 64 bits). Il faut une section « Plugins » qui donne envie, et un téléchargement
+**French Filter**, **Boogie Trio**, **Backwash**, **Pew Pew** (un instrument MIDI) et
+**Sing It Back** (effet pour voix) — VST3 / AU / standalone, macOS universel + Windows 64 bits. Il faut une section « Plugins » qui donne envie, et un téléchargement
 contre une adresse email, avec un don libre via PayPal.
 
 ## Ressources fournies
@@ -28,7 +28,7 @@ contre une adresse email, avec un don libre via PayPal.
    rsync -a --include='*/' --include='*.webp' --exclude='*' ../groove-knobs/web-assets/ public/images/plugins/
    cp ../groove-knobs/web-assets/plugins.json lib/plugins.json
    ```
-   Par plugin (`public/images/plugins/<slug>/`) : `ui-hero.webp` (840×1040, fenêtre du plugin),
+   Par plugin (`public/images/plugins/<slug>/`, slugs `french-filter`, `boogie-trio`, `backwash`, `pew-pew`, `sing-it-back`) : `ui-hero.webp` (840×1040, fenêtre du plugin),
    `ui-hero@3x.webp` (1260×1560), `ui-<état>.webp` (autres états), `mascot.webp` (détouré),
    `poses/<n>.webp` (toutes les poses détourées), `og.webp` (1200×630), `card-square.webp`
    (1080×1080), `icon-512.webp`. Suite : `groove-knobs-og.webp`, `groove-knobs-banner.webp` (2400×1000).
@@ -39,7 +39,7 @@ contre une adresse email, avec un don libre via PayPal.
 
 ## Parcours (dans cet ordre)
 
-1. **`/plugins`** — page de la suite : bannière `groove-knobs-banner`, accroche, 3 cartes
+1. **`/plugins`** — page de la suite : bannière `groove-knobs-banner`, accroche, 5 cartes
    (fenêtre du plugin + mascotte qui dépasse de la carte, couleurs du plugin, accroche,
    bouton « Télécharger gratuitement »). Ajoute « Plugins » dans la navigation et une
    section teaser sur la home. Ajoute aussi un lien dans `/links`.
@@ -47,12 +47,12 @@ contre une adresse email, avec un don libre via PayPal.
    Framer Motion, flottement / rebond au survol ; respecte `prefers-reduced-motion`),
    description, points forts, liste des presets, galerie des états (`ui-*.webp`),
    configuration requise, formats, bouton de téléchargement. `generateStaticParams`, metadata
-   par page avec `og.webp`, JSON-LD `SoftwareApplication` (`offers.price = 0`,
+   par page avec `og.webp`, JSON-LD `SoftwareApplication` (Pew Pew : catégorie instrument, champ `type` de `plugins.json`) (`offers.price = 0`,
    `operatingSystem`, `applicationCategory: "MultimediaApplication"`).
 3. **Formulaire de téléchargement** (sur la page produit, en modal ou en section ancrée) :
    - email (obligatoire), choix de l'OS (pré-sélectionné d'après le user-agent, modifiable),
      et possibilité de cocher les **autres plugins** (une seule demande, un seul email pour
-     les trois) ;
+     tous) ;
    - case **newsletter décochée par défaut** et séparée (« Je veux recevoir les nouveaux
      plugins et les sorties de LALZIN »), lien vers la politique de confidentialité ;
    - anti-spam : Cloudflare Turnstile + champ honeypot caché + limite de 5 demandes / heure
@@ -77,16 +77,18 @@ contre une adresse email, avec un don libre via PayPal.
    - si valide : incrémente le compteur, puis redirige (302) vers une **URL présignée de
      15 minutes** du fichier stocké en privé ; sinon page « Lien expiré » avec le
      formulaire pour en recevoir un nouveau.
-7. **`/plugins/installation`** — guide FR/EN : macOS (ouvrir le `.pkg` ; si macOS bloque :
-   Réglages Système → Confidentialité et sécurité → « Ouvrir quand même »), Windows
+7. **`/plugins/installation`** — guide FR/EN : macOS (ouvrir le `.pkg` : signé et notarisé par Apple, il s'installe sans avertissement), Windows
    (SmartScreen : « Informations complémentaires » → « Exécuter quand même »), puis dans
    Ableton : Réglages → Plug-Ins → Rescan, les plugins sont dans VST3 / Audio Units → LALZIN.
-   Mentionne que Backwash démarre en mode LIVE (zéro latence) et écoute la première mesure.
+   Mentionne que Backwash démarre en mode LIVE (zéro latence) et écoute la première mesure,
+   que **Pew Pew** est un instrument (piste MIDI, dans les instruments) et que **Sing It Back**
+   se met sur une piste de voix seule (stem / a cappella, pas un mix complet) : régler d'abord
+   le ton et la gamme du morceau, puis monter CROWD.
 
 ## Stockage et données
 
 - **Fichiers d'installation** dans un bucket **Cloudflare R2 privé** (`groove-knobs`), clés
-  `v0.1.0/FrenchFilter-0.1.0-macOS.pkg`, etc. URLs présignées via `@aws-sdk/client-s3` +
+  `v0.1.0/FrenchFilter-0.1.0-macOS.pkg`, etc. (les cinq `.pkg` macOS de `groove-knobs/dist/`, signés et notarisés, et les cinq `.exe` Windows de la release GitHub v0.1.1) URLs présignées via `@aws-sdk/client-s3` +
   `@aws-sdk/s3-request-presigner` (endpoint R2). Rien dans `public/` (35 Mo par fichier).
 - **Supabase**, nouvelle migration `supabase/plugins.sql` :
   - `plugin_requests` (id uuid, email citext, plugins text[], os, lang, newsletter bool,

@@ -5,7 +5,7 @@
 //   <out>/<slug>/ui-hero.png (2x), ui-hero@3x.png, ui-<state>.png (2x)
 //   <out>/<slug>/mascot.png, poses/<n>.png (transparent), poses-sheet.png
 //   <out>/<slug>/og.png (1200x630), card-square.png (1080x1080), icon-512.png
-//   <out>/groove-knobs-og.png, groove-knobs-banner.png (when all three exist)
+//   <out>/groove-knobs-og.png, groove-knobs-banner.png (when all of them exist)
 
 #include <groove_core/groove_core.h>
 #include <iostream>
@@ -267,7 +267,7 @@ inline void writeSuite (const juce::File& outRoot, const std::vector<std::pair<j
     for (const auto& u : uis)
         if (! u.isValid())
         {
-            std::cout << "suite visuals skipped: render the three plugins first\n";
+            std::cout << "suite visuals skipped: render every plugin first\n";
             return;
         }
     const auto cream = pal.text, ink = pal.outline;
@@ -281,15 +281,21 @@ inline void writeSuite (const juce::File& outRoot, const std::vector<std::pair<j
         g.setColour (cream.withAlpha (0.55f));
         g.fillPath (textPath ("by LALZIN  -  with groove and love", titleH * 0.26f, b.getCentreX(), titleH * 1.62f, 0.2f, true));
         cartoonText (g, textPath ("GROOVE KNOBS", titleH, b.getCentreX(), titleH * 1.18f, 0.03f, true), cream, ink, titleH * 0.1f);
-        const float ww = windows.getWidth() / 3.0f;
-        const float rot[] { -0.06f, 0.0f, 0.06f };
-        const int order[] { 0, 2, 1 }; // middle one on top
+        // the windows side by side, fanned out, the middle one on top
+        const int n = (int) uis.size();
+        const float ww = windows.getWidth() / (float) n;
+        std::vector<int> order;
+        for (int k = 0; k < n; ++k)
+            order.push_back (k);
+        const float mid = 0.5f * (float) (n - 1);
+        std::stable_sort (order.begin(), order.end(), [&] (int x, int y) { return std::abs ((float) x - mid) > std::abs ((float) y - mid); });
         for (int k : order)
         {
-            const auto area = juce::Rectangle<float> (windows.getX() + ww * (float) k, windows.getY() + (k == 1 ? 0.0f : windows.getHeight() * 0.04f), ww,
+            const float side = mid > 0.0f ? ((float) k - mid) / mid : 0.0f; // -1 .. 1
+            const auto area = juce::Rectangle<float> (windows.getX() + ww * (float) k, windows.getY() + windows.getHeight() * 0.05f * std::abs (side), ww,
                                                       windows.getHeight())
-                                  .expanded (ww * 0.08f, 0.0f);
-            drawWindow (g, uis[(size_t) k], area, rot[k]);
+                                  .expanded (ww * (n > 3 ? 0.22f : 0.08f), 0.0f);
+            drawWindow (g, uis[(size_t) k], area, 0.06f * side);
         }
         writePng (img, outRoot.getChildFile (file));
     };

@@ -3,11 +3,11 @@
 Générés depuis les vrais plugins (fenêtres rendues hors écran, mascottes des planches) :
 
 ```bash
-for t in ff bt bw; do build/tests/**/${t}_screenshots --web web-assets; done   # bw en dernier (visuels de la suite)
+for t in ff bt bw pp sib; do build/tests/**/${t}_screenshots --web web-assets; done   # sib en dernier (visuels de la suite, 5 fenêtres)
 cd web-assets && find . -name '*.png' ! -name 'poses-sheet.png' -exec sh -c 'cwebp -quiet -q 86 -alpha_q 100 "$1" -o "${1%.png}.webp"' _ {} \;
 ```
 
-Pose principale de la mascotte : variable `GK_HERO` (FF 13, BT 1, BW 11). `poses-sheet.png` numérote toutes les poses.
+Pose principale de la mascotte : variable `GK_HERO` (FF 13, BT 1, BW 11, PP 26, SIB 8). `poses-sheet.png` numérote toutes les poses.
 
 | Fichier | Taille | Usage |
 |---|---|---|
