@@ -8,9 +8,11 @@
 # Signing: the "Developer ID Application" and "Developer ID Installer"
 # certificates are found in the keychain automatically (or set DEV_ID_APP /
 # DEV_ID_INSTALLER). Notarisation uses the keychain profile NOTARY_PROFILE
-# (default "groove-knobs-notary", created once with
-#   xcrun notarytool store-credentials groove-knobs-notary --apple-id <email> --team-id <TEAMID>
-# ). Without certificates the package is ad-hoc signed: fine on your own Macs,
+# (default "groovy-knobs", created once by Alan with
+#   xcrun notarytool store-credentials groovy-knobs --apple-id <email> --team-id <TEAMID>
+# ). The plug-ins and the app themselves are notarised and stapled before
+# packaging (so they also pass Gatekeeper when copied by hand), then the .pkg
+# when a "Developer ID Installer" certificate is there. Without certificates the package is ad-hoc signed: fine on your own Macs,
 # blocked by Gatekeeper on others. UNSIGNED=1 forces the ad-hoc build.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,7 +30,7 @@ get() {
 if [[ "${UNSIGNED:-0}" != 1 ]]; then
   : "${DEV_ID_APP:=$(security find-identity -v -p codesigning 2>/dev/null | sed -nE 's/.*"(Developer ID Application: [^"]+)".*/\1/p' | head -1)}"
   : "${DEV_ID_INSTALLER:=$(security find-identity -v 2>/dev/null | sed -nE 's/.*"(Developer ID Installer: [^"]+)".*/\1/p' | head -1)}"
-  : "${NOTARY_PROFILE:=groove-knobs-notary}"
+  : "${NOTARY_PROFILE:=groovy-knobs}"
 else
   DEV_ID_APP=""; DEV_ID_INSTALLER=""; NOTARY_PROFILE=""
 fi
@@ -74,6 +76,20 @@ for b in "$WORK/vst3/$PRODUCT.vst3" "$WORK/au/$PRODUCT.component" "$WORK/app/$PR
     codesign --force --deep --sign - "$b"
   fi
 done
+
+# Notarise the bundles themselves and staple the ticket into each
+if [[ -n "${DEV_ID_APP:-}" && -n "${NOTARY_PROFILE:-}" ]] && xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
+  ( cd "$WORK" && rm -f bundles.zip && ditto -c -k --keepParent vst3 bundles-vst3.zip && ditto -c -k --keepParent au bundles-au.zip && ditto -c -k --keepParent app bundles-app.zip )
+  for z in vst3 au app; do
+    xcrun notarytool submit "$WORK/bundles-$z.zip" --keychain-profile "$NOTARY_PROFILE" --wait | tee "$WORK/notary-$z.log"
+    grep -q "status: Accepted" "$WORK/notary-$z.log" || { echo "notarisation of the $z bundle failed: xcrun notarytool log <id> --keychain-profile $NOTARY_PROFILE"; exit 1; }
+    rm -f "$WORK/bundles-$z.zip"
+  done
+  for b in "$WORK/vst3/$PRODUCT.vst3" "$WORK/au/$PRODUCT.component" "$WORK/app/$PRODUCT.app"; do
+    xcrun stapler staple "$b"
+  done
+  spctl --assess --type execute -vv "$WORK/app/$PRODUCT.app" 2>&1 | head -3
+fi
 
 # Component packages; bundles must not be "relocated" to an existing copy.
 component() { # name dir install-location
@@ -124,4 +140,8 @@ fi
   zip -q "$FILE_NAME-$VERSION-macOS.zip" "$FILE_NAME-$VERSION-macOS.pkg" LICENSE.txt THIRD_PARTY_NOTICES.txt LilitaOne-OFL.txt && \
   rm LICENSE.txt THIRD_PARTY_NOTICES.txt LilitaOne-OFL.txt )
 echo "Installer: $OUT"
-[[ -n "${DEV_ID_INSTALLER:-}" ]] || echo "NOTE: unsigned (ad-hoc) — fine for your own Macs, blocked by Gatekeeper for public download. See header of this script."
+if [[ -z "${DEV_ID_APP:-}" ]]; then
+  echo "NOTE: unsigned (ad-hoc) — fine for your own Macs, blocked by Gatekeeper for public download. See header of this script."
+elif [[ -z "${DEV_ID_INSTALLER:-}" ]]; then
+  echo "NOTE: plug-ins and app signed (Developer ID) and notarised, but the .pkg itself is not signed: a \"Developer ID Installer\" certificate is needed, or Gatekeeper warns when opening the package."
+fi
