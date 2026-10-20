@@ -239,6 +239,19 @@ int SingItBackDsp::latencyFor (double sr) noexcept
     return b;
 }
 
+float SingItBackDsp::crowdDb (float crowd) noexcept
+{
+    // -1.5 dB at 100 % (headroom: unison voices peak together): with the lead stepping back, the crowd takes over (Alan:
+    // "à 100 % on entend presque que l'effet"); -12 dB at 0 %
+    return -1.5f - 10.5f * (1.0f - clamp01 (crowd));
+}
+
+float SingItBackDsp::leadDb (float crowd) noexcept
+{
+    // untouched up to 40 %, then steps back to -10 dB at 100 % (still the guide)
+    return -10.0f * smoothstep (0.4f, 1.0f, crowd);
+}
+
 float SingItBackDsp::audibleVoices (float crowd, int maxCount) noexcept
 {
     // crowd^0.8 (not ^1.5): 25 % gives two or three voices, as heard
@@ -319,6 +332,7 @@ void SingItBackDsp::prepare (double sr, int maxBlock, int nch)
     appliedRoomSize = -1;
     rmsCoeff = (float) (1.0 - std::exp (-1.0 / (0.04 * sr)));
     gateCoeff = (float) (1.0 - std::exp (-1.0 / (0.02 * sr / 3.0))); // ~20 ms to settle
+    leadCoeff = (float) (1.0 - std::exp (-1.0 / (0.01 * sr)));
     for (auto* s : { &crowdLevel, &width, &roomMix })
         s->prepare (sr, 0.030);
     reset();
@@ -350,6 +364,7 @@ void SingItBackDsp::reset()
     for (auto* s : { &crowdLevel, &width, &roomMix })
         s->invalidate();
     crowdSmoothed = -1.0f;
+    leadGain = -1.0f;
 }
 
 void SingItBackDsp::setKnobs (const float* v, int n)
@@ -415,13 +430,19 @@ void SingItBackDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples
         const float rm = roomMix.next();
         const float l = crowdMuted ? 0.0f : outL[(size_t) j] + rm * revL[(size_t) j];
         const float r = crowdMuted ? 0.0f : outR[(size_t) j] + rm * revR[(size_t) j];
+        // lead level, from the crowd value of the last chunk (global grid), 10 ms
+        const float leadTarget = dbToGain (leadDb (crowdSmoothed < 0.0f ? clamp01 (amount[i]) : crowdSmoothed));
+        if (leadGain < 0.0f || std::abs (leadTarget - leadGain) < 1.0e-6f)
+            leadGain = leadTarget; // lands exactly (1 = the input, bit for bit)
+        else
+            leadGain += (leadTarget - leadGain) * leadCoeff;
         if (nch == 2)
         {
-            buffer.getWritePointer (0)[i] = lead.getSample (0, i) + l;
-            buffer.getWritePointer (1)[i] = lead.getSample (1, i) + r;
+            buffer.getWritePointer (0)[i] = leadGain * lead.getSample (0, i) + l;
+            buffer.getWritePointer (1)[i] = leadGain * lead.getSample (1, i) + r;
         }
         else
-            buffer.getWritePointer (0)[i] = lead.getSample (0, i) + 0.5f * (l + r);
+            buffer.getWritePointer (0)[i] = leadGain * lead.getSample (0, i) + 0.5f * (l + r);
 
         // Input: level, pitch, voicing (consonants, breath, silence: the crowd
         // fades out in 20 ms), history
@@ -530,7 +551,7 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
     crowdSmoothed += (crowdNow - crowdSmoothed) * (1.0f - std::exp (-(float) chunk / (0.03f * (float) sampleRate)));
     const float crowd = crowdSmoothed;
     const float count = audibleVoices (crowd, voicesMax);
-    const float level = dbToGain (-6.0f - 12.0f * (1.0f - crowd)) / std::sqrt (juce::jmax (1.0f, count));
+    const float level = dbToGain (crowdDb (crowd)) / std::sqrt (juce::jmax (1.0f, count));
     const float w = spread * smoothstep (0.2f, 1.0f, crowd);
     const double h = juce::jmax (0.2, (double) humanize); // never fully quantised
     const double dt = (double) chunk / sampleRate;

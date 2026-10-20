@@ -54,15 +54,17 @@ double medianPitch (const float* x, int from, int to, double sr)
 
 double cents (double a, double b) { return 1200.0 * std::log2 (a / b); }
 
-/** The crowd alone: output minus the lead (the input delayed by L), channel 0 (+1). */
-std::vector<float> crowdOf (const Buffer& out, const Buffer& in, int L)
+/** The crowd alone: output minus the lead (the input delayed by L, at the
+    lead's level for `crowd`), channel 0 (+1). */
+std::vector<float> crowdOf (const Buffer& out, const Buffer& in, int L, float crowd)
 {
+    const float g = juce::Decibels::decibelsToGain (sib::SingItBackDsp::leadDb (crowd));
     std::vector<float> w ((size_t) out.getNumSamples(), 0.0f);
     for (int i = 0; i < out.getNumSamples(); ++i)
     {
         float s = 0.0f;
         for (int c = 0; c < out.getNumChannels(); ++c)
-            s += out.getSample (c, i) - (i >= L ? in.getSample (c, i - L) : 0.0f);
+            s += out.getSample (c, i) - g * (i >= L ? in.getSample (c, i - L) : 0.0f);
         w[(size_t) i] = s;
     }
     return w;
@@ -80,7 +82,7 @@ double soloVoicePitch (int voice, int midi, int key, int scale, bool snap, int h
     p->getDsp().soloVoice (voice);
     const auto in = mono (vocalsynth::sustained (midi, 1.6, sr, 'a'));
     const auto out = run (*p, in);
-    const auto w = crowdOf (out, in, p->getLatencySamples());
+    const auto w = crowdOf (out, in, p->getLatencySamples(), p->getCrowdParameter().getValue());
     return medianPitch (w.data(), (int) (0.5 * sr), (int) w.size(), sr);
 }
 
@@ -107,7 +109,7 @@ TEST_CASE ("SIB 1. Crowd 0 %: bit-exact with the input delayed by the latency (m
     }
 }
 
-TEST_CASE ("SIB 2. The lead voice is the input (delayed), at any crowd level", "[sib][lead]")
+TEST_CASE ("SIB 2. The lead voice is the input (delayed): untouched up to 40 %, -10 dB at 100 %", "[sib][lead]")
 {
     const double sr = 48000.0;
     for (float crowd : { 0.25f, 0.5f, 1.0f })
@@ -122,12 +124,42 @@ TEST_CASE ("SIB 2. The lead voice is the input (delayed), at any crowd level", "
         for (int c = 0; c < 2; ++c)
             in.copyFrom (c, (int) (0.2 * sr), sung, c, 0, sung.getNumSamples());
         const auto out = run (*p, in);
+        const float g = juce::Decibels::decibelsToGain (sib::SingItBackDsp::leadDb (crowd));
         double err = 0.0;
         for (int c = 0; c < 2; ++c)
             for (int i = 0; i < out.getNumSamples(); ++i)
-                err = juce::jmax (err, (double) std::abs (out.getSample (c, i) - (i >= L ? in.getSample (c, i - L) : 0.0f)));
-        INFO ("crowd " << crowd << ": max error " << err);
+                err = juce::jmax (err, (double) std::abs (out.getSample (c, i) - g * (i >= L ? in.getSample (c, i - L) : 0.0f)));
+        INFO ("crowd " << crowd << ": lead gain " << g << ", max error " << err);
         CHECK (err < 1.0e-6);
+        if (crowd <= 0.4f)
+            CHECK (juce::exactlyEqual (g, 1.0f));
+    }
+}
+
+TEST_CASE ("SIB 2b. At 100 % the crowd is louder than the lead (wet)", "[sib][lead]")
+{
+    const double sr = 48000.0;
+    const auto in = vocalsynth::sing (vocalsynth::phrase ({ 60, 62, 64, 65, 67, 69, 71 }), sr, 110.0);
+    for (float crowd : { 0.5f, 1.0f })
+    {
+        auto p = makeProc (2, sr, crowd);
+        auto q = makeProc (2, sr, crowd);
+        q->getDsp().muteCrowd (true);
+        const auto out = run (*p, in), leadOnly = run (*q, in);
+        double eLead = 0.0, eCrowd = 0.0;
+        for (int c = 0; c < 2; ++c)
+            for (int i = 0; i < out.getNumSamples(); ++i)
+            {
+                const double l = leadOnly.getSample (c, i), x = out.getSample (c, i) - l;
+                eLead += l * l;
+                eCrowd += x * x;
+            }
+        const double ratio = 10.0 * std::log10 (eCrowd / eLead);
+        INFO ("crowd " << crowd << ": crowd / lead " << ratio << " dB");
+        if (crowd >= 1.0f)
+            CHECK (ratio > 3.0);
+        else
+            CHECK (ratio < 0.0);
     }
 }
 
@@ -193,7 +225,7 @@ TEST_CASE ("SIB 6. Key change while singing: the voices re-tune in 80 ms, no cli
         if (pos >= change && p->getKeyParameter().getIndex() == 0)
             setParam (p->getKeyParameter(), 2.0f); // C -> D major
     });
-    const auto w = crowdOf (out, in, p->getLatencySamples());
+    const auto w = crowdOf (out, in, p->getLatencySamples(), p->getCrowdParameter().getValue());
     auto maxJump = [&] (int a, int b)
     {
         float m = 0.0f;
@@ -218,7 +250,7 @@ TEST_CASE ("SIB 7. Formants kept: the crowd voice's F1 / F2 within 3 dB of the s
     p->getDsp().soloVoice (1);
     const auto in = mono (vocalsynth::sustained (45, 2.0, sr, 'a'));
     const auto out = run (*p, in);
-    const auto w = crowdOf (out, in, p->getLatencySamples());
+    const auto w = crowdOf (out, in, p->getLatencySamples(), p->getCrowdParameter().getValue());
     const auto ref = mono (vocalsynth::sustained (48, 2.0, sr, 'a'));
     std::vector<float> resampled ((size_t) in.getNumSamples(), 0.0f);
     for (size_t i = 0; i < resampled.size(); ++i)
@@ -347,7 +379,7 @@ TEST_CASE ("SIB 9. Voicing: no crowd on an unvoiced consonant, no click", "[sib]
     for (int i = 0; i < in.getNumSamples(); ++i)
         in.setSample (0, i, 0.3f * (float) hp.processHighpass (rng.bipolar(), c));
     const auto out = run (*p, in);
-    const auto w = crowdOf (out, in, p->getLatencySamples());
+    const auto w = crowdOf (out, in, p->getLatencySamples(), p->getCrowdParameter().getValue());
     double e = 0.0, ein = 0.0;
     for (int i = (int) (0.3 * sr); i < in.getNumSamples(); ++i)
     {

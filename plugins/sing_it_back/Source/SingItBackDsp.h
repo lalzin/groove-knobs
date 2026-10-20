@@ -93,6 +93,9 @@ public:
 
     /** Latency at a sample rate: ~21 ms (1024 at 44.1 / 48 kHz). */
     static int latencyFor (double sampleRate) noexcept;
+    /** Level of the crowd (dB, before / sqrt N) and of the lead (dB) for a knob position. */
+    static float crowdDb (float crowd) noexcept;
+    static float leadDb (float crowd) noexcept;
     /** Crowd voices heard for a knob position (0..1) and a maximum. */
     static float audibleVoices (float crowd, int maxCount) noexcept;
 
@@ -167,6 +170,7 @@ private:
     int solo = -1;
     bool crowdMuted = false;
     float crowdSmoothed = 0.0f;
+    float leadGain = 1.0f, leadCoeff = 0.001f; // the lead steps back above 50 %
 
     SingTelemetry telemetry;
 };
