@@ -173,17 +173,17 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
         toggleChips = std::make_unique<ToggleChips> (proc, palette, false, ! cfg.knobs.empty());
         canvas->addAndMakeVisible (*toggleChips);
     }
-    if (! cfg.switches.empty())
+    if (! cfg.switches.empty() && cfg.editorBuildsControls)
     {
         switchChips = std::make_unique<ToggleChips> (proc, palette, true);
         canvas->addAndMakeVisible (*switchChips);
     }
-    if (! cfg.choices.empty())
+    if (! cfg.choices.empty() && cfg.editorBuildsControls)
     {
         choiceChips = std::make_unique<ChoiceChips> (proc, palette);
         canvas->addAndMakeVisible (*choiceChips);
     }
-    for (size_t k = 0; k < cfg.knobs.size(); ++k)
+    for (size_t k = 0; k < (cfg.editorBuildsControls ? cfg.knobs.size() : 0); ++k)
     {
         const float along = cfg.knobs.size() > 1 ? juce::jmin (1.0f, (float) k) : 0.5f; // left: start of the arc, right: its end
         smallKnobs.push_back (std::make_unique<SmallKnob> (proc.getKnobParameter ((int) k), palette, cfg.knobs[k].caption, palette.arcColour (along)));

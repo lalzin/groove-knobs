@@ -25,5 +25,7 @@ public:
     juce::AudioParameterChoice& getHarmonyParameter() noexcept { return getChoiceParameter (SingItBackDsp::harmonyChoice); }
     juce::AudioParameterChoice& getVoicesParameter() noexcept { return getChoiceParameter (SingItBackDsp::voicesChoice); }
     juce::AudioParameterChoice& getRoomSizeParameter() noexcept { return getChoiceParameter (SingItBackDsp::roomSizeChoice); }
+    juce::AudioParameterChoice& getStyleParameter() noexcept { return getChoiceParameter (SingItBackDsp::styleChoice); }
+    juce::AudioParameterChoice& getResponseParameter() noexcept { return getChoiceParameter (SingItBackDsp::responseChoice); }
 };
 } // namespace sib

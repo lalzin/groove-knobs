@@ -53,3 +53,16 @@ cells **without grid lines**, common foot line, ≥ 2048 × 2048 for a sharp 200
 | 2 | same sheet, row 3 | Swaying and tapping the tempo, 4 poses | Today: two poses of sheet 2 alternate |
 | 2 | same sheet, row 4 | Asleep by the drum, **head on a stick**, 2 poses + 2 blinking (eyes half / closed) for the idle | The spec's sleep pose; today he sleeps sitting, sticks on his knees |
 | 3 | `tomi_sheet_hd.png` | Sheet 1 in higher resolution, without grid lines | ~250 px per character today |
+
+# ASSETS_TODO — Sing It Back (Sugar)
+
+Sugar works today with Alan's two sheets (`plugins/sing_it_back/Assets/source/sugar_sheet_1.png`,
+`sugar_sheet_2.png`, 33 poses cut by `scripts/make_sugar_frames.sh`). Nothing is blocking.
+Nice to have (same style, green background, 4 × 4 grid, ≥ 2048 px for a sharp 200 % window):
+
+| Priority | Poses | Why |
+|---|---|---|
+| 1 | Mouth shapes on one pose: closed, "a", "o", "i" (4 poses, same body) | Real lip-sync: today the mouth opens with the voice and the pose changes per syllable |
+| 2 | Turned towards the crowd, mic held out to it (2–4 poses) | RÉPONSE: today she stands arm out while the crowd answers |
+| 2 | Eyebrows: surprised / focused on the calm pose (2 poses) | The spec's eyebrows; not possible on the sprites today |
+| 3 | Higher-resolution sheets | ~310 px per character today (slightly soft at 200 %) |

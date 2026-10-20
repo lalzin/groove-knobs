@@ -71,10 +71,11 @@ std::vector<float> crowdOf (const Buffer& out, const Buffer& in, int L, float cr
 }
 
 /** Pitch of one crowd voice (soloed), singing over a sustained vowel. */
-double soloVoicePitch (int voice, int midi, int key, int scale, bool snap, int harmony)
+double soloVoicePitch (int voice, int midi, int key, int scale, bool snap, int harmony, int style = 0)
 {
     const double sr = 48000.0;
     auto p = makeProc (1, sr, 1.0f, key, scale);
+    setParam (p->getStyleParameter(), (float) style);
     setParam (p->getSnapParameter(), snap ? 1.0f : 0.0f);
     setParam (p->getHarmonyParameter(), (float) harmony);
     setParam (p->getRoomParameter(), 0.0f);
@@ -527,6 +528,8 @@ TEST_CASE ("SIB 15. State round trip, parameters", "[sib][state]")
     setParam (a.getDropoutsParameter(), 0.1f);
     setParam (a.getRoomParameter(), 0.8f);
     setParam (a.getRoomSizeParameter(), 2.0f);
+    setParam (a.getStyleParameter(), 5.0f);
+    setParam (a.getResponseParameter(), 2.0f);
     juce::MemoryBlock state;
     a.getStateInformation (state);
     SingItBackProcessor b;
@@ -542,12 +545,16 @@ TEST_CASE ("SIB 15. State round trip, parameters", "[sib][state]")
     CHECK (b.getDropoutsParameter().getValue() == Catch::Approx (0.1f).margin (1.0e-6));
     CHECK (b.getRoomParameter().getValue() == Catch::Approx (0.8f).margin (1.0e-6));
     CHECK (b.getRoomSizeParameter().getIndex() == 2);
+    CHECK (b.getStyleParameter().getIndex() == 5);
+    CHECK (b.getResponseParameter().getIndex() == 2);
     // defaults, and "crowd" first, no preset parameter
     SingItBackProcessor c;
     CHECK (c.getCrowdParameter().getValue() == Catch::Approx (0.25f));
     CHECK (c.getSnapParameter().get());
     CHECK (c.getVoicesParameter().getCurrentChoiceName() == "8");
     CHECK (c.getRoomSizeParameter().getCurrentChoiceName() == "Club");
+    CHECK (c.getStyleParameter().getCurrentChoiceName() == "Club");
+    CHECK (c.getResponseParameter().getIndex() == 0);
     CHECK (dynamic_cast<juce::RangedAudioParameter*> (c.getParameters()[0])->getParameterID() == "crowd");
     CHECK_FALSE (c.hasPresetParameter());
 }
@@ -567,3 +574,73 @@ TEST_CASE ("SIB 16. CPU: 12 voices, stereo, 48 kHz", "[sib][cpu]")
         CHECK (pct < 15.0);
 }
 
+
+TEST_CASE ("SIB 17. Styles: who sings what, how", "[sib][styles]")
+{
+    using D = sib::SingItBackDsp;
+    // every style's roles land in the scale (snap on)
+    for (int st = 0; st < D::numStyles; ++st)
+        for (int k = 0; k < D::maxVoices; ++k)
+            CHECK (D::styleSpec (st).roles[(size_t) k] <= Harmony::octaveUp);
+    // Enfants: voice 0 an octave up, Géants: voice 0 an octave down; Gospel:
+    // voice 2 a fifth up (A4 -> E5 in C major); exact pitch whatever the formants
+    const double up = soloVoicePitch (0, 64, 0, Harmony::major, true, Harmony::autoThirds, D::kids);
+    const double down = soloVoicePitch (0, 64, 0, Harmony::major, true, Harmony::autoThirds, D::giants);
+    const double fifth = soloVoicePitch (2, 69, 0, Harmony::major, true, Harmony::autoThirds, D::gospel);
+    INFO ("Enfants " << up << " Hz, Geants " << down << " Hz, Gospel fifth " << fifth << " Hz");
+    CHECK (std::abs (cents (up, midiHz (76))) < 5.0);
+    CHECK (std::abs (cents (down, midiHz (52))) < 5.0);
+    CHECK (std::abs (cents (fifth, midiHz (76))) < 5.0);
+    // Robots: no vibrato, no detune, nearly together; Stade: looser than Club
+    auto p = makeProc (2, 48000.0, 1.0f);
+    setParam (p->getStyleParameter(), (float) D::robots);
+    Buffer in (2, 512);
+    in.clear();
+    run (*p, in);
+    double maxRobot = 0.0;
+    for (int k = 0; k < D::maxVoices; ++k)
+    {
+        const auto v = p->getDsp().voiceInfo (k);
+        CHECK (juce::exactlyEqual (v.vibratoCents, 0.0));
+        CHECK (juce::exactlyEqual (v.detuneCents, 0.0));
+        maxRobot = juce::jmax (maxRobot, v.offsetMs);
+    }
+    CHECK (maxRobot < 10.0);
+}
+
+TEST_CASE ("SIB 18. RÉPONSE: the crowd sings the phrase back half a bar / a bar later", "[sib][response]")
+{
+    const double sr = 48000.0;
+    for (int response : { 1, 2 })
+    {
+        auto p = makeProc (1, sr, 1.0f);
+        setParam (p->getRoomParameter(), 0.0f);
+        setParam (p->getDropoutsParameter(), 0.0f);
+        setParam (p->getResponseParameter(), (float) response);
+        // a 0.6 s note at 0.2 s, then silence (120 BPM, 4/4: 1 s / 2 s later)
+        const auto note = mono (vocalsynth::sustained (64, 0.6, sr, 'a'));
+        Buffer in (1, (int) (3.5 * sr));
+        in.clear();
+        in.copyFrom (0, (int) (0.2 * sr), note, 0, 0, juce::jmin (note.getNumSamples(), in.getNumSamples() - (int) (0.2 * sr)));
+        const auto out = run (*p, in);
+        const auto w = crowdOf (out, in, p->getLatencySamples(), 1.0f);
+        const double delay = response == 1 ? 1.0 : 2.0, L = p->getLatencySamples() / sr;
+        auto energy = [&] (double a, double b)
+        {
+            double e = 0.0;
+            for (int i = (int) (a * sr); i < (int) (b * sr) && i < (int) w.size(); ++i)
+                e += (double) w[(size_t) i] * w[(size_t) i];
+            return e;
+        };
+        const double during = energy (0.2 + L, 0.8 + L), answer = energy (0.2 + L + delay, 0.8 + L + delay + 0.05);
+        double onset = -1.0;
+        for (size_t i = 0; i < w.size() && onset < 0.0; ++i)
+            if (std::abs (w[i]) > 0.01f)
+                onset = (double) i / sr;
+        INFO ("response " << response << ": crowd energy while singing " << during << ", in the answer " << answer << ", onset " << onset << " s");
+        CHECK (during < 1.0e-3 * answer);
+        CHECK (onset > 0.2 + L + delay);
+        CHECK (onset < 0.2 + L + delay + 0.12);
+        CHECK (p->getDsp().getTelemetry().responseSeconds.load() == Catch::Approx (delay).margin (0.001));
+    }
+}

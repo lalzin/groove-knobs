@@ -81,6 +81,10 @@ struct OneKnobConfig
         their indices every block (OneKnobEngine::setChoices). */
     std::vector<ChoiceSpec> choices;
 
+    /** false: the editor does not create or place the switch chips, small
+        knobs and choice selectors (the plugin's editor lays them out itself). */
+    bool editorBuildsControls = true;
+
     /** Also accept a mono input with a stereo output (mono is duplicated). */
     bool allowMonoToStereo = false;
 

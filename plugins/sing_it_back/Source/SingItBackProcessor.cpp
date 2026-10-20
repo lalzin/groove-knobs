@@ -32,7 +32,12 @@ namespace
                         { "scale", "Scale", "SCALE", { "Majeure", "Mineure", "Dorienne", "Mixolydienne", "Penta majeure", "Penta mineure" }, 0 },
                         { "harmony", "Harmony", "HARMONY", { "Auto", "Octaves", "Tierces", "Quintes", "Quartes" }, 0 },
                         { "voices", "Voices", "VOICES", { "4", "8", "12" }, 1 },
-                        { "roomSize", "Room size", "ROOM SIZE", { "Petite", "Club", "Stade" }, 1 } };
+                        { "roomSize", "Room size", "ROOM SIZE", { "Petite", "Club", "Stade" }, 1 },
+                        { "style", "Style", "STYLE",
+                          { "Club", "Gospel", "Stade", "Chorale", "Enfants", juce::String::fromUTF8 ("G\xc3\xa9" "ants"), "Robots" }, 0 },
+                        { "response", juce::String::fromUTF8 ("R\xc3\xa9ponse"), juce::String::fromUTF8 ("R\xc3\x89PONSE"),
+                          { "Ensemble", "1/2 mesure", "1 mesure" }, 0 } };
+        cfg.editorBuildsControls = false; // the editor's own layout: scale bar, selectors, advanced panel
         cfg.engineAlwaysRuns = true;   // pitch tracking and the UI keep going at 0 %
         cfg.tailSeconds = 3.0;         // stadium reverb
         return cfg;

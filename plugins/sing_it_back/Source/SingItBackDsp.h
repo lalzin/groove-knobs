@@ -10,7 +10,7 @@ struct Harmony
     enum Scale { major, minor, dorian, mixolydian, pentaMajor, pentaMinor, numScales };
     enum Interval { autoThirds, octaves, thirds, fifths, fourths };
     /** Voice roles: who sings what in the crowd. */
-    enum Role { unison, harmonyUp, octaveDown, harmonyDown };
+    enum Role { unison, harmonyUp, octaveDown, harmonyDown, fifthUp, octaveUp };
 
     static const std::vector<int>& degrees (int scale);
 
@@ -62,6 +62,8 @@ struct SingTelemetry
     std::atomic<int> degreePitchClass { -1 }; // currentDegreeName: Harmony::noteName (this)
     std::array<std::atomic<float>, 12> voiceGain {};   // per voice, for the silhouettes
     std::array<std::atomic<float>, 12> voiceOffsetMs {};
+    std::array<std::atomic<float>, 12> voiceLevel {};  // what each voice sings now (RMS)
+    std::atomic<float> responseSeconds { 0.0f };       // RÉPONSE: how late the crowd answers
 };
 
 /** Sing It Back: the lead voice untouched (delayed by the latency), plus up to
@@ -87,7 +89,20 @@ public:
     // knobs / switches / choices (OneKnobConfig order)
     static constexpr int spreadKnob = 0, humanizeKnob = 1, dropoutsKnob = 2, roomKnob = 3;
     static constexpr int snapSwitch = 0;
-    static constexpr int keyChoice = 0, scaleChoice = 1, harmonyChoice = 2, voicesChoice = 3, roomSizeChoice = 4;
+    static constexpr int keyChoice = 0, scaleChoice = 1, harmonyChoice = 2, voicesChoice = 3, roomSizeChoice = 4, styleChoice = 5,
+                         responseChoice = 6;
+
+    /** Crowd styles: who sings what, and how (DECISIONS.md). */
+    enum Style { club, gospel, stadium, choir, kids, giants, robots, numStyles };
+    struct StyleSpec
+    {
+        std::array<Harmony::Role, 12> roles;
+        float vibrato = 1.0f, offsets = 1.0f, detune = 1.0f; // x the humanized values
+        float formant = 1.0f, formantSpread = 0.0f;          // grain time scale: > 1 smaller singers
+    };
+    static const StyleSpec& styleSpec (int style) noexcept;
+    /** Response delay in beats (0 = together, 1/2 bar, 1 bar). */
+    static double responseBeats (int response, double beatsPerBar) noexcept;
 
     SingItBackDsp();
 
@@ -125,42 +140,46 @@ private:
         std::vector<float> acc; // overlap-add ring (absolute output time & mask)
         double nextGrain = 0.0; // output time of the next grain centre
         bool running = false;
+        float formantJitter = 0.0f; // -1..1: its own voice size within the style
+        float level = 0.0f;         // telemetry: RMS of its last chunks
         Harmony::Role role = Harmony::unison;
         double offsetMs = 10.0, driftPhase = 0.0, driftRate = 0.2;
         double detune = 0.0, vibHz = 5.5, vibCents = 12.0, vibPhase = 0.0;
         float baseGain = 0.8f, pan = 0.0f, send = 0.8f;
-        float semis = 0.0f;              // smoothed transposition
+        float semis = 0.0f;              // smoothed own tuning + vibrato (semitones)
         float audible = 0.0f;            // crowd count fade (60 ms)
         float drop = 1.0f, dropTarget = 1.0f; int dropLeft = 0; // dropouts
     };
-    struct Mark { std::int64_t pos; float period; }; // an analysis pitch mark (input time)
+    struct Mark { std::int64_t pos; float period, midi; }; // an analysis pitch mark (input time; midi < 0: unvoiced)
+    static constexpr int markRing = 8192;                  // > 4 s of marks at 1100 Hz
     void designVoices();
     void makeMarks (std::int64_t available);
-    const Mark* findMark (double u, std::int64_t available) const noexcept;
+    const Mark* findMark (double u, std::int64_t available, double span) const noexcept;
+    double roleTarget (double midi, Harmony::Role role) const noexcept;
     float historyAt (double t) const noexcept;
     void processChunk (std::int64_t chunkStart, float crowdNow);
 
     std::array<Voice, maxVoices> voices;
     double sampleRate = 48000.0;
-    int numChannels = 2, latency = 0, halfMax = 512, gateLag = 960;
+    int numChannels = 2, latency = 0, halfMax = 512, gateLag = 960, maxResponse = 192000;
     std::int64_t clock = 0;
 
     // parameters
     float spread = 0.6f, humanize = 0.5f, dropouts = 0.3f, room = 0.4f;
-    int key = 0, scale = 0, harmony = 0, voicesMax = 8, roomSize = 1;
+    int key = 0, scale = 0, harmony = 0, voicesMax = 8, roomSize = 1, style = club, response = 0;
     bool snap = true;
-    int lastKey = -1, lastScale = -1, lastHarmony = -1, retuneLeft = 0;
-    bool lastSnap = true;
 
     // signal
     PitchTracker tracker;
     float detectedMidi = 57.0f, gate = 0.0f, gateCoeff = 0.001f, rms = 0.0f, rmsCoeff = 0.01f;
     std::vector<float> history, gateHistory; // mono input and voicing gate (absolute time & mask)
-    std::int64_t mask = 0;
-    std::array<Mark, 256> marks {};
+    std::int64_t mask = 0, accMask = 0;
+    std::vector<Mark> marks;
     std::int64_t markCount = 0;
     double nextMark = 0.0;
     std::array<float, chunk> outL {}, outR {}, revL {}, revR {}; // the crowd of the next chunk
+    double bpm = 120.0, beatsPerBar = 4.0;
+    double responseDelay = 0.0; // samples
     gk::IntegerDelay leadDelay;
     juce::AudioBuffer<float> lead;
     juce::Reverb reverb;

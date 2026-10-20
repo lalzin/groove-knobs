@@ -337,3 +337,24 @@ Une ligne par décision : **contexte** — choix — raison.
 - **Résultat sur la phrase d'écoute** : foule / lead = −8 dB à 50 %, **+7,2 dB à 100 %** (test 2b : > +3 dB exigé).
 - **Marge** : −1,5 dB plutôt que 0 dB à 100 % — les voix à l'unisson culminent ensemble ; reste ~0,3 s par refrain dans le soft clip de sécurité (crête −0,3 dBFS) sur la note la plus haute de Do majeur. Pas de limiteur dédié pour l'instant.
 - **Rendus** : `sib_render` écrit dans `renders/sing_it_back` relatif au dossier courant ; lancé depuis `build/`, il écrivait dans `build/renders` — les premiers rendus envoyés à Alan étaient encore ceux de Signalsmith. À lancer depuis la racine du dépôt.
+
+## Sing It Back — UI, Sugar, styles et RÉPONSE (2026-10-20)
+- **Demande d'Alan** : « passe à Sugar et rajoute des effets si besoin pour aller plus loin avec des presets ou changement ». Pas de presets classiques (la spec n'en veut pas et tous les réglages sont déjà des paramètres) : **deux paramètres de plus**, ajoutés en fin de liste (`style`, `response`) pour garder l'ordre et l'état des sessions existantes.
+- **STYLE** (7) — qui chante quoi, et comment ; les knobs restent ceux de l'utilisateur :
+  - **Club** : la foule de référence (comportement d'avant, à l'identique) ;
+  - **Gospel** : accords empilés (unisson, tierce, quinte, octave basse), vibrato × 1,4 ;
+  - **Stade** : surtout à l'unisson, décalages × 1,5, désaccord × 1,5, voix de toutes tailles (formants ± 10 %) ;
+  - **Chorale** : quatre parties, serrée et juste (vibrato × 0,6, décalages × 0,5) ;
+  - **Enfants** : une octave au-dessus, formants × 1,25 (petites voix) ;
+  - **Géants** : une octave en dessous, formants × 0,8 ;
+  - **Robots** : accords raides, ni vibrato ni désaccord, décalages × 0,15 — **écart volontaire** avec « jamais robotique » : c'est un effet qu'on choisit, le défaut reste Club.
+- **Formants par style** : le grain PSOLA est lu à la vitesse α (α > 1 : voix plus petite) ; la hauteur reste celle de l'espacement des grains, donc exacte (test 17 : Enfants / Géants / quinte Gospel à ±5 cents).
+- **RÉPONSE** : Ensemble / 1/2 mesure / 1 mesure — la foule chante ta phrase en retard, au tempo de l'hôte (120 BPM sans hôte), jusqu'à 4 s : littéralement « sing it back ». Historique porté à L + 4,1 s, 8192 marques, recherche dichotomique.
+- **Hauteur portée par chaque marque** : chaque marque d'analyse garde la note détectée à son instant ; l'intervalle de chaque grain se calcule sur cette note-là (et non sur la note courante) — indispensable avec RÉPONSE, et plus juste aussi pour les décalages de 3–65 ms. Le lissage de 80 ms au changement de tonalité disparaît : le changement se fait d'un grain à l'autre, sans clic (test 6).
+- **UI « Stage »** : `OneKnobConfig::editorBuildsControls = false` (nouveau, défaut vrai : les quatre autres plugins inchangés) — l'éditeur de Sing It Back place lui-même ses contrôles. `gk::ChoiceSelector` sorti de `ChoiceChips` (même dessin, rendu identique pour les autres) pour être réutilisé.
+  - Gauche du knob : STYLE, RÉPONSE ; droite : HARMONIE, VOIX ; bas : barre de gamme (◀ ton ▶, gamme ▾, SNAP, la note chantée en solfège) ; « ⋯ » : panneau « Réglages de la foule » (SPREAD, HUMAN, DROPS, ROOM, ROOM SIZE) par-dessus la scène.
+  - Knob CROWD à bandes orange / prune ondulées, arc orange → prune, halo qui respire avec ce que chante la foule.
+- **Sugar** (33 poses, `scripts/make_sugar_frames.sh`) : elle chante quand la voix chante (bouche ouverte seulement sur le voisé, nouvelle pose à chaque syllabe puis à chaque temps) ; énergie = CROWD : bras tendu (< 30 %), doigt levé (30–70 %), sauts avec paillettes (> 70 %) ; entre les phrases calme (clignement), ou invitante quand la foule est grande ; pendant une RÉPONSE elle désigne la foule ; après une longue phrase au maximum, main sur le cœur ; bypass : s'assoupit puis s'allonge (les « Zzz » sont dans le dessin, ceux du code sont coupés).
+- **La foule dessinée** : une silhouette par voix (VOICES), de part et d'autre, qui entre avec sa voix, s'enfonce et pâlit sur un dropout, s'éclaire, bouge et lâche des notes selon ce qu'elle chante vraiment (télémétrie par voix). Le style s'y voit : enfants petits, géants grands, robots à tête carrée et antenne, toges orange (Gospel), cols blancs (Chorale), bras levés plus tôt (Stade).
+- **Sourcils** (spec) : impossibles sur les sprites ; demandés dans ASSETS_TODO.
+- **Retours d'Alan sur les captures** : la pose « allongée » était coupée (elle déborde de la grille 5 × 1 de la rangée 4) → découpée dans sa propre région, mise à l'échelle 176 / 276 (sa hauteur / la médiane de la rangée) ; barre de gamme agrandie (60 px, valeurs 18–24 px, étiquettes TON / GAMME / SNAP / NOTE à 11 px en encre sombre au lieu de 8,5 px pâle), SNAP affiche ON / OFF.

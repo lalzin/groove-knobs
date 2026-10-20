@@ -59,5 +59,34 @@ int main (int argc, char** argv)
             std::cout << "wrote " << name << " (peak " << juce::Decibels::gainToDecibels (out.getMagnitude (0, out.getNumSamples())) << " dBFS)\n";
         }
     }
+    // Styles (C major, 75 %) and RÉPONSE (1/2 bar, 1 bar at 110 BPM, 100 %)
+    {
+        const auto voice = vocalsynth::sing (vocalsynth::phrase ({ 60, 62, 64, 65, 67, 69, 71 }), sr, 110.0, 3.0);
+        sib::SingItBackProcessor names;
+        for (int style = 0; style < names.getStyleParameter().choices.size(); ++style)
+        {
+            sib::SingItBackProcessor proc;
+            gk::OfflineRenderer::setParameter (proc.getStyleParameter(), (float) style);
+            gk::OfflineRenderer::Options opt;
+            opt.amount = [] (double) { return 0.75f; };
+            opt.bpm = 110.0;
+            const auto out = gk::OfflineRenderer::render (proc, voice, sr, opt);
+            const auto name = "style_" + juce::String (style) + "_" + names.getStyleParameter().choices[style].toLowerCase().replace (juce::String::fromUTF8 ("\xc3\xa9"), "e") + ".wav";
+            writeWav (dir.getChildFile (name), out, sr);
+            std::cout << "wrote " << name << "\n";
+        }
+        for (int response : { 1, 2 })
+        {
+            sib::SingItBackProcessor proc;
+            gk::OfflineRenderer::setParameter (proc.getResponseParameter(), (float) response);
+            gk::OfflineRenderer::Options opt;
+            opt.amount = [] (double) { return 1.0f; };
+            opt.bpm = 110.0;
+            const auto out = gk::OfflineRenderer::render (proc, voice, sr, opt);
+            const juce::String name = response == 1 ? "response_half_bar.wav" : "response_one_bar.wav";
+            writeWav (dir.getChildFile (name), out, sr);
+            std::cout << "wrote " << name << "\n";
+        }
+    }
     return 0;
 }
