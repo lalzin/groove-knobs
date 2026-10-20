@@ -3,6 +3,7 @@
 // sizes, latency, stability, state, CPU.
 
 #include "SingItBackProcessor.h"
+#include "SingItBackEditor.h"
 #include "GkTestUtils.h"
 #include "VocalSynth.h"
 #include <catch2/catch_approx.hpp>
@@ -1012,4 +1013,101 @@ TEST_CASE ("SIB 22. CPU: no block spike (128-sample blocks, 12 voices)", "[sib][
         CHECK (mean < 6.0);
         CHECK (p999 < 25.0);
     }
+}
+
+TEST_CASE ("diag: Live conditions (512, 48 kHz, real time, a file) + UI cost", "[.diaglive]")
+{
+    const double sr = 48000.0;
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> r (fm.createReaderFor (juce::File (std::getenv ("SIB_DIAG_FILE"))));
+    REQUIRE (r != nullptr);
+    Buffer in (2, (int) r->lengthInSamples);
+    r->read (&in, 0, in.getNumSamples(), 0, true, true);
+    for (float crowd : { 0.25f, 1.0f })
+    {
+        SingItBackProcessor p;
+        setLayout (p, 2);
+        setParam (p.getCrowdParameter(), crowd);
+        p.prepareToPlay (sr, 512);
+        Buffer buf (2, 512);
+        juce::MidiBuffer midi;
+        double total = 0.0, worst = 0.0;
+        int n = 0;
+        for (int pos = 0; pos + 512 <= in.getNumSamples(); pos += 512)
+        {
+            for (int c = 0; c < 2; ++c)
+                buf.copyFrom (c, 0, in, c, pos, 512);
+            const auto t0 = juce::Time::getHighResolutionTicks();
+            p.processBlock (buf, midi);
+            const double s = juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0);
+            total += s;
+            worst = juce::jmax (worst, s);
+            ++n;
+        }
+        WARN ("crowd " << crowd << ": audio average " << 100.0 * total / n / (512.0 / sr) << " %, worst block " << 100.0 * worst / (512.0 / sr) << " % of the block time");
+    }
+    // UI: Sugar singing at 60 fps (one frame = advance + paint into an image of the window size)
+    juce::ScopedJuceInitialiser_GUI gui;
+    SingItBackProcessor p;
+    setParam (p.getCrowdParameter(), 1.0f);
+    setParam (p.getVoicesParameter(), 2.0f);
+    std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+    juce::Image img (juce::Image::ARGB, ed->getWidth() * 2, ed->getHeight() * 2, true);
+    const auto t0 = juce::Time::getHighResolutionTicks();
+    for (int f = 0; f < 120; ++f)
+    {
+        juce::Graphics g (img);
+        g.addTransform (juce::AffineTransform::scale (2.0f));
+        ed->paintEntireComponent (g, true);
+    }
+    const double perFrame = juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0) / 120.0;
+    // per component
+    std::function<void (juce::Component&, int)> each = [&] (juce::Component& c, int depth)
+    {
+        if (c.getWidth() > 30 && depth <= 3)
+        {
+            juce::Image im (juce::Image::ARGB, c.getWidth() * 2, c.getHeight() * 2, true);
+            const auto t1 = juce::Time::getHighResolutionTicks();
+            for (int f = 0; f < 60; ++f)
+            {
+                juce::Graphics g (im);
+                g.addTransform (juce::AffineTransform::scale (2.0f));
+                c.paintEntireComponent (g, true);
+            }
+            const double ms = juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t1) / 60.0 * 1000.0;
+            WARN (juce::String::repeatedString ("  ", depth) << typeid (c).name() << " " << c.getWidth() << "x" << c.getHeight() << ": " << ms << " ms");
+        }
+        for (auto* ch : c.getChildren())
+            each (*ch, depth + 1);
+    };
+    each (*ed, 0);
+    // a typical frame: the stage and the knob areas repainted (background behind them included)
+    auto* editor = dynamic_cast<sib::SingItBackEditor*> (ed.get());
+    for (bool cached : { false, true })
+    {
+        editor->setBackgroundCached (cached);
+        juce::Image im (juce::Image::ARGB, ed->getWidth() * 2, ed->getHeight() * 2, true);
+        const auto t1 = juce::Time::getHighResolutionTicks();
+        for (int f = 0; f < 60; ++f)
+        {
+            juce::Graphics g (im);
+            g.addTransform (juce::AffineTransform::scale (2.0f));
+            g.reduceClipRegion (juce::Rectangle<int> (10, 58, 400, 172));
+            g.excludeClipRegion ({ 0, 0, 0, 0 });
+            ed->paintEntireComponent (g, true);
+        }
+        const double stage = juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t1) / 60.0;
+        const auto t2 = juce::Time::getHighResolutionTicks();
+        for (int f = 0; f < 60; ++f)
+        {
+            juce::Graphics g (im);
+            g.addTransform (juce::AffineTransform::scale (2.0f));
+            g.reduceClipRegion (juce::Rectangle<int> (262, 262).withCentre ({ 210, 345 }));
+            ed->paintEntireComponent (g, true);
+        }
+        const double knob = juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t2) / 60.0;
+        WARN ((cached ? "cached background" : "no cache") << ": stage repaint " << stage * 1000.0 << " ms, knob repaint " << knob * 1000.0 << " ms");
+    }
+    WARN ("UI: " << perFrame * 1000.0 << " ms per full frame at 2x = " << 100.0 * perFrame * 60.0 << " % of a core at 60 fps (whole window; normally only the stage repaints)");
 }

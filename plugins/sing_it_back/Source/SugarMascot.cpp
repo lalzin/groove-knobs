@@ -15,6 +15,7 @@ SugarMascot::SugarMascot (SingItBackProcessor& p, const gk::Palette& pal) : Masc
     setFrames (loadFrames());
     showSleepZ = false; // the sleeping poses have their own "Zzz"
     motion = 0.3f;      // a diva, not a bouncing ball (Alan: "trop d'animation")
+    repaintEvery = 2;   // 30 fps: plenty for her calm moves, half the UI cost
     // a quaver: head + stem + flag
     note.addEllipse (-4.0f, -2.5f, 6.5f, 5.0f);
     note.addRectangle (1.6f, -13.0f, 1.4f, 11.5f);

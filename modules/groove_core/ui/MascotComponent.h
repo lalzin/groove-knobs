@@ -91,6 +91,9 @@ protected:
     /** Strength of the body motion (transient bounce, stretch on a pose
         change, beat nod): 1 = the suite's default, lower = calmer. */
     float motion = 1.0f;
+    /** Repaint every n-th frame (1 = 60 fps, 2 = 30 fps): a calm mascot
+        does not need more, and the UI costs half. */
+    int repaintEvery = 1;
 
     /** Plugin-specific decorations, in component coordinates. `figure` is the
         area the character is drawn into (before the animation transform). */
@@ -129,5 +132,6 @@ private:
     std::uint32_t lastTransients = 0;
     double beatsUi = 0.0;
     bool initialised = false;
+    int framesSinceRepaint = 0;
 };
 } // namespace gk

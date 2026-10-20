@@ -347,6 +347,7 @@ SingItBackEditor::SingItBackEditor (SingItBackProcessor& p)
 {
     auto& pal = getPalette();
     getMascot().setBounds (10, 58, 400, 172); // Sugar and her crowd need the whole band
+    setBackgroundCached (true);
 
     style = std::make_unique<gk::ChoiceSelector> (p.getStyleParameter(), "STYLE", orange, pal);
     response = std::make_unique<gk::ChoiceSelector> (p.getResponseParameter(), juce::String::fromUTF8 ("R\xc3\x89PONSE"), teal, pal);
@@ -394,7 +395,9 @@ void SingItBackEditor::editorTick (double dt)
     for (auto& l : tel.voiceLevel)
         sing = juce::jmax (sing, l.load (std::memory_order_relaxed));
     const float target = juce::jlimit (0.0f, 1.0f, 5.0f * sing) * proc.getCrowdParameter().getValue();
-    pulse += (target - pulse) * (dt <= 0.0 ? 1.0f : (float) juce::jmin (1.0, dt / 0.08));
-    getKnob().setPulse (pulse);
+    pulse += (target - pulse) * (dt <= 0.0 ? 1.0f : (float) juce::jmin (1.0, dt / 0.25));
+    // in steps of 1/8: the big knob repaints when the glow visibly changes,
+    // not on every frame
+    getKnob().setPulse (std::round (pulse * 8.0f) / 8.0f);
 }
 } // namespace sib

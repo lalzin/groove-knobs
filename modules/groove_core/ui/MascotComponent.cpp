@@ -253,7 +253,11 @@ void MascotComponent::advance (double dt, float amount, float bypass)
     const float swayAmount = macro::lateOnset (mag, 0.8f) * (1.0f - bypass);
     state.sway = swayAmount * (float) std::sin (2.0 * dspmath::pi * state.modPhase);
 
-    repaint();
+    if (++framesSinceRepaint >= repaintEvery)
+    {
+        framesSinceRepaint = 0;
+        repaint();
+    }
 }
 
 juce::Rectangle<float> MascotComponent::figureArea() const

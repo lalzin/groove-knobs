@@ -30,6 +30,9 @@ public:
     /** Adds a plugin-specific component to the base canvas (420 x 520
         coordinates), e.g. a bottom bar replacing the preset bar. */
     void addToCanvas (juce::Component& c, juce::Rectangle<int> bounds);
+    /** Renders the static background once (at the screen's resolution) and
+        reuses it: much cheaper repaints of an animated mascot / knob. */
+    void setBackgroundCached (bool cached);
     SmallKnob* getSmallKnob (int index) noexcept { return juce::isPositiveAndBelow (index, (int) smallKnobs.size()) ? smallKnobs[(size_t) index].get() : nullptr; }
     PresetBar& getPresetBar() noexcept { return *presetBar; }
     MascotComponent& getMascot() noexcept { return *mascot; }

@@ -16,7 +16,32 @@ public:
         suitePath = GrooveFonts::textPath (suite.toUpperCase(), 13.0f, (float) baseWidth * 0.5f, 19.0f, 0.3f);
     }
 
+    /** Draw the (static) background from an image rendered once at the
+        physical resolution, instead of the vignette and lettering on every
+        repaint of a child (the mascot, the knob) — the UI's main cost. */
+    bool cacheBackground = false;
+
     void paint (juce::Graphics& g) override
+    {
+        if (! cacheBackground)
+        {
+            paintBackground (g);
+            return;
+        }
+        const float s = g.getInternalContext().getPhysicalPixelScaleFactor();
+        const int w = juce::roundToInt ((float) getWidth() * s), h = juce::roundToInt ((float) getHeight() * s);
+        if (! cached.isValid() || cached.getWidth() != w || cached.getHeight() != h || ! juce::exactlyEqual (cachedSaturation, palette.saturation))
+        {
+            cached = juce::Image (juce::Image::RGB, juce::jmax (1, w), juce::jmax (1, h), false);
+            juce::Graphics cg (cached);
+            cg.addTransform (juce::AffineTransform::scale ((float) w / (float) getWidth(), (float) h / (float) getHeight()));
+            paintBackground (cg);
+            cachedSaturation = palette.saturation;
+        }
+        g.drawImage (cached, getLocalBounds().toFloat());
+    }
+
+    void paintBackground (juce::Graphics& g)
     {
         const auto b = getLocalBounds().toFloat();
 
@@ -50,6 +75,8 @@ public:
 private:
     const Palette& palette;
     juce::Path titlePath, suitePath, madeByPath, companyPath;
+    juce::Image cached;
+    float cachedSaturation = -1.0f;
 };
 
 //==============================================================================
@@ -334,5 +361,14 @@ void OneKnobEditor::addToCanvas (juce::Component& c, juce::Rectangle<int> bounds
 {
     canvas->addAndMakeVisible (c);
     c.setBounds (bounds);
+}
+} // namespace gk
+
+namespace gk
+{
+void OneKnobEditor::setBackgroundCached (bool cached)
+{
+    canvas->cacheBackground = cached;
+    canvas->repaint();
 }
 } // namespace gk
