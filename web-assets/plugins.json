@@ -71,12 +71,13 @@
         },
         "windows": {
           "file": "FrenchFilter-0.1.0-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 14208479,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
             "Standalone"
-          ]
+          ],
+          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.1/FrenchFilter-0.1.0-Windows-Setup.exe"
         }
       }
     },
@@ -138,12 +139,13 @@
         },
         "windows": {
           "file": "BoogieTrio-0.1.0-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 5774302,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
             "Standalone"
-          ]
+          ],
+          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.1/BoogieTrio-0.1.0-Windows-Setup.exe"
         }
       }
     },
@@ -204,12 +206,13 @@
         },
         "windows": {
           "file": "Backwash-0.1.0-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 6109535,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
             "Standalone"
-          ]
+          ],
+          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.1/Backwash-0.1.0-Windows-Setup.exe"
         }
       }
     },
@@ -274,12 +277,13 @@
         },
         "windows": {
           "file": "PewPew-0.1.0-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 12741565,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
             "Standalone"
-          ]
+          ],
+          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.1/PewPew-0.1.0-Windows-Setup.exe"
         }
       }
     },
@@ -342,12 +346,13 @@
         },
         "windows": {
           "file": "SingItBack-0.1.0-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 11016359,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
             "Standalone"
-          ]
+          ],
+          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.1/SingItBack-0.1.0-Windows-Setup.exe"
         }
       }
     }
