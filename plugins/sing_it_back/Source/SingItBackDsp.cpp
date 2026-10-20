@@ -385,7 +385,7 @@ void SingItBackDsp::prepare (double sr, int maxBlock, int nch)
     mask = size - 1;
     history.assign ((size_t) size, 0.0f);
     gateHistory.assign ((size_t) size, 0.0f);
-    marks.assign ((size_t) markRing, Mark { 0, 1.0f, -1.0f, -1.0f, 0 });
+    marks.assign ((size_t) markRing, Mark {});
     // overlap-add ring: grains reach at most 2 x halfMax x 1.3 past the chunk
     std::int64_t accSize = 1;
     while (accSize < 4 * latency + 4 * chunk)
@@ -402,6 +402,7 @@ void SingItBackDsp::prepare (double sr, int maxBlock, int nch)
     gateCoeff = (float) (1.0 - std::exp (-1.0 / (0.02 * sr / 3.0))); // ~20 ms to settle
     leadCoeff = (float) (1.0 - std::exp (-1.0 / (0.01 * sr)));
     limiterRelease = (float) (1.0 - std::exp (-1.0 / (0.15 * sr)));
+    limGain.fill (1.0f);
     for (auto* s : { &crowdLevel, &width, &roomMix })
         s->prepare (sr, 0.030);
     reset();
@@ -426,8 +427,8 @@ void SingItBackDsp::reset()
     heldNote = -1.0f;
     noteId = 0;
     lastVoicedMark = -1000000;
-    markRandom.setSeed (99);
-    limiterEnv = 0.0f;
+    limGain.fill (1.0f);
+    limLevel = 1.0f;
     std::fill (history.begin(), history.end(), 0.0f);
     std::fill (gateHistory.begin(), gateHistory.end(), 0.0f);
     markCount = 0;
@@ -493,7 +494,7 @@ void SingItBackDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples
     const float roomMax[] { 0.4f, 0.6f, 0.85f };
     for (int i = 0; i < numSamples; ++i)
     {
-        const int j = (int) (clock % chunk);
+        const int j = (int) (clock % (2 * chunk));
         float x = 0.0f;
         for (int c = 0; c < nch; ++c)
             x += buffer.getSample (c, i);
@@ -512,14 +513,12 @@ void SingItBackDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples
             leadGain += (leadTarget - leadGain) * leadCoeff;
         float outA = leadGain * lead.getSample (0, i) + (nch == 2 ? l : 0.5f * (l + r));
         float outB = nch == 2 ? leadGain * lead.getSample (1, i) + r : outA;
-        // soft ceiling at -1.5 dBFS (a big crowd peaks with the voice): only
-        // above it, so a normal level stays untouched
-        const float pk = juce::jmax (std::abs (outA), std::abs (outB));
-        limiterEnv = pk > limiterEnv ? pk : limiterEnv + (pk - limiterEnv) * limiterRelease; // instant attack: never above the ceiling
-        if (constexpr float ceiling = 0.84f; limiterEnv > ceiling)
+        // ceiling at -1.5 dBFS (a big crowd peaks with the voice), planned a
+        // chunk ahead; 1 (untouched) below it
+        if (const float lg = limGain[(size_t) j]; ! juce::exactlyEqual (lg, 1.0f))
         {
-            outA *= ceiling / limiterEnv;
-            outB *= ceiling / limiterEnv;
+            outA *= lg;
+            outB *= lg;
         }
         buffer.getWritePointer (0)[i] = outA;
         if (nch == 2)
@@ -533,7 +532,7 @@ void SingItBackDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples
         gate += ((tracker.voiced() ? 1.0f : 0.0f) - gate) * gateCoeff;
         history[(size_t) (clock & mask)] = x;
         gateHistory[(size_t) (clock & mask)] = gate;
-        if (j == chunk - 1)
+        if (j % chunk == chunk - 1)
             processChunk (clock - (chunk - 1), clamp01 (amount[i]));
         ++clock;
     }
@@ -567,12 +566,13 @@ void SingItBackDsp::makeMarks (std::int64_t available)
 {
     // Analysis marks one period apart, each moved onto the waveform's peak
     // within ±1/4 period (the grains are then centred on the glottal pulses);
-    // unvoiced: every ~8 ms, irregularly (regular grains would buzz)
+    // unvoiced: every 8 ms; those grains are laid untransposed at the same
+    // spacing, half-overlapping Hann windows: the consonant comes out intact
     for (;;)
     {
         const bool voiced = tracker.voiced();
         const double period = voiced ? juce::jlimit (sampleRate / 1100.0, sampleRate / 60.0, sampleRate / (double) tracker.frequency())
-                                     : 0.008 * sampleRate * (0.7 + 0.6 * markRandom.nextDouble());
+                                     : 0.008 * sampleRate;
         const int radius = voiced ? (int) (period * 0.25) : 0;
         const auto predicted = (std::int64_t) std::llround (nextMark);
         if (predicted + radius + markLag > available)
@@ -654,9 +654,11 @@ float SingItBackDsp::historyAt (double t) const noexcept
 
 void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
 {
-    // Input is known up to `available`; this computes the crowd of the next
-    // chunk, [outStart, outStart + chunk): one chunk later, inside the latency
-    const std::int64_t available = chunkStart + chunk - 1, outStart = chunkStart + chunk, outEnd = outStart + chunk;
+    // Input is known up to `available`; this computes the crowd of the chunk
+    // after next, [outStart, outStart + chunk): two chunks later, inside the
+    // latency (one for the computation grid, one of lookahead for the ceiling)
+    const std::int64_t available = chunkStart + chunk - 1, outStart = chunkStart + 2 * chunk, outEnd = outStart + chunk;
+    const int hb = (int) (outStart % (2 * chunk)); // its half of the rings
     makeMarks (available);
 
     // Crowd knob, smoothed 30 ms
@@ -676,8 +678,8 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
     const float dropStep = (float) (1.0 / (0.06 * sampleRate));
 
     std::array<float, chunk> sendL {}, sendR {};
-    outL.fill (0.0f);
-    outR.fill (0.0f);
+    std::fill (outL.begin() + hb, outL.begin() + hb + chunk, 0.0f);
+    std::fill (outR.begin() + hb, outR.begin() + hb + chunk, 0.0f);
 
     for (int k = 0; k < maxVoices; ++k)
     {
@@ -707,7 +709,8 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
         if (! v.running)
         {
             std::fill (v.acc.begin(), v.acc.end(), 0.0f);
-            v.nextGrain = (double) outStart;
+            v.nextGrain = (double) (outStart + halfMax); // the first grain starts whole (no step)
+            v.hasPending = false;
             v.semis = semis;
             v.running = true;
         }
@@ -723,7 +726,11 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
         for (;;)
         {
             const double ts = v.nextGrain;
-            const auto* m = findMark (ts - latency - offset, available, alpha);
+            // transposing down, grains longer than two periods so they still
+            // overlap (two periods at an octave down only touch: the breath
+            // in the voice would be chopped at half the pitch, a rasp)
+            const double stretch = juce::jlimit (1.0, 2.0, 1.0 / v.lastRatio);
+            const auto* m = v.hasPending ? &v.pending : findMark (ts - latency - offset, available, alpha * stretch);
             if (m == nullptr)
             {
                 if (ts >= (double) outEnd)
@@ -732,9 +739,16 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
                 continue;
             }
             const double period = m->period;
-            const int half = juce::jmin ((int) period, halfMax);
+            const int half = juce::jmin ((int) (period * stretch), halfMax);
             if (ts - half >= (double) outEnd)
+            {
+                // not yet: keep this mark for it, so its start (decided now)
+                // can never fall in the part already played
+                v.pending = *m;
+                v.hasPending = true;
                 break;
+            }
+            v.hasPending = false;
             double ratio = 1.0; // unvoiced (consonants, breath): not transposed, just doubled
             if (m->midi >= 0.0f)
             {
@@ -761,18 +775,40 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
                 v.scoop *= std::exp (-period / ratio / sampleRate / v.scoopTau);
             }
             v.noteAge += period / ratio / sampleRate;
+            v.lastRatio = ratio;
             // level: one grain per output period (the harmonics keep the
             // input's envelope; power follows the pitch by sqrt)
             const float norm = (float) (period / half / std::sqrt (ratio));
             const auto p0 = juce::jmax (outStart, (std::int64_t) std::ceil (ts - half));
             const auto p1 = (std::int64_t) std::floor (ts + half);
-            const double invHalf = juce::MathConstants<double>::pi / half;
-            for (auto p = p0; p <= p1; ++p)
+            // Hann window by rotation (no cos per sample); the input read
+            // walks by alpha (1: a fixed fraction, no floor per sample)
+            const double step = juce::MathConstants<double>::pi / half, d0 = (double) p0 - ts;
+            double wc = std::cos (d0 * step), ws = std::sin (d0 * step);
+            const double rc = std::cos (step), rs = std::sin (step);
+            double src = (double) m->pos + d0 * alpha;
+            float* acc = v.acc.data();
+            if (juce::exactlyEqual (alpha, 1.0))
             {
-                const double d = (double) p - ts;
-                const float win = (float) (0.5 + 0.5 * std::cos (d * invHalf));
-                v.acc[(size_t) (p & accMask)] += win * norm * historyAt ((double) m->pos + d * alpha);
+                auto i0 = (std::int64_t) std::floor (src);
+                const float frac = (float) (src - (double) i0);
+                for (auto p = p0; p <= p1; ++p, ++i0)
+                {
+                    const float a = history[(size_t) (i0 & mask)], b = history[(size_t) ((i0 + 1) & mask)];
+                    acc[(size_t) (p & accMask)] += (float) (0.5 + 0.5 * wc) * norm * (a + frac * (b - a));
+                    const double nc = wc * rc - ws * rs;
+                    ws = ws * rc + wc * rs;
+                    wc = nc;
+                }
             }
+            else
+                for (auto p = p0; p <= p1; ++p, src += alpha)
+                {
+                    acc[(size_t) (p & accMask)] += (float) (0.5 + 0.5 * wc) * norm * historyAt (src);
+                    const double nc = wc * rc - ws * rs;
+                    ws = ws * rc + wc * rs;
+                    wc = nc;
+                }
             v.nextGrain += period / ratio;
         }
 
@@ -806,8 +842,8 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
             v.drop += juce::jlimit (-dropStep, dropStep, v.dropTarget - v.drop);
             const float s = y * g * v.drop * gt;
             sumSq += (y * v.drop * gt) * (y * v.drop * gt);
-            outL[(size_t) j] += s * gl;
-            outR[(size_t) j] += s * gr;
+            outL[(size_t) (hb + j)] += s * gl;
+            outR[(size_t) (hb + j)] += s * gr;
             sendL[(size_t) j] += s * gl * send;
             sendR[(size_t) j] += s * gr * send;
         }
@@ -816,7 +852,39 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
 
     // Crowd reverb (on the crowd only), per chunk as well
     reverb.processStereo (sendL.data(), sendR.data(), chunk);
-    revL = sendL;
-    revR = sendR;
+    std::copy (sendL.begin(), sendL.end(), revL.begin() + hb);
+    std::copy (sendR.begin(), sendR.end(), revR.begin() + hb);
+
+    // Output ceiling (-1.5 dBFS): the peak of that chunk (the lead is the
+    // input L samples earlier, already known), ramped down over the chunk
+    // before it (not played yet), released over 150 ms
+    constexpr float ceiling = 0.84f;
+    const float rm = roomMix.getCurrent();
+    float peak = 0.0f;
+    for (int j = 0; j < chunk; ++j)
+    {
+        const float ld = leadGain < 0.0f ? 1.0f : leadGain;
+        const float x = ld * history[(size_t) ((outStart + j - latency) & mask)];
+        const float cm = crowdMuted ? 0.0f : 1.0f;
+        const float a = std::abs (x + cm * (outL[(size_t) (hb + j)] + rm * revL[(size_t) (hb + j)]));
+        const float b = std::abs (x + cm * (outR[(size_t) (hb + j)] + rm * revR[(size_t) (hb + j)]));
+        peak = juce::jmax (peak, a, b);
+    }
+    const float target = peak > ceiling ? ceiling / peak : 1.0f;
+    if (target < limLevel)
+    {
+        const int pb = (hb + chunk) % (2 * chunk); // the chunk before (next to be played)
+        const float g0 = limGain[(size_t) pb];
+        for (int j = 0; j < chunk; ++j)
+            limGain[(size_t) (pb + j)] = juce::jmin (limGain[(size_t) (pb + j)], g0 + (target - g0) * (float) (j + 1) / (float) chunk);
+        limLevel = target;
+    }
+    for (int j = 0; j < chunk; ++j)
+    {
+        limLevel = juce::jmin (target, limLevel + (1.0f - limLevel) * limiterRelease);
+        if (limLevel > 0.99999f)
+            limLevel = 1.0f;
+        limGain[(size_t) (hb + j)] = limLevel;
+    }
 }
 } // namespace sib

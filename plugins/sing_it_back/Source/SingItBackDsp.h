@@ -136,10 +136,17 @@ public:
     void muteCrowd (bool m) noexcept { crowdMuted = m; }
 
 private:
+    /** An analysis pitch mark (input time): its period, the sung pitch (< 0:
+        unvoiced) and the note it belongs to (scale note, held with hysteresis;
+        noteId changes with each new note). */
+    struct Mark { std::int64_t pos = 0; float period = 1.0f, midi = -1.0f, note = -1.0f; std::uint32_t noteId = 0; };
     struct Voice
     {
         std::vector<float> acc; // overlap-add ring (absolute output time & mask)
         double nextGrain = 0.0; // output time of the next grain centre
+        Mark pending {};         // the mark chosen for nextGrain (kept until the grain is laid: never truncated)
+        double lastRatio = 1.0;  // the previous grain's transposition (sets the next grain's length)
+        bool hasPending = false;
         bool running = false;
         float formantJitter = 0.0f; // -1..1: its own voice size within the style
         float level = 0.0f;         // telemetry: RMS of its last chunks
@@ -157,10 +164,6 @@ private:
         float audible = 0.0f;            // crowd count fade (60 ms)
         float drop = 1.0f, dropTarget = 1.0f; int dropLeft = 0; // dropouts
     };
-    /** An analysis pitch mark (input time): its period, the sung pitch (< 0:
-        unvoiced) and the note it belongs to (scale note, held with hysteresis;
-        noteId changes with each new note). */
-    struct Mark { std::int64_t pos; float period, midi, note; std::uint32_t noteId; };
     static constexpr int markRing = 8192;                  // > 4 s of marks at 1100 Hz
     void designVoices();
     void makeMarks (std::int64_t available);
@@ -191,9 +194,11 @@ private:
     float heldNote = -1.0f;              // the note being sung (hysteresis: no flicker on vibrato / slides)
     std::uint32_t noteId = 0;
     std::int64_t lastVoicedMark = -1000000;
-    juce::Random markRandom { 99 };       // unvoiced marks: irregular (no buzz)
-    float limiterEnv = 0.0f, limiterRelease = 0.001f;
-    std::array<float, chunk> outL {}, outR {}, revL {}, revR {}; // the crowd of the next chunk
+    float limiterRelease = 0.001f, limLevel = 1.0f;
+    // the crowd of the next two chunks (ring, absolute time % 2 chunks) and
+    // the output ceiling's gain: one chunk of lookahead, so it ramps down
+    // before a peak instead of jumping (a click)
+    std::array<float, 2 * chunk> outL {}, outR {}, revL {}, revR {}, limGain {};
     double bpm = 120.0, beatsPerBar = 4.0;
     double responseDelay = 0.0; // samples
     gk::IntegerDelay leadDelay;

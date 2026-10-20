@@ -6,6 +6,7 @@
 #include "GkTestUtils.h"
 #include "VocalSynth.h"
 #include <catch2/catch_approx.hpp>
+#include <numeric>
 
 using namespace gktest;
 using sib::Harmony;
@@ -764,4 +765,251 @@ TEST_CASE ("SIB 20. Natural: the crowd keeps the singer's own vibrato and slides
     INFO ("pitch spread: singer " << singer << " c, unison voice (Club) " << voices[0] << " c, Robots " << voices[1] << " c");
     CHECK (voices[0] > 0.7 * singer);
     CHECK (voices[1] < 0.4 * singer);
+}
+
+TEST_CASE ("diag: block load (average and worst block) at 128 samples", "[.diagcpu]")
+{
+    const double sr = 48000.0;
+    for (int voicesChoice : { 1, 2 })
+    {
+        auto p = makeProc (2, sr, 1.0f, 0, 0, 128);
+        setParam (p->getVoicesParameter(), (float) voicesChoice);
+        const auto in = vocalsynth::sing (vocalsynth::phrase ({ 60, 62, 64, 65, 67, 69, 71 }), sr, 120.0);
+        Buffer buf (2, 128);
+        juce::MidiBuffer midi;
+        double total = 0.0, worst = 0.0;
+        int blocks = 0, worstAt = 0;
+        std::vector<double> times;
+        for (int pos = 0; pos + 128 <= in.getNumSamples(); pos += 128)
+        {
+            for (int c = 0; c < 2; ++c)
+                buf.copyFrom (c, 0, in, c, pos, 128);
+            const auto t0 = juce::Time::getHighResolutionTicks();
+            p->processBlock (buf, midi);
+            const double us = juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0) * 1.0e6;
+            total += us;
+            if (us > worst)
+                worstAt = blocks;
+            worst = juce::jmax (worst, us);
+            times.push_back (us);
+            ++blocks;
+        }
+        const double blockUs = 128.0 / sr * 1.0e6;
+        std::sort (times.begin(), times.end());
+        WARN ("worst at block " << worstAt << " (" << worstAt * 128 / sr << " s); 99.9th percentile " << 100.0 * times[times.size() * 999 / 1000] / (128.0 / sr * 1.0e6) << " %; 2nd worst " << 100.0 * times[times.size() - 2] / (128.0 / sr * 1.0e6) << " %");
+        WARN ((voicesChoice == 1 ? 8 : 12) << " voices: average " << 100.0 * total / blocks / blockUs << " %, worst block " << 100.0 * worst / blockUs << " % of the block time");
+    }
+}
+
+namespace
+{
+/** Crackle: clicks in a signal = samples whose 2nd difference stands far out
+    of its local level (8 x the RMS of the 2nd difference over ±5 ms); per second. */
+std::vector<double> clickTimes;
+double clicksPerSecond (const float* x, int n, double sr)
+{
+    clickTimes.clear();
+    std::vector<float> d2 ((size_t) n, 0.0f);
+    for (int i = 1; i + 1 < n; ++i)
+        d2[(size_t) i] = x[i + 1] - 2.0f * x[i] + x[i - 1];
+    const int w = (int) (0.005 * sr);
+    double acc = 0.0;
+    int clicks = 0, lastClick = -1000000;
+    for (int i = 0; i < n; ++i)
+    {
+        acc += (double) d2[(size_t) i] * d2[(size_t) i];
+        if (i >= 2 * w)
+            acc -= (double) d2[(size_t) (i - 2 * w)] * d2[(size_t) (i - 2 * w)];
+        const int c = i - w;
+        if (c < w)
+            continue;
+        const double rmsLocal = std::sqrt (juce::jmax (0.0, acc) / (2 * w));
+        if (std::abs (d2[(size_t) c]) > 5.0 * rmsLocal + 1.0e-5 && c - lastClick > w)
+        {
+            ++clicks;
+            lastClick = c;
+            clickTimes.push_back (c / sr);
+        }
+    }
+    return clicks / (n / sr);
+}
+
+/** A more realistic singer: jitter, shimmer, breath noise, a male low note phrase. */
+Buffer realisticVoice (double sr)
+{
+    auto v = vocalsynth::sing (vocalsynth::phrase ({ 48, 50, 52, 53, 55, 57, 59 }), sr, 110.0, 0.5, 25.0, 11);
+    gk::testsignals::Rng rng (17);
+    gk::TptSvf hp;
+    const auto c = gk::TptSvf::Coeffs::make (2500.0, sr, 0.7);
+    for (int i = 0; i < v.getNumSamples(); ++i)
+    {
+        const float breath = 0.02f * (float) hp.processHighpass (rng.bipolar(), c);
+        for (int ch = 0; ch < 2; ++ch)
+            v.setSample (ch, i, v.getSample (ch, i) * (1.0f + 0.05f * (float) rng.bipolar()) + breath);
+    }
+    return v;
+}
+} // namespace
+
+TEST_CASE ("diag: crackle of the crowd", "[.diagclick]")
+{
+    const double sr = 48000.0;
+    const auto in = mono (realisticVoice (sr));
+    WARN ("input: " << clicksPerSecond (in.getReadPointer (0), in.getNumSamples(), sr) << " clicks / s");
+    for (int style = 0; style < 7; ++style)
+    {
+        auto p = makeProc (1, sr, 1.0f);
+        setParam (p->getStyleParameter(), (float) style);
+        setParam (p->getRoomParameter(), 0.0f);
+        const auto out = run (*p, in);
+        const auto w = crowdOf (out, in, p->getLatencySamples(), 1.0f);
+        // HF share (> 6 kHz) relative to the input's: crackle adds HF
+        auto hf = [&] (const float* x, int n)
+        {
+            gk::TptSvf a, b;
+            const auto cc = gk::TptSvf::Coeffs::make (6000.0, sr, 0.7);
+            double eh = 0.0, e = 0.0;
+            for (int i = 0; i < n; ++i)
+            {
+                const double y = b.processHighpass (a.processHighpass (x[i], cc), cc);
+                eh += y * y;
+                e += (double) x[i] * x[i];
+            }
+            return 10.0 * std::log10 (eh / (e + 1e-30));
+        };
+        WARN ("style " << style << ": crowd " << clicksPerSecond (w.data(), (int) w.size(), sr) << " clicks / s, HF share " << hf (w.data(), (int) w.size())
+                       << " dB (input " << hf (in.getReadPointer (0), in.getNumSamples()) << " dB)");
+        juce::String ts;
+        for (auto t : clickTimes)
+            ts << juce::String (t, 3) << " ";
+        WARN ("  at " << ts);
+        const double outClicks = clicksPerSecond (out.getReadPointer (0), out.getNumSamples(), sr);
+        juce::String ts2;
+        for (auto t : clickTimes)
+            ts2 << juce::String (t, 3) << " ";
+        WARN ("  output (what is heard): " << outClicks << " clicks / s at " << ts2);
+    }
+}
+
+TEST_CASE ("diag: crackle per voice", "[.diagclick2]")
+{
+    const double sr = 48000.0;
+    const auto in = mono (realisticVoice (sr));
+    for (int style : { 0, 5 })
+        for (int k = 0; k < 8; ++k)
+        {
+            auto p = makeProc (1, sr, 1.0f);
+            setParam (p->getStyleParameter(), (float) style);
+            setParam (p->getRoomParameter(), 0.0f);
+            setParam (p->getDropoutsParameter(), 0.0f);
+            p->getDsp().soloVoice (k);
+            const auto out = run (*p, in);
+            const auto w = crowdOf (out, in, p->getLatencySamples(), 1.0f);
+            const double c = clicksPerSecond (w.data(), (int) w.size(), sr);
+            juce::String ts;
+            for (auto t : clickTimes)
+                if (t > 0.2)
+                    ts << juce::String (t, 3) << " ";
+            WARN ("style " << style << " voice " << k << " (role " << p->getDsp().voiceInfo (k).role << "): " << c << " /s at " << ts);
+        }
+}
+
+TEST_CASE ("diag: detector false positives at low pitch", "[.diagclick3]")
+{
+    const double sr = 48000.0;
+    const auto in = mono (realisticVoice (sr));
+    std::vector<float> down ((size_t) in.getNumSamples() * 2);
+    for (size_t i = 0; i + 2 < down.size(); ++i)
+    {
+        const double t = (double) i * 0.5;
+        const int k = (int) t;
+        down[i] = k + 1 < in.getNumSamples() ? in.getSample (0, k) + (float) (t - k) * (in.getSample (0, k + 1) - in.getSample (0, k)) : 0.0f;
+    }
+    WARN ("input slowed an octave down: " << clicksPerSecond (down.data(), (int) down.size(), sr) << " clicks / s");
+}
+
+TEST_CASE ("diag: dump octave-down voice", "[.diagdump]")
+{
+    const double sr = 48000.0;
+    const auto in = mono (realisticVoice (sr));
+    auto p = makeProc (1, sr, 1.0f);
+    setParam (p->getRoomParameter(), 0.0f);
+    setParam (p->getDropoutsParameter(), 0.0f);
+    p->getDsp().soloVoice (4);
+    const auto out = run (*p, in);
+    const auto w = crowdOf (out, in, p->getLatencySamples(), 1.0f);
+    clicksPerSecond (w.data(), (int) w.size(), sr);
+    juce::File f ("/Users/alan/Documents/Claude project/groove-knobs/.scratch/oct.txt");
+    juce::String s;
+    for (auto t : clickTimes)
+        if (t > 1.3 && t < 1.5)
+        {
+            const int c = (int) (t * sr);
+            for (int i = c - 60; i < c + 60; ++i)
+                s << i << " " << juce::String (w[(size_t) i], 6) << "\n";
+            break;
+        }
+    f.replaceWithText (s);
+}
+
+TEST_CASE ("SIB 21. No crackle: a breathy voice, every voice incl. an octave down, and the output", "[sib][crackle]")
+{
+    // clicks = samples whose 2nd difference stands > 5x out of its ±5 ms
+    // level (the singer: 0 / s); an octave down used to rasp (~15 / s): the
+    // grains no longer overlapped and chopped the breath
+    const double sr = 48000.0;
+    const auto in = mono (realisticVoice (sr));
+    REQUIRE (clicksPerSecond (in.getReadPointer (0), in.getNumSamples(), sr) < 0.05);
+    auto after = [] (double from) { int n = 0; for (auto t : clickTimes) n += t > from ? 1 : 0; return n; };
+    for (int k : { 0, 1, 4, 7 }) // unison, third up, octave down, third down
+    {
+        auto p = makeProc (1, sr, 1.0f);
+        setParam (p->getRoomParameter(), 0.0f);
+        setParam (p->getDropoutsParameter(), 0.0f);
+        p->getDsp().soloVoice (k);
+        const auto out = run (*p, in);
+        const auto w = crowdOf (out, in, p->getLatencySamples(), 1.0f);
+        clicksPerSecond (w.data(), (int) w.size(), sr);
+        const double rate = after (0.2) / (in.getNumSamples() / sr);
+        INFO ("voice " << k << " (role " << p->getDsp().voiceInfo (k).role << "): " << rate << " clicks / s");
+        CHECK (rate < 1.0);
+    }
+    for (int style = 0; style < sib::SingItBackDsp::numStyles; ++style)
+    {
+        auto p = makeProc (1, sr, 1.0f);
+        setParam (p->getStyleParameter(), (float) style);
+        const auto out = run (*p, in);
+        clicksPerSecond (out.getReadPointer (0), out.getNumSamples(), sr);
+        const double rate = after (0.2) / (in.getNumSamples() / sr);
+        INFO ("style " << style << ", output: " << rate << " clicks / s");
+        CHECK (rate < 0.3);
+    }
+}
+
+TEST_CASE ("SIB 22. CPU: no block spike (128-sample blocks, 12 voices)", "[sib][cpu]")
+{
+    const double sr = 48000.0;
+    auto p = makeProc (2, sr, 1.0f, 0, 0, 128);
+    setParam (p->getVoicesParameter(), 2.0f);
+    const auto in = vocalsynth::sing (vocalsynth::phrase ({ 60, 62, 64, 65, 67, 69, 71 }), sr, 120.0);
+    Buffer buf (2, 128);
+    juce::MidiBuffer midi;
+    std::vector<double> times;
+    for (int pos = 0; pos + 128 <= in.getNumSamples(); pos += 128)
+    {
+        for (int c = 0; c < 2; ++c)
+            buf.copyFrom (c, 0, in, c, pos, 128);
+        const auto t0 = juce::Time::getHighResolutionTicks();
+        p->processBlock (buf, midi);
+        times.push_back (juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0));
+    }
+    std::sort (times.begin(), times.end());
+    const double block = 128.0 / sr;
+    const double p999 = 100.0 * times[times.size() * 999 / 1000] / block, mean = 100.0 * std::accumulate (times.begin(), times.end(), 0.0) / (double) times.size() / block;
+    WARN ("128-sample blocks: average " << mean << " %, 99.9th percentile " << p999 << " % of the block time");
+    if (timingChecksEnforced())
+    {
+        CHECK (mean < 6.0);
+        CHECK (p999 < 25.0);
+    }
 }
