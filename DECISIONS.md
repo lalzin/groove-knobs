@@ -411,3 +411,13 @@ Une ligne par décision : **contexte** — choix — raison.
 ## Site et release v0.1.1 (2026-10-20)
 - **Visuels web** de Pew Pew et Sing It Back (`pp_screenshots --web`, `sib_screenshots --web`) : mêmes fichiers que les trois premiers (fenêtre 2x / 3x, états, mascotte détourée et toutes ses poses, og 1200×630, carte 1080×1080, icône 512) ; pose principale Tomi 26 (frappe à pleine énergie), Sugar 8 (doigt levé). Visuels de la suite refaits avec les **cinq** fenêtres en éventail (`writeSuite` accepte n plugins). `plugins.json` : deux fiches de plus (`type` instrument / effet), tailles des `.pkg` notarisés ; prompt du site mis à jour (5 cartes, installation macOS sans avertissement, conseils Pew Pew / Sing It Back).
 - **Tag v0.1.1** : release GitHub avec les cinq installateurs Windows (le workflow les construit tous depuis 18fe3a2, vérifié vert). Les versions des plugins restent 0.1.0 (noms des fichiers) : le tag est celui de la suite.
+
+## Sing It Back — encore moins « auto-tune » (2026-10-20)
+- **Retour d'Alan** : « on a encore l'effet autotune ». Ce qui restait de trop parfait :
+  1. **Hauteur en escalier** : le détecteur donne une nouvelle hauteur toutes les 5 ms ; toutes les marques (donc tous les grains) de ces 5 ms prenaient la même période → la hauteur de la foule montait / descendait par marches, la signature de l'auto-tune. Le contour de période est maintenant **lissé** (~8 ms, en log) ; un saut de plus d'un demi-ton (nouvelle note, octave) est pris d'un coup.
+  2. **Copies exactement périodiques** : chaque grain était posé à exactement une période de sortie du précédent, au même niveau. Ajout de **jitter** (±0,8 % × humanize par période) et de **shimmer** (±10 % × humanize par grain), propres à chaque voix — comme une vraie voix (test 23 : variation période à période de l'unisson 0,27 % contre 0,14 % pour une copie régulière, < 1 %).
+  3. **Harmonie qui bascule vite** : sur un glissé, la voix d'harmonie changeait d'intervalle en 30 ms ; maintenant ~90 ms (le temps qu'un choriste met à rejoindre sa note).
+  4. **Vibrato sinusoïdal parfait** : vitesse (±12 % × humanize) et profondeur (±25 %) qui dérivent lentement, propres à chaque voix.
+  5. **Voix à l'octave basse** : les plus « machine » après transposition → −4 dB, en fond.
+  6. Désaccord individuel ±11 cents × humanize (avant ±8), formants ±8 % par voix en Club (avant ±5 %).
+- Robots reste volontairement auto-tune (pas de jitter, de dérive ni de scoop). Les tests de justesse comparent maintenant la voix à sa note **plus son propre désaccord** voulu.

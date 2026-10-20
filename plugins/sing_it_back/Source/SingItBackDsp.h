@@ -192,6 +192,8 @@ private:
     std::int64_t markCount = 0;
     double nextMark = 0.0;
     float heldNote = -1.0f;              // the note being sung (hysteresis: no flicker on vibrato / slides)
+    double smoothLogPeriod = 0.0;        // the period contour, smoothed: no 5 ms stairs (the auto-tune sound)
+    bool smoothValid = false;
     std::uint32_t noteId = 0;
     std::int64_t lastVoicedMark = -1000000;
     float limiterRelease = 0.001f, limLevel = 1.0f;

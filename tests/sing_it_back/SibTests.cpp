@@ -86,7 +86,8 @@ double soloVoicePitch (int voice, int midi, int key, int scale, bool snap, int h
     const auto in = mono (vocalsynth::sustained (midi, 1.6, sr, 'a'));
     const auto out = run (*p, in);
     const auto w = crowdOf (out, in, p->getLatencySamples(), p->getCrowdParameter().getValue());
-    return medianPitch (w.data(), (int) (0.5 * sr), (int) w.size(), sr);
+    // the voice's own (intentional) detune taken out: what is checked is the note it aims at
+    return medianPitch (w.data(), (int) (0.5 * sr), (int) w.size(), sr) / std::exp2 (p->getDsp().voiceInfo (voice).detuneCents / 1200.0);
 }
 
 double midiHz (double m) { return 440.0 * std::pow (2.0, (m - 69.0) / 12.0); }
@@ -1110,4 +1111,42 @@ TEST_CASE ("diag: Live conditions (512, 48 kHz, real time, a file) + UI cost", "
         WARN ((cached ? "cached background" : "no cache") << ": stage repaint " << stage * 1000.0 << " ms, knob repaint " << knob * 1000.0 << " ms");
     }
     WARN ("UI: " << perFrame * 1000.0 << " ms per full frame at 2x = " << 100.0 * perFrame * 60.0 << " % of a core at 60 fps (whole window; normally only the stage repaints)");
+}
+
+TEST_CASE ("SIB 23. Not auto-tuned: each voice's periods vary from one to the next (jitter), like a singer's", "[sib][natural]")
+{
+    // a perfectly steady 220 Hz tone in: the unison voice out must not be
+    // perfectly steady (an exactly periodic copy is what sounds synthetic),
+    // but stay a subtle jitter (< 1 %); Robots stays steady
+    const double sr = 48000.0;
+    Buffer in (1, (int) (2.0 * sr));
+    for (int i = 0; i < in.getNumSamples(); ++i)
+        in.setSample (0, i, 0.4f * (float) std::sin (juce::MathConstants<double>::twoPi * 220.0 * i / sr));
+    auto jitterOf = [&] (int style)
+    {
+        auto p = makeProc (1, sr, 1.0f);
+        setParam (p->getStyleParameter(), (float) style);
+        setParam (p->getRoomParameter(), 0.0f);
+        p->getDsp().soloVoice (0);
+        const auto out = run (*p, in);
+        const auto w = crowdOf (out, in, p->getLatencySamples(), 1.0f);
+        std::vector<double> zc;
+        for (int i = (int) (0.8 * sr); i + 1 < (int) w.size() - (int) (0.2 * sr); ++i)
+            if (w[(size_t) i] < 0.0f && w[(size_t) i + 1] >= 0.0f)
+                zc.push_back (i + (double) w[(size_t) i] / (double) (w[(size_t) i] - w[(size_t) i + 1]));
+        double sum = 0.0;
+        int n = 0;
+        for (size_t k = 2; k < zc.size(); ++k)
+        {
+            const double a = zc[k - 1] - zc[k - 2], b = zc[k] - zc[k - 1];
+            sum += std::abs (b - a) / (0.5 * (a + b));
+            ++n;
+        }
+        return 100.0 * sum / juce::jmax (1, n);
+    };
+    const double club = jitterOf (0), robots = jitterOf ((int) sib::SingItBackDsp::robots);
+    INFO ("cycle-to-cycle period change: Club " << club << " %, Robots " << robots << " %");
+    // (the measure itself shows ~0.15 % on a steady copy: Robots is the reference)
+    CHECK (club > robots + 0.1);
+    CHECK (club < 1.0);
 }

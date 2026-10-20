@@ -248,7 +248,7 @@ const SingItBackDsp::StyleSpec& SingItBackDsp::styleSpec (int st) noexcept
         // Club: the reference crowd (unison, harmony, an octave below)
         { { H::unison, H::harmonyUp, H::unison, H::harmonyUp, H::octaveDown, H::unison, H::harmonyUp, H::harmonyDown, H::unison, H::octaveDown,
             H::harmonyUp, H::unison },
-          1.0f, 1.0f, 1.0f, 1.0f, 0.05f },
+          1.0f, 1.0f, 1.0f, 1.0f, 0.08f },
         // Gospel: stacked triads, wide vibrato
         { { H::unison, H::harmonyUp, H::fifthUp, H::octaveDown, H::harmonyUp, H::unison, H::fifthUp, H::harmonyDown, H::unison, H::harmonyUp,
             H::octaveDown, H::fifthUp },
@@ -357,7 +357,7 @@ SingItBackDsp::VoiceInfo SingItBackDsp::voiceInfo (int i) const
     const auto& st = styleSpec (style);
     VoiceInfo info;
     info.offsetMs = 3.0 + st.offsets * 37.0 * (0.6 + 0.4 * h) * v.offsetMs;
-    info.detuneCents = st.detune * 8.0 * h * v.detune;
+    info.detuneCents = st.detune * 11.0 * h * v.detune;
     info.vibratoHz = 4.8 + 1.4 * v.vibHz;
     info.vibratoCents = st.vibrato * (8.0 + 12.0 * v.vibCents) * (0.5 + 0.5 * h);
     info.gain = 0.9 - 0.35 * v.baseGain * h;
@@ -425,6 +425,7 @@ void SingItBackDsp::reset()
         v.rng.setSeed (1000 + (juce::int64) (&v - voices.data()));
     }
     heldNote = -1.0f;
+    smoothValid = false;
     noteId = 0;
     lastVoicedMark = -1000000;
     limGain.fill (1.0f);
@@ -571,8 +572,24 @@ void SingItBackDsp::makeMarks (std::int64_t available)
     for (;;)
     {
         const bool voiced = tracker.voiced();
-        const double period = voiced ? juce::jlimit (sampleRate / 1100.0, sampleRate / 60.0, sampleRate / (double) tracker.frequency())
-                                     : 0.008 * sampleRate;
+        double period = 0.008 * sampleRate;
+        if (voiced)
+        {
+            // the detector gives a new pitch every 5 ms: as is, every grain of
+            // those 5 ms gets the same period and the pitch moves in stairs
+            // (exactly the auto-tune sound). Its contour is smoothed instead
+            // (~8 ms, in log); a jump of more than a semitone (a new note, an
+            // octave) is taken at once
+            const double target = std::log (juce::jlimit (sampleRate / 1100.0, sampleRate / 60.0, sampleRate / (double) tracker.frequency()));
+            if (! smoothValid || std::abs (target - smoothLogPeriod) > 0.058)
+                smoothLogPeriod = target;
+            else
+                smoothLogPeriod += (target - smoothLogPeriod) * (1.0 - std::exp (-std::exp (smoothLogPeriod) / (0.008 * sampleRate)));
+            smoothValid = true;
+            period = std::exp (smoothLogPeriod);
+        }
+        else
+            smoothValid = false;
         const int radius = voiced ? (int) (period * 0.25) : 0;
         const auto predicted = (std::int64_t) std::llround (nextMark);
         if (predicted + radius + markLag > available)
@@ -699,13 +716,15 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
         v.role = st.roles[(size_t) k];
         // its own tuning, slow wander and vibrato (which only comes once the
         // note is held, as singers do); the harmony interval comes with each grain
-        v.vibPhase += juce::MathConstants<double>::twoPi * info.vibratoHz * dt;
+        // a sung vibrato is not a sine: its rate and depth drift a little
+        v.vibPhase += juce::MathConstants<double>::twoPi * info.vibratoHz * (1.0 + 0.12 * h * std::sin (0.7 * v.ampPhase + (double) k)) * dt;
         for (int w2 = 0; w2 < 2; ++w2)
             v.wanderPhase[w2] += juce::MathConstants<double>::twoPi * v.wanderRate[w2] * dt;
         v.ampPhase += juce::MathConstants<double>::twoPi * v.ampRate * dt;
         const double wander = 9.0 * h * (double) st.detune * (0.6 * std::sin (v.wanderPhase[0]) + 0.4 * std::sin (v.wanderPhase[1]));
         const double vibOnset = smoothstep (0.12f, 0.5f, (float) v.noteAge);
-        const float semis = (float) ((info.detuneCents + wander + vibOnset * info.vibratoCents * std::sin (v.vibPhase)) * 0.01);
+        const double vibDepth = info.vibratoCents * (0.75 + 0.25 * std::sin (0.5 * v.wanderPhase[1] + (double) k));
+        const float semis = (float) ((info.detuneCents + wander + vibOnset * vibDepth * std::sin (v.vibPhase)) * 0.01);
         if (! v.running)
         {
             std::fill (v.acc.begin(), v.acc.end(), 0.0f);
@@ -770,7 +789,7 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
                     if (firstNote)
                         v.interval = target;
                 }
-                v.interval += (target - v.interval) * (1.0 - std::exp (-period / (0.03 * sampleRate)));
+                v.interval += (target - v.interval) * (1.0 - std::exp (-period / (0.09 * sampleRate))); // a singer takes ~100 ms to move to the next harmony note
                 ratio = std::exp2 ((v.interval + pull + (double) v.semis + 0.01 * v.scoop) / 12.0);
                 v.scoop *= std::exp (-period / ratio / sampleRate / v.scoopTau);
             }
@@ -778,7 +797,13 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
             v.lastRatio = ratio;
             // level: one grain per output period (the harmonics keep the
             // input's envelope; power follows the pitch by sqrt)
-            const float norm = (float) (period / half / std::sqrt (ratio));
+            // a real voice is never exactly periodic: each voice's periods
+            // vary a little from one to the next (jitter) and so does their
+            // level (shimmer) — without it, the copies sound synthetic
+            const double human = h * (double) st.detune;
+            const double jitter = m->midi >= 0.0f ? (v.rng.nextDouble() * 2.0 - 1.0) * 0.008 * human : 0.0;
+            const float shimmer = (float) (1.0 + (m->midi >= 0.0f ? (v.rng.nextDouble() * 2.0 - 1.0) * 0.1 * human : 0.0));
+            const float norm = shimmer * (float) (period / half / std::sqrt (ratio));
             const auto p0 = juce::jmax (outStart, (std::int64_t) std::ceil (ts - half));
             const auto p1 = (std::int64_t) std::floor (ts + half);
             // Hann window by rotation (no cos per sample); the input read
@@ -809,7 +834,7 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
                     ws = ws * rc + wc * rs;
                     wc = nc;
                 }
-            v.nextGrain += period / ratio;
+            v.nextGrain += period / ratio * (1.0 + jitter);
         }
 
         // dropouts: now and then a voice dips or stops for 0.5-1.5 s
@@ -823,7 +848,10 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
         if (solo >= 0)
             v.dropTarget = 1.0f;
 
-        const float g = level * (float) info.gain * v.audible * (float) (1.0 + 0.12 * h * (double) st.detune * std::sin (v.ampPhase));
+        // the voices an octave down are the most "machine" of all after the
+        // transposition: they stay in the background (-4 dB)
+        const float octaveDownGain = v.role == Harmony::octaveDown ? 0.63f : 1.0f;
+        const float g = level * (float) info.gain * v.audible * octaveDownGain * (float) (1.0 + 0.12 * h * (double) st.detune * std::sin (v.ampPhase));
         const float panPos = (float) info.pan * w;
         const float send = (float) info.send;
         const float gl = std::cos ((panPos + 1.0f) * 0.25f * juce::MathConstants<float>::pi) * 1.41421356f;
