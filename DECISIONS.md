@@ -400,3 +400,9 @@ Une ligne par décision : **contexte** — choix — raison.
   - Sugar redessinée à **30 images / s** (`MascotComponent::repaintEvery`) : largement assez pour ses gestes calmes ;
   - lueur du knob par paliers de 1/8 et lissée sur 250 ms : le knob ne se redessine que quand elle change visiblement.
 - Résultat : scène 1,7 ms × 30 / s, knob 2,9 ms quelques fois par seconde → **~7 % d'un cœur** pour l'interface ouverte en train de chanter à 100 % (avant ~43 %) ; fenêtre fermée : rien.
+
+## Signature Apple (2026-10-20)
+- Certificat **Developer ID Application: Alan Marzin (J7424X5CN3)** installé dans le trousseau de session ; signature testée (runtime renforcé, horodatage Apple, chaîne Developer ID CA → Apple Root CA).
+- Il a été créé depuis la demande d'Alan (`~/Downloads/AlanMarzin.certSigningRequest`), pas depuis celles préparées dans `~/.groove-knobs-signing` : `import_developer_id.sh` cherche maintenant la clé correspondante parmi `~/.groove-knobs-signing/*.key`, `~/Downloads/*.key` et `$DEVID_KEYS` (comparaison des clés publiques), et convertit les clés PKCS#8 (« BEGIN PRIVATE KEY ») au format RSA que `security` sait lire (copie temporaire réservée au propriétaire, effacée aussitôt).
+- Les certificats « Apple Development » et « Apple Distribution » téléchargés d'abord ne servent pas ici (Gatekeeper / notarisation hors App Store) : ignorés par le script.
+- Reste : **Developer ID Installer** (signature des .pkg) et le profil de notarisation (`notarytool store-credentials`, lancé par Alan).
