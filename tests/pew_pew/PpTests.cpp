@@ -560,8 +560,9 @@ TEST_CASE ("PP 14. State round trip; presets keep ROOM / ECHO / division", "[pp]
     c.setCurrentProgram (2);
     CHECK (c.getRoomParameter().getValue() == Catch::Approx (0.5f)); // a preset does not touch the user's sends
     CHECK (c.getEchoParameter().getValue() == Catch::Approx (0.25f));
-    const char* ids[] { "amount", "preset", "up", "long", "roll", "reverb", "delay", "volume", "delayDiv", "bypass" };
-    for (int i = 0; i < 10; ++i)
+    // (MODE was added last: the earlier parameters keep their places)
+    const char* ids[] { "amount", "preset", "up", "long", "roll", "reverb", "delay", "volume", "delayDiv", "mode", "bypass" };
+    for (int i = 0; i < 11; ++i)
         CHECK (dynamic_cast<juce::RangedAudioParameter*> (c.getParameters()[i])->getParameterID() == ids[i]);
     // instrument bus: no input, stereo or mono output
     juce::AudioProcessor::BusesLayout stereo, mono, withInput;
@@ -746,6 +747,50 @@ TEST_CASE ("PP 19. VOL: 0 dB by default (unchanged), -6 dB halves the level, the
         CHECK (err < 1.0e-4);
         if (db <= -59.9f)
             CHECK (juce::exactlyEqual (peak, 0.0));
+    }
+}
+
+TEST_CASE ("PP 20. SOLO: each note cuts the previous one (2 ms); MULTI: they overlap", "[pp][solo]")
+{
+    const double sr = 48000.0;
+    const int second = (int) (0.05 * sr), fade = (int) (0.0025 * sr);
+    for (int preset = 0; preset < numPresets; ++preset)
+    {
+        auto solo = makeProc (preset, 0.6f), multi = makeProc (preset, 0.6f), alone = makeProc (preset, 0.6f), defaults = makeProc (preset, 0.6f);
+        setParam (solo->getModeParameter(), 1.0f);
+        CHECK (defaults->getModeParameter().getIndex() == 0); // MULTI by default
+        const auto os = render (*solo, { { 0, 60 }, { second, 67 } }, (int) (0.3 * sr), sr);
+        const auto om = render (*multi, { { 0, 60 }, { second, 67 } }, (int) (0.3 * sr), sr);
+        const auto o1 = render (*alone, { { 0, 60 } }, (int) (0.3 * sr), sr);
+        // the second note as played in MULTI (same random click as in SOLO):
+        // MULTI is the exact sum of the two (PP 6)
+        Buffer oa (om);
+        oa.addFrom (0, 0, o1, 0, 0, o1.getNumSamples(), -1.0f);
+        // SOLO: after the 2 ms fade, only the second note
+        double errSolo = 0.0, diffMulti = 0.0;
+        for (int i = second + fade; i < os.getNumSamples(); ++i)
+        {
+            errSolo = juce::jmax (errSolo, (double) std::abs (os.getSample (0, i) - oa.getSample (0, i)));
+            diffMulti = juce::jmax (diffMulti, (double) std::abs (om.getSample (0, i) - oa.getSample (0, i)));
+        }
+        // no click at the cut (as PP 5): SOLO - the second note = the first
+        // note faded over 2 ms, no step bigger than its own slope
+        std::vector<float> cut ((size_t) os.getNumSamples());
+        for (int i = 0; i < os.getNumSamples(); ++i)
+            cut[(size_t) i] = os.getSample (0, i) - oa.getSample (0, i);
+        const float before = maxJump (cut.data(), second - 480, second);
+        const float during = maxJump (cut.data(), second, second + (int) (0.004 * sr));
+        INFO ("preset " << preset << ": SOLO vs the second note " << errSolo << ", MULTI " << diffMulti << ", step before " << before << ", during the cut " << during);
+        CHECK (errSolo < 1.0e-5);
+        CHECK (diffMulti > 1.0e-3);
+        CHECK (during <= 1.5f * before + 1.0e-6f);
+        // before the second note both modes are the same
+        for (int i = 0; i < second; ++i)
+            if (! juce::exactlyEqual (os.getSample (0, i), om.getSample (0, i)))
+            {
+                FAIL ("SOLO differs before the second note at " << i);
+                break;
+            }
     }
 }
 

@@ -97,7 +97,7 @@ class PewPewDsp final : public gk::OneKnobEngine
 public:
     static constexpr int numVoices = 8, numTails = 4;
     static constexpr int roomKnob = 0, echoKnob = 1, volumeKnob = 2, divChoice = 0;
-    static constexpr int upToggle = 0, longToggle = 1, rollToggle = 2;
+    static constexpr int upToggle = 0, longToggle = 1, rollToggle = 2, modeChoice = 1; // mode: 0 multi, 1 solo
     /** ROLL: a note becomes this many sixteenths, each softer. */
     static constexpr int rollHits = 5;
     static constexpr float rollDecay = 0.72f;
@@ -114,7 +114,11 @@ public:
     void setPreset (int index) override { presetIndex = juce::jlimit (0, (int) presets.size() - 1, index); }
     void setMidi (const juce::MidiBuffer& midi, int start, int numSamples) override;
     void setKnobs (const float* values, int n) override;
-    void setChoices (const int* indices, int n) override { division = n > divChoice ? indices[divChoice] : 4; }
+    void setChoices (const int* indices, int n) override
+    {
+        division = n > divChoice ? indices[divChoice] : 4;
+        solo = n > modeChoice && indices[modeChoice] == 1;
+    }
     void setToggleValues (const float* const* perSample, int numToggles) override
     {
         numToggleData = juce::jmin (3, numToggles);
@@ -133,11 +137,13 @@ private:
         return numToggleData > toggle && toggleData[toggle] != nullptr && toggleData[toggle][offset] >= 0.5f;
     }
     void panic();
+    void moveToTail (PewVoice& v);
     void clearEffects();
     void renderVoices (float* out, int from, int to);
 
     std::vector<PewPreset> presets;
     int presetIndex = 0, appliedReverbPreset = -1, division = 4;
+    bool solo = false; // SOLO: a new note cuts the sounding ones (2 ms)
     double sampleRate = 48000.0;
     int numChannels = 2;
 

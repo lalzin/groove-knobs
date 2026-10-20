@@ -1,11 +1,21 @@
 ﻿; Groove Knobs — Windows installer for one plugin (Inno Setup 6).
-; Built by scripts/make_installer_win.ps1 -Plugin FF|BT|BW, or:
+; Built by scripts/make_installer_win.ps1 -Plugin FF|BT|BW|PP|SIB, or:
 ;   iscc /DPlugin=BT /DMyAppVersion=0.1.0 /DBuildDir=<...>\BoogieTrio_artefacts\Release installer\windows\GrooveKnobs.iss
 
 #ifndef Plugin
   #define Plugin "FF"
 #endif
-#if Plugin == "BT"
+#if Plugin == "PP"
+  #define MyAppName "Pew Pew"
+  #define MyFileName "PewPew"
+  #define MyAppId "{{A7969E38-1C2F-4467-9340-8E07EA24D4C6}"
+  #define MyBuildFolder "pew_pew\PewPew_artefacts"
+#elif Plugin == "SIB"
+  #define MyAppName "Sing It Back"
+  #define MyFileName "SingItBack"
+  #define MyAppId "{{6A02801C-62DA-4598-A258-1987E4C95FB3}"
+  #define MyBuildFolder "sing_it_back\SingItBack_artefacts"
+#elif Plugin == "BT"
   #define MyAppName "Boogie Trio"
   #define MyFileName "BoogieTrio"
   #define MyAppId "{{37F3C7E7-C8E0-4CD8-A030-EB1F2A78579B}"
@@ -30,7 +40,7 @@
 #endif
 
 [Setup]
-AppId={{052BE9F5-4CAF-4309-A07D-2ED20F62E6A6}
+AppId={#MyAppId}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}

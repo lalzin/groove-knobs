@@ -101,9 +101,13 @@ void ChoiceSelector::showMenu()
 ChoiceChips::ChoiceChips (OneKnobProcessor& proc, const Palette& palette)
 {
     const auto& specs = proc.getConfig().choices;
-    for (size_t i = 0; i < specs.size(); ++i)
+    const auto shown = (size_t) std::count_if (specs.begin(), specs.end(), [] (const ChoiceSpec& c) { return ! c.ownControl; });
+    for (size_t i = 0, k = 0; i < specs.size(); ++i)
     {
-        const float t = specs.size() > 1 ? (float) i / (float) (specs.size() - 1) : 0.5f;
+        if (specs[i].ownControl)
+            continue;
+        const float t = shown > 1 ? (float) k / (float) (shown - 1) : 0.5f;
+        ++k;
         auto s = std::make_unique<ChoiceSelector> (proc.getChoiceParameter ((int) i), specs[i].caption, palette.arcColour (t), palette);
         addAndMakeVisible (*s);
         selectors.push_back (std::move (s));

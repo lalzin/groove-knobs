@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased] — Sing It Back 0.1.0 (nouveau)
+- Une foule qui chante avec la voix : knob CROWD (SOLO → CROWD, 25 % par défaut), jusqu'à 12 voix dans le ton et la gamme (6 gammes, SNAP, harmonies Auto / octaves / tierces / quintes / quartes), la voix d'origine intacte jusqu'à 40 % puis en retrait (−10 dB à 100 %).
+- Détection YIN, pitch shift TD-PSOLA maison (juste à ±2 cents, formants gardés, latence 21,3 ms à 48 kHz) — Signalsmith Stretch évaluée puis écartée (15 à 25 cents trop haut à cette latence).
+- Anti-robotique : retards, désaccord, vibratos, niveaux, panoramique et envois propres à chaque voix, décrochages (DROPS), porte de voisement ; reverb de la foule seule (Petite / Club / Stade).
+- STYLE (Club, Gospel, Stade, Chorale, Enfants, Géants, Robots) et RÉPONSE (la foule renvoie la phrase 1/2 mesure ou 1 mesure plus tard, au tempo).
+- UI « Stage » (orange / turquoise / prune) : barre de gamme (ton, gamme, SNAP, note chantée en solfège), sélecteurs STYLE / RÉPONSE / HARMONIE / VOIX, panneau « ⋯ » ; mascotte Sugar (33 poses) et sa foule dessinée, une silhouette par voix.
+- 19 tests (`sib_tests`), `sib_render`, `sib_screenshots`, pluginval 10 et `auval -v aufx SItB Lalz` OK ; installateurs macOS (`make_installer_mac.sh SIB`) et Windows.
+
+## [Unreleased] — Pew Pew : MODE SOLO / MULTI
+- Nouveau bouton **MODE** en bas à droite : MULTI (défaut, 8 voix superposées comme avant) ou SOLO (un seul pew à la fois, chaque note coupe la précédente en 2 ms). Test 20.
+
+## Installateurs Windows
+- Corrigé : tous les installateurs utilisaient l'identifiant d'installation de French Filter (`AppId`) — installer Boogie Trio ou Backwash passait pour une mise à jour de French Filter. Chaque plugin a maintenant le sien ; Pew Pew et Sing It Back ajoutés (script, Inno Setup, CI).
+
 ## [Unreleased] — Pew Pew 0.1.0 (nouveau, premier instrument)
 - SYNC avec les triolets (1/16 T, 1/8 T) ; petit knob **VOL** (−∞ … +6 dB) : un instrument n'a pas de signal sec à doser, il lui faut un niveau.
 - Tom « pew » disco : 8 voix, glissement exponentiel ou régulier (le *disco lazer*), tenue, désaccord, saturation douce, clic laser ; ROOM (reverb) et ECHO (écho stéréo calé sur le tempo, SYNC) ; 5 presets, Laser Pew calé sur une référence d'Alan.

@@ -24,7 +24,11 @@ namespace
                       { "delay", "Echo", "ECHO", 0.0f },
                       { "volume", "Volume", "VOL", 0.0f, -60.0f, 6.0f, 3.02f, "dB" } };
         // shortest to longest (saved by name: older sessions keep their value)
-        cfg.choices = { { "delayDiv", "Echo division", "SYNC", { "1/16 T", "1/16", "1/8 T", "1/8", "1/8 D", "1/4" }, 4 } };
+        // MODE: MULTI (default, up to 8 overlap) or SOLO (one pew at a time,
+        // each note cuts the previous one); last, so the earlier parameters
+        // keep their places; shown by the editor's own SOLO | MULTI switch
+        cfg.choices = { { "delayDiv", "Echo division", "SYNC", { "1/16 T", "1/16", "1/8 T", "1/8", "1/8 D", "1/4" }, 4 },
+                        { "mode", "Mode", "MODE", { "Multi", "Solo" }, 0, true } };
         cfg.knobLowLabel = "PLAIN";
         cfg.knobHighLabel = "PEW";
         cfg.engineAlwaysRuns = true;   // voices and tails keep ringing at any knob position

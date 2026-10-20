@@ -11,6 +11,7 @@ class PewPewEditor final : public gk::OneKnobEditor
 {
 public:
     explicit PewPewEditor (PewPewProcessor& p);
+    ~PewPewEditor() override;
     static gk::Palette makePalette();
 
     /** Screenshots: shows a hit `secondsAgo` (-1 = live). */
@@ -20,6 +21,8 @@ protected:
     void editorTick (double dt) override;
 
 private:
+    class ModeSwitch;
     PewPewProcessor& proc;
+    std::unique_ptr<ModeSwitch> mode;
 };
 } // namespace pp

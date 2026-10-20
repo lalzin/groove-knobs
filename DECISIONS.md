@@ -358,3 +358,12 @@ Une ligne par décision : **contexte** — choix — raison.
 - **La foule dessinée** : une silhouette par voix (VOICES), de part et d'autre, qui entre avec sa voix, s'enfonce et pâlit sur un dropout, s'éclaire, bouge et lâche des notes selon ce qu'elle chante vraiment (télémétrie par voix). Le style s'y voit : enfants petits, géants grands, robots à tête carrée et antenne, toges orange (Gospel), cols blancs (Chorale), bras levés plus tôt (Stade).
 - **Sourcils** (spec) : impossibles sur les sprites ; demandés dans ASSETS_TODO.
 - **Retours d'Alan sur les captures** : la pose « allongée » était coupée (elle déborde de la grille 5 × 1 de la rangée 4) → découpée dans sa propre région, mise à l'échelle 176 / 276 (sa hauteur / la médiane de la rangée) ; barre de gamme agrandie (60 px, valeurs 18–24 px, étiquettes TON / GAMME / SNAP / NOTE à 11 px en encre sombre au lieu de 8,5 px pâle), SNAP affiche ON / OFF.
+
+## Pew Pew — MODE SOLO / MULTI (2026-10-20)
+- **Demande d'Alan** : « pouvoir le mettre en mode solo / multi, bouton en bas à droite ».
+- **SOLO** = monophonique au sens d'un tom : chaque nouvelle note fait passer la voix qui sonne dans une « queue » avec le fondu de 2 ms déjà utilisé pour le vol de voix (pas de clic, test 20), puis joue seule ; ROLL est donc aussi coupé coup par coup. Les queues de ROOM / ECHO (effets) continuent : ce sont des effets, pas des voix. **MULTI** (défaut) = le comportement d'avant, à l'identique.
+- Paramètre de choix `mode` (Multi / Solo, hors presets, sauvé dans l'état), **ajouté en dernier** (juste avant bypass) : un interrupteur du cadre se serait rangé avant ROOM / ECHO / VOL et aurait décalé l'ordre des paramètres déjà publiés (test 14). `ChoiceSpec::ownControl` (nouveau, défaut faux) le retire des sélecteurs génériques : l'éditeur le montre avec son propre bouton.
+- UI : sélecteur segmenté « MODE : SOLO | MULTI » sous SYNC (clic sur une moitié, flèches, Espace) ; SYNC garde sa couleur (seuls les choix affichés comptent pour le dégradé).
+
+## Installateurs Windows (2026-10-20)
+- **Bug** : `[Setup] AppId` était écrit en dur avec l'identifiant de French Filter au lieu de `{#MyAppId}` → Boogie Trio et Backwash s'installaient comme des mises à jour de French Filter (une seule entrée de désinstallation). Corrigé ; Pew Pew et Sing It Back ont leurs propres AppId. Quelqu'un qui a installé plusieurs plugins avec la v0.1.0 peut avoir une entrée « French Filter » qui désinstalle le dernier installé : réinstaller chaque plugin la remet d'aplomb.

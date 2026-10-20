@@ -347,8 +347,30 @@ void PewPewDsp::setKnobs (const float* values, int n)
     volumeDb = n > volumeKnob ? values[volumeKnob] : 0.0f;
 }
 
+void PewPewDsp::moveToTail (PewVoice& v)
+{
+    // the voice keeps sounding in a tail slot (a free one, else the oldest),
+    // faded out over 2 ms
+    PewVoice* tail = &tails[0];
+    for (auto& t : tails)
+        if (! t.isActive() || t.getOrder() < tail->getOrder())
+        {
+            tail = &t;
+            if (! t.isActive())
+                break;
+        }
+    *tail = v;
+    tail->fadeOut ((int) std::round (stealFadeSeconds * sampleRate));
+    v = PewVoice();
+}
+
 void PewPewDsp::noteOn (int note, float velocity, float amountNow, bool up, bool longer)
 {
+    // SOLO: the sounding pew is cut (2 ms) by the new one
+    if (solo)
+        for (auto& v : voices)
+            if (v.isActive())
+                moveToTail (v);
     PewVoice* target = nullptr;
     for (auto& v : voices)
         if (! v.isActive())
@@ -358,21 +380,12 @@ void PewPewDsp::noteOn (int note, float velocity, float amountNow, bool up, bool
         }
     if (target == nullptr)
     {
-        // Steal the oldest; it keeps sounding in a tail slot, faded over 2 ms
+        // Steal the oldest
         target = &voices[0];
         for (auto& v : voices)
             if (v.getOrder() < target->getOrder())
                 target = &v;
-        PewVoice* tail = &tails[0];
-        for (auto& t : tails)
-            if (! t.isActive() || t.getOrder() < tail->getOrder())
-            {
-                tail = &t;
-                if (! t.isActive())
-                    break;
-            }
-        *tail = *target;
-        tail->fadeOut ((int) std::round (stealFadeSeconds * sampleRate));
+        moveToTail (*target);
     }
     PewVoice::Start s;
     s.preset = &presets[(size_t) presetIndex];

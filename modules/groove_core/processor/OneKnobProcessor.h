@@ -17,6 +17,7 @@ struct ChoiceSpec
     juce::String id, name, caption;
     juce::StringArray options;
     int defaultIndex = 0;
+    bool ownControl = false; // true: not in the generic ChoiceChips (the plugin's editor shows it)
 };
 
 /** A small global knob (0..1, shown in percent), not part of the presets

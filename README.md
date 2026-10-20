@@ -1,6 +1,6 @@
-# Groove Knobs — French Filter, Boogie Trio, Backwash
+# Groove Knobs — French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back
 
-La suite **Groove Knobs** (LALZIN) : des plugins à un seul knob pour la funky house et la disco. **French Filter** (le filtre French Touch), **Boogie Trio** (chorus triple de string machine), **Backwash** (reverb inversée calée sur le tempo).
+La suite **Groove Knobs** (LALZIN) : des plugins à un seul knob pour la funky house et la disco. **French Filter** (le filtre French Touch), **Boogie Trio** (chorus triple de string machine), **Backwash** (reverb inversée calée sur le tempo), **Pew Pew** (le pew disco, instrument) et **Sing It Back** (une foule qui chante avec ta voix).
 VST3 / AU / Standalone, macOS (universel) et Windows.
 
 > État : DSP, presets, calibration, interface et mascotte faits (étapes 1–5). Reste la finalisation après validation des captures.
@@ -166,6 +166,7 @@ Le **pew disco** en instrument : chaque note MIDI joue un tom électronique qui 
 
 - **La note-off est ignorée** : chaque coup est un one-shot qui se joue jusqu'au bout de son enveloppe, comme un vrai tom. La longueur de la note MIDI ne change rien ; la vélocité règle la force du coup (courbe propre à chaque preset).
 - La note règle la hauteur (le Do 60 = la hauteur de base du preset), 8 voix ; une 9e note reprend la plus ancienne avec un fondu de 2 ms.
+- **MODE** (en bas à droite) : **MULTI** (défaut) laisse jusqu'à 8 pews se superposer ; **SOLO** n'en joue qu'un à la fois, chaque note coupe la précédente (fondu de 2 ms, sans clic). Les queues de ROOM et d'ECHO continuent.
 - **ROOM** : la reverb (son mix maximal dépend du preset). **ECHO** : un écho stéréo calé sur le tempo, avec **SYNC** = 1/16 T, 1/16, 1/8 T, 1/8, 1/8 pointée (défaut) ou 1/4. **VOL** : le niveau de sortie, de −∞ à +6 dB (0 dB par défaut, aux trois quarts). Changer de preset ne touche ni ROOM, ni ECHO, ni SYNC, ni VOL.
 - All Notes Off / reset : coupure propre en 5 ms.
 - Chips (sous ROOM, chaque preset a ses valeurs par défaut) : **UP** retourne le glissement (le pew monte au lieu de descendre) ; **LONG** double la tenue et la décroissance ; **ROLL** transforme chaque note en roulement de doubles-croches au tempo (5 coups, chacun plus doux).
@@ -188,12 +189,36 @@ Mascotte : **Tomi**, le batteur disco. Il frappe à chaque note, plus fort avec 
 
 Outils : `gb_render` (rendu MIDI : `pattern`, `render`, `sweep`, `analyze`), captures `pp_screenshots`, poses de Tomi `scripts/make_tomi_frames.sh`.
 
+# Sing It Back
+
+Une **foule qui chante avec ta voix**. Le knob **CROWD** va de **SOLO** (0 % : ta voix seule, bit à bit) à **CROWD** (100 % : jusqu'à 12 voix qui chantent avec toi, la foule devant, ta voix en guide). Pour une voix seule (monophonique) : effet audio sur une piste de voix.
+
+- **Dans la gamme** : un détecteur de hauteur (YIN) suit ta voix ; chaque voix de la foule chante l'unisson, une harmonie (tierces, quintes, quartes, octaves, ou Auto = la tierce de la gamme) ou l'octave du dessous, dans le **ton** et la **gamme** choisis en bas (majeure, mineure, dorienne, mixolydienne, pentatoniques). **SNAP** cale chaque voix sur la note juste de la gamme ; sans SNAP, les intervalles sont fixes. La note que tu chantes s'affiche en solfège.
+- **Justesse et formants** : pitch shift PSOLA maison (grains de deux périodes aux marques de hauteur), juste à ±2 cents ; le timbre (les formants) reste celui de ta voix — pas d'effet « Chipmunk ».
+- **Jamais robotique** : chaque voix a son retard (3–40 ms), son léger désaccord, son vibrato, son niveau, sa place stéréo et son envoi de reverb ; elles décrochent de temps en temps (DROPS) ; rien ne chante sur les consonnes sourdes.
+- **STYLE** : Club (défaut), Gospel (accords empilés), Stade (une foule qui scande), Chorale (serrée et juste), Enfants (une octave au-dessus, petites voix), Géants (une octave en dessous), Robots (accords raides, voulu).
+- **RÉPONSE** : Ensemble, ou la foule te renvoie ta phrase **une demi-mesure ou une mesure plus tard**, au tempo de l'hôte : le *call & response*.
+- **HARMONIE**, **VOIX** (4 / 8 / 12) ; panneau **⋯** : SPREAD (largeur), HUMAN (humanisation), DROPS (décrochages), ROOM et ROOM SIZE (Petite / Club / Stade) — la reverb ne touche que la foule.
+- Au-delà de 40 %, ta voix recule doucement (−10 dB à 100 %) pour laisser la foule devant.
+
+| | |
+|---|---|
+| **Latence** | 1024 échantillons à 44,1 / 48 kHz (21,3 ms à 48 kHz), 2048 à 88,2 / 96 kHz ; annoncée à l'hôte, compensée par le DAW |
+| **CPU** | ~2,5 % d'un cœur, 12 voix stéréo à 48 kHz (Mac Intel) |
+| **Bibliothèques tierces** | aucune (JUCE seulement) |
+
+Mascotte : **Sugar**, la diva disco. Elle chante quand tu chantes (une pose par syllabe), son énergie suit CROWD (bras tendu, doigt levé, sauts avec paillettes), elle invite la foule entre les phrases et la désigne pendant une RÉPONSE ; main sur le cœur après une longue phrase au maximum ; elle s'endort en bypass. Autour d'elle, une silhouette par voix qui chante vraiment ce que chante sa voix (et dont l'allure suit le STYLE).
+
+Outils : `sib_render` (rendus d'écoute depuis la racine du dépôt → `renders/sing_it_back`), captures `sib_screenshots`, poses de Sugar `scripts/make_sugar_frames.sh`.
+
 ## Installateurs de la suite
 
 ```bash
 scripts/make_installer_mac.sh FF    # French Filter
 scripts/make_installer_mac.sh BT    # Boogie Trio
 scripts/make_installer_mac.sh BW    # Backwash
+scripts/make_installer_mac.sh PP    # Pew Pew
+scripts/make_installer_mac.sh SIB   # Sing It Back
 ```
 
-Windows : `scripts\make_installer_win.ps1 -Plugin FF|BT|BW` (Visual Studio 2022 + Inno Setup 6), ou le workflow GitHub Actions, qui construit les trois plugins et leurs installateurs Mac et Windows à chaque push.
+Windows : `scripts\make_installer_win.ps1 -Plugin FF|BT|BW|PP|SIB|All` (Visual Studio 2022 + Inno Setup 6), ou le workflow GitHub Actions, qui construit les cinq plugins et leurs installateurs Mac et Windows à chaque push.

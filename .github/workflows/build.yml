@@ -1,5 +1,5 @@
 # Builds, tests and packages the Groove Knobs plugins (French Filter, Boogie
-# Trio, Backwash) on macOS and Windows. Installers are attached to each run;
+# Trio, Backwash, Pew Pew, Sing It Back) on macOS and Windows. Installers are attached to each run;
 # pushing a tag "v<version>" also publishes a GitHub Release with the
 # Windows installers (permanent public links).
 name: build
@@ -18,7 +18,7 @@ jobs:
         run: |
           brew install ninja
           scripts/build_mac.sh
-          for p in FF BT BW; do scripts/make_installer_mac.sh --skip-build $p; done
+          for p in FF BT BW PP SIB; do scripts/make_installer_mac.sh --skip-build $p; done
       - uses: actions/upload-artifact@v4
         with:
           name: GrooveKnobs-macOS
@@ -53,7 +53,7 @@ jobs:
       - name: Check the installers are there
         run: |
           ls -la release
-          for f in FrenchFilter BoogieTrio Backwash; do ls release/$f-*-Windows-Setup.exe; done
+          for f in FrenchFilter BoogieTrio Backwash PewPew SingItBack; do ls release/$f-*-Windows-Setup.exe; done
       - uses: softprops/action-gh-release@v2
         with:
           name: Groove Knobs ${{ github.ref_name }}
