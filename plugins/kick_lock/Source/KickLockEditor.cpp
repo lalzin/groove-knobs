@@ -724,7 +724,11 @@ public:
           << "confidence " << (measuring ? num (tel.phaseConfidence.load (std::memory_order_relaxed), 2) : juce::String ("--")) << dot
           << "mono sum " << fr ("\xe2\x88\x92") << num (tel.monoSumLossDb.load (std::memory_order_relaxed), 1) << " dB" << dot
           << "f0 " << (f0 > 1.0f ? num (f0, 1) + " Hz" : juce::String ("--")) << dot
-          << (tel.linkSlot.load (std::memory_order_relaxed) >= 0 ? "link: " + proc.getDsp().linkName() + (proc.getDsp().linkLateKicks() > 0 ? " (late kicks: " + juce::String (proc.getDsp().linkLateKicks()) + ")" : juce::String()) + dot : juce::String())
+          << (tel.linkSlot.load (std::memory_order_relaxed) >= 0
+              ? "link " + proc.getLinkChannelParameter().getCurrentChoiceName() + ": " + proc.getDsp().linkName()
+                    + (proc.getDsp().linkSendersOnChannel() > 1 ? " (" + juce::String (proc.getDsp().linkSendersOnChannel()) + " Sends on it!)" : juce::String())
+                    + (proc.getDsp().linkLateKicks() > 0 ? " (late kicks: " + juce::String (proc.getDsp().linkLateKicks()) + ")" : juce::String()) + dot
+              : juce::String())
           << "latency "
           << num (1000.0 * proc.getLatencySamples() / sr, 0) << " ms";
         if (t != text)
@@ -883,7 +887,10 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
     trigger = std::make_unique<gk::ChoiceSelector> (p.getTriggerParameter(), "TRIGGER", orange, pal);
     trigger->setTooltip ("Auto: the kick on the sidechain, else Kick Lock Send's (put it on the kick's track), else the host's beats. "
                         "Sidechain: the sidechain only. Beat: the tempo only. Link: Kick Lock Send only.");
-    addToCanvas (*trigger, { 212, 290, 84, 38 });
+    addToCanvas (*trigger, { 210, 280, 84, 38 });
+    linkSel = std::make_unique<gk::ChoiceSelector> (p.getLinkChannelParameter(), "LINK", lime, pal);
+    linkSel->setTooltip ("The Kick Lock Send this one listens to: the same LINK number on the kick's track (0 to 10).");
+    addToCanvas (*linkSel, { 210, 322, 84, 38 });
 
     // the right column: ducking shape, release, the lock's settings, depth
     shape = std::make_unique<gk::ChoiceSelector> (p.getShapeParameter(), "SHAPE", orange, pal);
@@ -898,7 +905,7 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
         { p.getSubCutoffParameter(), "SUB CUT", limeDeep.brighter (0.3f), { 596, 160, 64, 68 } },
         { p.getWaveStartParameter(), "WAVE START", limeDeep.brighter (0.3f), { 680, 160, 64, 68 } },
         { p.getDepthParameter(), "DEPTH", orange, { 638, 340, 64, 68 } },
-        { p.getThresholdParameter(), "THRESHOLD", orange, { 222, 350, 64, 68 } },
+        { p.getThresholdParameter(), "THRESHOLD", orange, { 222, 364, 64, 68 } },
     };
     for (const auto& k : ks)
     {

@@ -29,7 +29,7 @@ namespace kl
 struct KickLinkMemory
 {
     static constexpr std::uint32_t magic = 0x4b4c4e4b; // "KLNK"
-    static constexpr int version = 1, slots = 8, ringSize = 128, nameSize = 64;
+    static constexpr int version = 2, slots = 16, ringSize = 128, nameSize = 64, channels = 11; // channels 0..10
 
     struct Event
     {
@@ -45,6 +45,7 @@ struct KickLinkMemory
         std::atomic<std::uint32_t> count;        // events published so far
         std::atomic<std::uint32_t> nameVersion;
         std::atomic<std::int64_t> listenedMs;    // last time a Kick Lock read it
+        std::atomic<std::int32_t> channel;       // LINK 0..10: only the Kick Locks on it listen
         char name[nameSize];
         Event events[ringSize];
     };
@@ -64,7 +65,7 @@ public:
     /** Tests use their own block (so a running Live is never disturbed). */
     static juce::String& blockName()
     {
-        static juce::String name ("lalzin_kicklock_v1");
+        static juce::String name ("lalzin_kicklock_v2"); // v2: channels (a v1 plug-in still loaded keeps its own block)
         return name;
     }
 
@@ -152,6 +153,10 @@ public:
         }
     }
 
+    /** LINK channel (0..10), from the parameter. */
+    void setChannel (int c) noexcept { channel.store (juce::jlimit (0, KickLinkMemory::channels - 1, c), std::memory_order_relaxed); }
+    int getChannel() const noexcept { return channel.load (std::memory_order_relaxed); }
+
     /** Audio thread, once per block: keeps the slot (claims one if needed). */
     void heartbeat() noexcept
     {
@@ -177,12 +182,24 @@ public:
             if (slotIndex < 0)
                 return;
         }
+        m->slot[slotIndex].channel.store (channel.load (std::memory_order_relaxed), std::memory_order_relaxed);
         if (now - lastBeat > 100)
         {
             m->slot[slotIndex].heartbeatMs.store (now, std::memory_order_relaxed);
             lastBeat = now;
+            // another live Send on the same channel: a conflict (the Kick Locks would follow only one)
+            int others = 0;
+            for (int s2 = 0; s2 < KickLinkMemory::slots; ++s2)
+                if (s2 != slotIndex && m->slot[s2].owner.load (std::memory_order_relaxed) != 0
+                    && now - m->slot[s2].heartbeatMs.load (std::memory_order_relaxed) < 1500
+                    && m->slot[s2].channel.load (std::memory_order_relaxed) == channel.load (std::memory_order_relaxed))
+                    ++others;
+            sharedWith.store (others, std::memory_order_relaxed);
         }
     }
+
+    /** UI: other live Sends on the same channel (0 = alone, as it should be). */
+    int getSharedWith() const noexcept { return sharedWith.load (std::memory_order_relaxed); }
 
     void publish (double ppq, float level) noexcept
     {
@@ -233,6 +250,7 @@ private:
     const std::uint64_t id;
     int slotIndex = -1;
     std::int64_t lastBeat = 0;
+    std::atomic<int> channel { 1 }, sharedWith { 0 };
     char pendingName[KickLinkMemory::nameSize] = "Kick";
 };
 
@@ -243,25 +261,37 @@ public:
     /** Audio thread: calls fn (ppq, level) for each kick published since the
         last call; returns the followed slot (-1 = no live sender). */
     template <typename Fn>
-    int poll (Fn&& fn) noexcept
+    int poll (int channel, Fn&& fn) noexcept
     {
         auto* m = link.get();
         if (m == nullptr)
             return -1;
         const auto now = KickLink::nowMs();
         auto live = [&] (int s) { return m->slot[s].owner.load (std::memory_order_relaxed) != 0 && now - m->slot[s].heartbeatMs.load (std::memory_order_relaxed) < 1500; };
-        if (followed < 0 || ! live (followed))
+        auto onChannel = [&] (int s) { return live (s) && m->slot[s].channel.load (std::memory_order_relaxed) == channel; };
+        if (followed < 0 || ! onChannel (followed))
         {
             followed = -1;
             for (int s = 0; s < KickLinkMemory::slots; ++s)
-                if (live (s))
+                if (onChannel (s))
                 {
                     followed = s;
                     seen = m->slot[s].count.load (std::memory_order_acquire); // only the kicks from now on
                     break;
                 }
             if (followed < 0)
+            {
+                sendersOnChannel.store (0, std::memory_order_relaxed);
                 return -1;
+            }
+        }
+        if (now - lastCount > 250)
+        {
+            int n = 0;
+            for (int s = 0; s < KickLinkMemory::slots; ++s)
+                n += onChannel (s) ? 1 : 0;
+            sendersOnChannel.store (n, std::memory_order_relaxed);
+            lastCount = now;
         }
         auto& sl = m->slot[followed];
         sl.listenedMs.store (now, std::memory_order_relaxed);
@@ -289,9 +319,14 @@ public:
         return juce::String::fromUTF8 (buf);
     }
 
+    /** UI: live Sends on the channel (more than 1: a conflict, only the first is followed). */
+    int getSendersOnChannel() const noexcept { return sendersOnChannel.load (std::memory_order_relaxed); }
+
 private:
     KickLink link;
     int followed = -1;
+    std::atomic<int> sendersOnChannel { 0 };
+    std::int64_t lastCount = 0;
     std::uint32_t seen = 0;
 };
 } // namespace kl

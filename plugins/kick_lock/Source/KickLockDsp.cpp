@@ -158,6 +158,9 @@ void KickLockDsp::prepare (double sr, int maxBlock, int nch)
     oscRingIm.assign ((size_t) size, 0.0);
     lookahead = latency - 3; // Hermite reads 2 samples past the output time
     trackGainCoeff = (float) (1.0 - std::exp (-1.0 / (0.02 * sr)));
+    noteFastAtt = (float) (1.0 - std::exp (-1.0 / (0.0005 * sr)));
+    noteFastRel = (float) (1.0 - std::exp (-1.0 / (0.004 * sr)));
+    noteLag = juce::jlimit (1, 1000, (int) std::round (0.01 * sr));
     mono.assign ((size_t) size, 0.0f);
     envRing.assign ((size_t) size, 0.0f);
     kickRing.assign ((size_t) size, 0.0f);
@@ -211,6 +214,10 @@ void KickLockDsp::reset()
     lastLinkKick = -1000000;
     linkPendingCount = 0;
     lateKicks = 0;
+    noteFast = 0.0f;
+    std::fill (noteRing.begin(), noteRing.end(), 0.0f);
+    noteDeadUntil = -1;
+    noteOnsets = 0;
     beatValid = false;
     deadUntil = -1;
     kickCount = 0;
@@ -252,6 +259,7 @@ void KickLockDsp::setChoices (const int* idx, int n)
     release = n > releaseChoice ? juce::jlimit (0, 4, idx[releaseChoice]) : 2;
     lockMode = n > modeChoice ? juce::jlimit (0, 1, idx[modeChoice]) : continuous;
     trigger = n > triggerChoice ? juce::jlimit (0, 3, idx[triggerChoice]) : triggerAuto;
+    linkChannel = n > linkChoice ? juce::jlimit (0, KickLinkMemory::channels - 1, idx[linkChoice]) : 1;
 }
 
 void KickLockDsp::setSidechain (const float* const* channels, int n, int)
@@ -417,7 +425,7 @@ void KickLockDsp::pollLink (const gk::BlockTiming& timing)
     const bool wanted = trigger == triggerLink || trigger == triggerAuto;
     if (! wanted || ! timing.isPlaying || timing.beatsPerSample <= 0.0)
     {
-        telemetry.linkSlot.store (wanted ? link.poll ([] (double, float) {}) : -1, std::memory_order_relaxed);
+        telemetry.linkSlot.store (wanted ? link.poll (linkChannel, [] (double, float) {}) : -1, std::memory_order_relaxed);
         return;
     }
     const double start = timing.beatsAtStart, bps = timing.beatsPerSample;
@@ -425,7 +433,7 @@ void KickLockDsp::pollLink (const gk::BlockTiming& timing)
     // time and still be followed exactly; later (should not happen), it
     // still ducks, late, rather than not at all
     const auto budget = (std::int64_t) (0.011 * sampleRate) + linkSlack;
-    const int slot = link.poll ([&] (double ppq, float)
+    const int slot = link.poll (linkChannel, [&] (double ppq, float)
     {
         const auto onset = clock + (std::int64_t) std::llround ((ppq - start) / bps);
         if (clock - onset > budget)
@@ -488,7 +496,10 @@ void KickLockDsp::onKick (std::int64_t when)
 
     // The sub's phase at this kick (heard in L samples), and the shift for it
     double phase = 0.0, conf = 0.0;
-    const bool weak = subRms < dbToGain (-50.0f);
+    // (subRms is a mean square: the threshold squared — compared to the
+    // amplitude, a note decaying under ~-25 dB counted as "too weak", no
+    // measurement, UNSTABLE)
+    const bool weak = subRms < dbToGain (-50.0f) * dbToGain (-50.0f);
     const bool measured = ! weak && measurePhase (when, periodSamples, phase, conf);
     if (measured)
     {
@@ -497,10 +508,15 @@ void KickLockDsp::onKick (std::int64_t when)
         if (yinAperiodicity > 0.3f)
             conf = juce::jmin (conf, 0.5);
         // and a fundamental that holds still (a glide, a wide FM: not lockable)
-        const int n = juce::jmin (recentCount, (int) recentPeriods.size());
+        // over the last ~50 ms (5 estimates): a pitch drop at the note's
+        // attack, long gone at the kick, is not a glide
+        const int n = juce::jmin (recentCount, 5);
         if (n >= 3)
         {
-            const auto [lo, hi] = std::minmax_element (recentPeriods.begin(), recentPeriods.begin() + n);
+            std::array<double, 5> last {};
+            for (int j = 0; j < n; ++j)
+                last[(size_t) j] = recentPeriods[(size_t) ((recentCount - 1 - j) % (int) recentPeriods.size())];
+            const auto [lo, hi] = std::minmax_element (last.begin(), last.begin() + n);
             if ((*hi - *lo) / (0.5 * (*hi + *lo)) > 0.03)
                 conf = juce::jmin (conf, 0.5);
         }
@@ -566,6 +582,31 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             input[(size_t) c][(size_t) (clock & mask)] = x;
         }
         firPos = firPos + 1 == firLength ? 0 : firPos + 1;
+        // a bass note starting (a jump of the level against the last ~50 ms):
+        // the rotation back to 0 before it reaches the output (L later; the
+        // fundamental's window starts T/2 before it, so within L - T/2)
+        {
+            float level = 0.0f;
+            for (int c = 0; c < nch; ++c)
+                level = juce::jmax (level, std::abs (buffer.getSample (c, i)));
+            noteFast += (level - noteFast) * (level > noteFast ? noteFastAtt : noteFastRel);
+            // against the level 10 ms earlier (kept in the envelope ring of the
+            // sub: here its own small ring)
+            noteRing[(size_t) (clock & 1023)] = noteFast;
+            const float before = noteRing[(size_t) ((clock - noteLag) & 1023)];
+            if (clock >= noteDeadUntil && noteFast > 0.003f && noteFast > 3.0f * before + 0.002f)
+            {
+                noteDeadUntil = clock + (std::int64_t) (0.05 * sampleRate);
+                ++noteOnsets;
+                if (! juce::exactlyEqual (psiTo, 0.0) || ! juce::exactlyEqual (psiNow, 0.0))
+                {
+                    const double T = periodSamples > 1.0 ? periodSamples : sampleRate / 55.0;
+                    const int room = juce::jmax (8, latency - (int) (0.5 * T) - 16);
+                    rampTo (0.0, clock - latency, 1.0, juce::jmin (fadeLength, room));
+                    noteHz = 0.0;
+                }
+            }
+        }
         for (int c = 0; c < nch; ++c)
         {
             float s = fir (c, activeKernel);

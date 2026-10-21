@@ -42,10 +42,13 @@ namespace
                         { "lockMode", "Lock mode", "MODE", { "Hold", "Transition" }, 0 },
                         // what triggers the ducking and the lock: the sidechain's kick, else
                         // Kick Lock Send's (the link), else the host's beats
-                        { "trigger", "Trigger", "TRIGGER", { "Auto", "Sidechain", "Beat", "Link" }, 0 } };
+                        { "trigger", "Trigger", "TRIGGER", { "Auto", "Sidechain", "Beat", "Link" }, 0 },
+                        // the Kick Lock Send it listens to (the same LINK number on the kick's track)
+                        { "linkChannel", "Link channel", "LINK", { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 1 } };
         cfg.editorBuildsControls = false; // KickLockEditor: its own 760 x 480 layout
         cfg.editorWidth = 760;
         cfg.editorHeight = 480;
+        cfg.wetValidAtOnce = true;      // no warm-up after a host's reset (the first beat at play)
         cfg.engineAlwaysRuns = true; // the kick detector and the phase tracker never stop
         cfg.tailSeconds = 0.1;
         return cfg;

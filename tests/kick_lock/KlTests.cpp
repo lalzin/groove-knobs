@@ -865,6 +865,146 @@ TEST_CASE ("KL 25. The ducking never moves the phase: LOCK with any curve = LOCK
     }
 }
 
+TEST_CASE ("KL 26. A bass note starting between two kicks starts untouched (no rotated attack: no click)", "[kl][notes]")
+{
+    // a raw saw bass (all the highs), notes starting 90 ms after each kick,
+    // held over the next one; LOCK on, MODE Hold: the rotation of the last
+    // kick must be back to 0 when a note starts (Alan: a click in the highs)
+    const double sr = 48000.0, bpm = 145.0, seconds = 4.0, beat = 60.0 / bpm;
+    Buffer b (2, (int) (seconds * sr));
+    b.clear();
+    std::vector<double> starts;
+    for (double t0 = 0.09 + 0.1; t0 < seconds - beat; t0 += beat)
+    {
+        starts.push_back (t0);
+        const double hz = 55.0 * (starts.size() % 2 == 0 ? 1.0 : 1.189);
+        double ph = 0.0;
+        for (int i = (int) (t0 * sr); i < (int) ((t0 + beat * 0.8) * sr); ++i)
+        {
+            ph += hz / sr;
+            const float v = (float) (0.4 * (2.0 * (ph - std::floor (ph)) - 1.0));
+            b.setSample (0, i, v);
+            b.setSample (1, i, v);
+        }
+    }
+    const auto k = kicks (seconds, sr, bpm, 0.1);
+    auto p = makeKl (sr, 1.0f, true, 0.0f); // depth 0: only the lock touches the bass
+    const auto out = run (*p, b, &k, { 512 }, bpm);
+    const int L = p->getLatencySamples();
+    double worst = 0.0;
+    for (size_t n = 2; n < starts.size(); ++n)
+    {
+        const int s0 = (int) std::round (starts[n] * sr);
+        for (int i = s0 - (int) (0.002 * sr); i < s0 + (int) (0.002 * sr); ++i)
+            worst = juce::jmax (worst, (double) std::abs (out.getSample (0, i + L) - b.getSample (0, i)));
+    }
+    INFO ("largest difference from the bass around the note starts: " << worst << "; starts seen " << p->getDsp().noteStartsSeen()
+          << ", rotation now " << p->getDsp().currentRotationDeg());
+    CHECK (worst < 1.0e-3);
+    CHECK (p->getDsp().noteStartsSeen() >= (int) starts.size() - 1);
+}
+
+TEST_CASE ("KL 27. LINK channels: each Kick Lock follows its own Send; two Sends on one channel are a conflict", "[kl][link]")
+{
+    kl::KickLink::removeBlock();
+    const double sr = 48000.0, bpm = 124.0, seconds = 3.0;
+    const auto b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr);
+    // two kick tracks: on the beats, and off them by 1/8
+    const auto kickA = kicks (seconds, sr, bpm, 0.0), kickB = kicks (seconds, sr, bpm, 30.0 / bpm);
+    kls::KickSendProcessor sendA, sendB;
+    for (auto* sp : { &sendA, &sendB })
+    {
+        sp->setNonRealtime (true);
+        sp->prepareToPlay (sr, 512);
+    }
+    setParam (*dynamic_cast<juce::RangedAudioParameter*> (sendA.getParameters()[1]), 1.0f); // LINK 1 (the choice after SENSITIVITY)
+    setParam (*dynamic_cast<juce::RangedAudioParameter*> (sendB.getParameters()[1]), 2.0f); // LINK 2
+    auto lockA = makeKl (sr, 1.0f, true), lockB = makeKl (sr, 1.0f, true);
+    setParam (lockA->getLinkChannelParameter(), 1.0f);
+    setParam (lockB->getLinkChannelParameter(), 2.0f);
+    for (auto* lp : { lockA.get(), lockB.get() })
+    {
+        setParam (lp->getTriggerParameter(), (float) KickLockDsp::triggerLink);
+        lp->prepareToPlay (sr, 512);
+    }
+    gk::OfflinePlayHead ph;
+    ph.bpm = bpm;
+    ph.sampleRate = sr;
+    ph.playing = true;
+    for (juce::AudioProcessor* ap : { (juce::AudioProcessor*) &sendA, (juce::AudioProcessor*) &sendB, (juce::AudioProcessor*) lockA.get(), (juce::AudioProcessor*) lockB.get() })
+        ap->setPlayHead (&ph);
+    Buffer ka (kickA), kb (kickB), ba (b), bb (b);
+    juce::MidiBuffer midi;
+    std::vector<std::int64_t> trigA, trigB;
+    for (int pos = 0; pos < b.getNumSamples(); pos += 512)
+    {
+        ph.samplePosition = pos;
+        Buffer v1 (ka.getArrayOfWritePointers(), 2, pos, 512), v2 (kb.getArrayOfWritePointers(), 2, pos, 512), v3 (ba.getArrayOfWritePointers(), 2, pos, 512),
+            v4 (bb.getArrayOfWritePointers(), 2, pos, 512);
+        sendA.processBlock (v1, midi);
+        sendB.processBlock (v2, midi);
+        lockA->processBlock (v3, midi);
+        lockB->processBlock (v4, midi);
+        for (auto [lp, tr] : { std::pair { lockA.get(), &trigA }, std::pair { lockB.get(), &trigB } })
+        {
+            const auto last = lp->getDsp().getTelemetry().lastKickSample.load();
+            if (last >= 0 && (tr->empty() || tr->back() != last))
+                tr->push_back (last);
+        }
+    }
+    auto onGrid = [&] (const std::vector<std::int64_t>& tr, double offset)
+    {
+        int ok = 0;
+        for (auto t : tr)
+            for (double k : kickTimes (seconds, bpm, offset))
+                ok += std::abs ((double) t / sr - k) < 0.002 ? 1 : 0;
+        return ok;
+    };
+    INFO ("Kick Lock 1: " << trigA.size() << " kicks, Kick Lock 2: " << trigB.size());
+    CHECK (trigA.size() >= 5);
+    CHECK (trigB.size() >= 5);
+    CHECK (onGrid (trigA, 0.0) == (int) trigA.size());          // only Send 1's kicks
+    CHECK (onGrid (trigB, 30.0 / bpm) == (int) trigB.size());  // only Send 2's
+    CHECK (lockA->getDsp().linkSendersOnChannel() == 1);
+    // Send 2 moved to LINK 1 as well: a conflict, seen on both sides
+    setParam (*dynamic_cast<juce::RangedAudioParameter*> (sendB.getParameters()[1]), 1.0f);
+    for (int pos = b.getNumSamples(); pos < b.getNumSamples() + 48000; pos += 512)
+    {
+        ph.samplePosition = pos;
+        Buffer silent (2, 512);
+        silent.clear();
+        Buffer s2 (2, 512), s3 (2, 512);
+        s2.clear();
+        s3.clear();
+        sendA.processBlock (silent, midi);
+        sendB.processBlock (s2, midi);
+        lockA->processBlock (s3, midi);
+        juce::Thread::sleep (1);
+    }
+    CHECK (lockA->getDsp().linkSendersOnChannel() == 2);
+    CHECK (sendA.getDsp().getSender().getSharedWith() == 1);
+    for (juce::AudioProcessor* ap : { (juce::AudioProcessor*) &sendA, (juce::AudioProcessor*) &sendB, (juce::AudioProcessor*) lockA.get(), (juce::AudioProcessor*) lockB.get() })
+        ap->setPlayHead (nullptr);
+    kl::KickLink::removeBlock();
+}
+
+TEST_CASE ("KL 28. A host's reset at play: the kick on the very first sample is ducked (no warm-up)", "[kl][start]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 1.0;
+    const auto b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr);
+    const auto k = kicks (seconds, sr, bpm, 0.0); // a kick at sample 0
+    auto p = makeKl (sr, 1.0f, false, 1.0f);
+    p->reset(); // what some hosts do at play
+    const auto out = run (*p, b, &k, { 512 }, bpm);
+    const int L = p->getLatencySamples();
+    // at the kick the bass is ducked to (almost) nothing, like on every other kick
+    float atFirst = 0.0f;
+    for (int i = L; i < L + (int) (0.003 * sr); ++i)
+        atFirst = juce::jmax (atFirst, std::abs (out.getSample (0, i)));
+    INFO ("bass level at the first kick: " << atFirst);
+    CHECK (atFirst < 0.05f);
+}
+
 TEST_CASE ("KL 17. CPU: stereo bass + stereo sidechain, LOCK on, 48 kHz", "[kl][cpu]")
 {
     const double sr = 48000.0, bpm = 124.0, seconds = 8.0;
@@ -992,5 +1132,64 @@ TEST_CASE ("KL 23. One detection per kick, whatever the threshold (Kick Lock and
         }
         INFO ("Kick Lock Send, sensitivity " << sens);
         CHECK (d.getTelemetry().kicks.load() == n);
+    }
+}
+
+TEST_CASE ("diag: high frequencies added by the lock on a raw saw bass", "[.kldiag7]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 3.0;
+    Buffer b (2, (int) (seconds * sr));
+    b.clear();
+    const double beat = 60.0 / bpm;
+    gk::testsignals::Rng rng (7);
+    for (double t0 = 0.1; t0 < seconds - 0.05; t0 += 2 * beat)
+    {
+        const double hz = 55.0 * (std::fmod (t0, 4 * beat) < 2 * beat ? 1.0 : 1.122);
+        double ph = 0.0;
+        for (int i = (int) (t0 * sr); i < juce::jmin (b.getNumSamples(), (int) ((t0 + beat * 1.9) * sr)); ++i)
+        {
+            const double t = i / sr - t0;
+            ph += hz * (1.0 + 0.3 * std::exp (-t / 0.02)) / sr; // a pitch drop at the attack
+            const float v = (float) (0.4 * std::exp (-t / 0.4) * (2.0 * (ph - std::floor (ph)) - 1.0) + 0.01 * rng.bipolar());
+            b.setSample (0, i, v);
+            b.setSample (1, i, v);
+        }
+    }
+    const auto k = kicks (seconds, sr, bpm, 0.1 + 0.3 * beat); // in the middle of the notes
+    for (bool lock : { false, true })
+    {
+        auto p = makeKl (sr, 1.0f, lock, 0.0f);
+        int seen = 0;
+        juce::String perKick;
+        const auto out = run (*p, b, &k, { 512 }, bpm, [&] (int)
+        {
+            auto& tl = p->getDsp().getTelemetry();
+            if (tl.kickEvents.load() != seen)
+            {
+                seen = tl.kickEvents.load();
+                perKick << "[conf " << juce::String (tl.phaseConfidence.load(), 2) << " err " << juce::String (tl.phaseErrorDeg.load(), 0) << " meas "
+                        << juce::String (p->getDsp().lastMeasuredPhase(), 0) << "] ";
+            }
+        });
+        WARN (perKick);
+        const int L = p->getLatencySamples();
+        // the difference out - in, high-passed (3rd difference), against the input's
+        double ed = 0.0, ei = 0.0;
+        for (int i = L + 4; i < out.getNumSamples(); ++i)
+        {
+            auto hp = [&] (const float* x, int n) { return x[n] - 3.0f * x[n - 1] + 3.0f * x[n - 2] - x[n - 3]; };
+            std::vector<float> d (4);
+            float dd[4];
+            for (int j = 0; j < 4; ++j)
+                dd[j] = out.getSample (0, i - j) - b.getSample (0, i - j - L);
+            const float hd = dd[0] - 3.0f * dd[1] + 3.0f * dd[2] - dd[3];
+            const float hi = hp (b.getReadPointer (0), i - L);
+            ed += (double) hd * hd;
+            ei += (double) hi * hi;
+        }
+        auto& tel = p->getDsp().getTelemetry();
+        WARN ("LOCK " << (lock ? "on" : "off") << ": highs added " << 10.0 * std::log10 (ed / ei + 1.0e-30) << " dB under the bass's own highs; status "
+              << tel.status.load() << " confidence " << tel.phaseConfidence.load() << " f0 " << tel.f0Hz.load() << " rotation " << p->getDsp().currentRotationDeg()
+              << " kicks " << tel.kickEvents.load());
     }
 }

@@ -30,14 +30,20 @@ class KickSendEditor::LinkStatus final : public juce::Component, public juce::Se
 public:
     LinkStatus (KickSendProcessor& p, const gk::Palette& pal) : proc (p), palette (pal)
     {
-        setTooltip ("Put Kick Lock on the bass: it receives this track's kicks (TRIGGER Auto or Link), no sidechain routing needed. "
-                    "The host must be playing.");
+        setTooltip ("Put Kick Lock on the bass with the same LINK number: it receives this track's kicks (TRIGGER Auto or Link), "
+                    "no sidechain routing needed. The host must be playing. Two Sends on the same LINK: a conflict, give each its own number.");
     }
 
     void update (double dt)
     {
         auto& sender = proc.getDsp().getSender();
-        const int st = ! sender.isConnected() ? 0 : sender.isListenedTo() ? 2 : 1;
+        const int st = ! sender.isConnected() ? 0 : sender.getSharedWith() > 0 ? 3 : sender.isListenedTo() ? 2 : 1;
+        const int ch = sender.getChannel();
+        if (ch != channel)
+        {
+            channel = ch;
+            state = -1;
+        }
         const int kicks = proc.getDsp().getTelemetry().kicks.load (std::memory_order_relaxed);
         flash = kicks != lastKicks ? 1.0f : juce::jmax (0.0f, flash - (float) dt / 0.15f);
         lastKicks = kicks;
@@ -52,7 +58,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto b = getLocalBounds().toFloat().reduced (2.0f);
-        const auto c = state == 2 ? green : grey;
+        const auto c = state == 2 ? green : state == 3 ? juce::Colour (0xffff4d4d) : grey;
         g.setColour (palette (juce::Colour (0xff121318)).withAlpha (0.85f));
         g.fillRoundedRectangle (b, b.getHeight() * 0.5f);
         g.setColour (palette (c).withAlpha (0.7f));
@@ -62,14 +68,18 @@ public:
         g.fillEllipse (dot);
         g.setColour (palette (cream));
         g.setFont (gk::GrooveFonts::font (13.0f).withExtraKerningFactor (0.05f));
-        const juce::String text = state == 2 ? juce::String::fromUTF8 ("LINKED \xe2\x86\x92 KICK LOCK") : state == 1 ? "WAITING FOR KICK LOCK" : "LINK UNAVAILABLE";
+        const auto ch = juce::String::fromUTF8 (" \xc2\xb7 LINK ") + juce::String (channel);
+        const juce::String text = state == 3 ? "LINK " + juce::String (channel) + " ALREADY USED"
+                                : state == 2 ? juce::String::fromUTF8 ("LINKED \xe2\x86\x92 KICK LOCK") + ch
+                                : state == 1 ? "WAITING" + ch
+                                             : juce::String ("LINK UNAVAILABLE");
         g.drawFittedText (text, b.withTrimmedLeft (28.0f).withTrimmedRight (8.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.8f);
     }
 
 private:
     KickSendProcessor& proc;
     const gk::Palette& palette;
-    int state = -1, lastKicks = -1;
+    int state = -1, lastKicks = -1, channel = -1;
     float flash = 0.0f;
     bool wasDark = true;
 };

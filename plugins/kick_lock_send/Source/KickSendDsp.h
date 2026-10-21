@@ -28,6 +28,7 @@ public:
     int getLatencySamples() const override { return latency; }
     void setPreset (int) override {}
     void processWet (juce::AudioBuffer<float>& buffer, int numSamples, const float* amount, const gk::BlockTiming& timing) override;
+    void setChoices (const int* idx, int n) override { sender.setChannel (n > 0 ? idx[0] : 1); }
 
     kl::KickLinkSender& getSender() noexcept { return sender; }
     Telemetry& getTelemetry() noexcept { return telemetry; }

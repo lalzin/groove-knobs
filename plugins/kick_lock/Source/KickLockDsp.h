@@ -49,7 +49,7 @@ class KickLockDsp final : public gk::OneKnobEngine
 public:
     static constexpr int lockSwitch = 0;
     static constexpr int targetKnob = 0, offsetKnob = 1, subCutKnob = 2, depthKnob = 3, waveStartKnob = 4, thresholdKnob = 5;
-    static constexpr int shapeChoice = 0, releaseChoice = 1, modeChoice = 2, triggerChoice = 3;
+    static constexpr int shapeChoice = 0, releaseChoice = 1, modeChoice = 2, triggerChoice = 3, linkChoice = 4;
     /** TRIGGER: Auto = the sidechain's kicks, else Kick Lock Send's (the link), else the host's beats
         (each takes over after 2 s without the one before); Sidechain; Beat; Link. */
     enum Trigger { triggerAuto, triggerSidechain, triggerBeat, triggerLink };
@@ -141,7 +141,7 @@ private:
     // parameters
     bool lock = false;
     float targetPhase = 0.0f, offsetMs = 0.0f, subCutoff = 120.0f, depth = 1.0f, waveStart = 0.0f, thresholdDb = -18.0f;
-    int shape = exponential, release = 2, lockMode = continuous, trigger = triggerAuto;
+    int shape = exponential, release = 2, lockMode = continuous, trigger = triggerAuto, linkChannel = 1;
     std::int64_t lastSidechainKick = -1000000; // the last kick on the sidechain (Auto: the beats take over 2 s after)
     double lastBeatFloor = 0.0;
     bool beatValid = false;
@@ -152,6 +152,14 @@ private:
     std::array<std::int64_t, 32> linkPending {};
     int linkPendingCount = 0;
     std::int64_t lastLinkKick = -1000000;
+    // a bass note starting (seen L ahead of the output): the rotation back to
+    // 0 before it is heard, so its attack is never rotated (a click in the
+    // highs: Alan)
+    float noteFast = 0.0f, noteFastAtt = 0.0f, noteFastRel = 0.0f;
+    std::array<float, 1024> noteRing {};
+    int noteLag = 480;
+    std::int64_t noteDeadUntil = -1;
+    int noteOnsets = 0;
     int linkSlack = 0, lateKicks = 0;
     void pollLink (const gk::BlockTiming& timing);
     void scheduleLink (std::int64_t onset);
@@ -161,6 +169,10 @@ public:
     juce::String linkName() const { return link.followedName(); }
     /** Tests / UI: kicks of the link that came later than the latency allows (should stay 0). */
     int linkLateKicks() const noexcept { return lateKicks; }
+    /** UI: live Kick Lock Sends on this channel (> 1: a conflict). */
+    int linkSendersOnChannel() const noexcept { return link.getSendersOnChannel(); }
+    /** Tests: bass note starts seen (each brings the rotation back to 0 before it is heard). */
+    int noteStartsSeen() const noexcept { return noteOnsets; }
 
 private:
     double bpm = 120.0;

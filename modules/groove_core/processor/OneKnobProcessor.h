@@ -123,6 +123,11 @@ struct OneKnobConfig
     double derivedSettleSeconds = 0.030;  // smoothing of derived values (makeup here, DSP in engines)
     double bypassRampSeconds = 0.020;
     double wetFadeInSeconds = 0.003;      // fade-in of the wet path after it was idle
+    /** The engine's output is valid from its first sample after a reset (no
+        resampler to fill: silence in, the delayed silence out): no warm-up on
+        the dry path, no fade-in — a host's reset at play no longer leaves the
+        first beat untouched (Kick Lock). */
+    bool wetValidAtOnce = false;
     double crossfadeMinSeconds = 0.010;   // fastest allowed full dry <-> wet transition
     double tailSeconds = 0.2;
     int editorBaseWidth = 420, editorBaseHeight = 520;

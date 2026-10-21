@@ -542,7 +542,7 @@ void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start
             // the wet signal is valid, then fade it in.
             engine->reset();
             makeupSmoother.invalidate();
-            if (config.isInstrument)
+            if (config.isInstrument || config.wetValidAtOnce)
             {
                 // The engine is the sound: no warm-up, no fade-in (a note in
                 // the very first sample must start there)

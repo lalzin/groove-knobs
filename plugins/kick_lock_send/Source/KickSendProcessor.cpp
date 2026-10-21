@@ -24,7 +24,10 @@ namespace
         cfg.defaultAmount = 0.5f;
         cfg.knobLowLabel = "LOW";
         cfg.knobHighLabel = "HIGH";
+        // LINK 0..10: the Kick Locks set to the same number receive this track's kicks
+        cfg.choices = { { "channel", "Link channel", "LINK", { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 1 } };
         cfg.transparencyZone = 0.0f;   // the output is the (delayed) kick whatever the knob
+        cfg.wetValidAtOnce = true;      // no warm-up after a host's reset (the first beat at play)
         cfg.engineAlwaysRuns = true;   // the detector never stops
         cfg.tailSeconds = 0.0;
         return cfg;
