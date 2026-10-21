@@ -1229,9 +1229,79 @@ TEST_CASE ("KL 32. The same note every time: locked every time, wherever it star
         e.erase (e.begin()); // the very first note: too little of it to measure
         const auto [lo, hi] = std::minmax_element (e.begin(), e.end());
         INFO ("note " << lead * 1000.0 << " ms before the kick: phase from " << *lo << " to " << *hi << " deg");
-        // locked; a note starting after the kick has no phase "at the kick" (silence there): what counts is that it is the same each time
-        CHECK (maxAbs (e) < (lead < 0.0 ? 20.0 : 12.0));
+        // locked; a note starting on the kick or after it is left as it is
+        // (it starts in place: no click), the same each time
+        if (lead >= 0.0)
+            CHECK (maxAbs (e) < 12.0);
         CHECK (*hi - *lo < 8.0); // and the same each time
+    }
+}
+
+TEST_CASE ("KL 33. A sub melody: each note locked, wherever it starts against the kick", "[kl][phase]")
+{
+    // a different note before each kick (36.7-73.4 Hz), the synth restarting
+    // its wave on every note (Alan: "ça change le résultat d'une mélodie ?");
+    // a young note's period is measured on the note itself and its fundamental
+    // re-extracted at it — the detector still held the note before
+    const double sr = 48000.0, bpm = 124.0, beat = 60.0 / bpm, seconds = 12.0;
+    const double notes[] { 41.2, 55.0, 49.0, 61.7, 36.7, 73.4, 46.2, 65.4 };
+    for (double lead : { 0.12, 0.06, 0.03, 0.01, 0.0, -0.01 })
+    {
+        Buffer b (2, (int) (seconds * sr));
+        b.clear();
+        std::vector<double> kt, hzs;
+        int n = 0;
+        for (double t = 0.5; t < seconds - 1.0; t += 2.0 * beat, ++n)
+        {
+            const double hz = notes[n % 8];
+            kt.push_back (t);
+            hzs.push_back (hz);
+            const double t0 = t - lead;
+            for (int i = (int) (t0 * sr); i < (int) ((t0 + 1.5 * beat) * sr); ++i)
+            {
+                const double tt = i / sr - t0, ph = hz * tt;
+                const double env = juce::jmin (1.0, tt / 0.003) * juce::jmin (1.0, (t0 + 1.5 * beat - i / sr) / 0.01);
+                const double y = 0.5 * std::sin (2.0 * juce::MathConstants<double>::pi * ph) + 0.2 * std::sin (2.0 * juce::MathConstants<double>::pi * 2.0 * ph);
+                b.setSample (0, i, (float) (env * y));
+                b.setSample (1, i, (float) (env * y));
+            }
+        }
+        Buffer k (2, b.getNumSamples());
+        k.clear();
+        for (double t : kt)
+            for (int i = (int) (t * sr); i < juce::jmin (k.getNumSamples(), (int) ((t + 0.25) * sr)); ++i)
+            {
+                const double tt = i / sr - t;
+                const float v = (float) (0.8 * std::exp (-tt / 0.18) * std::sin (2.0 * juce::MathConstants<double>::pi * (50.0 * tt + 3.0 * (1.0 - std::exp (-tt / 0.03)))));
+                k.setSample (0, i, v);
+                k.setSample (1, i, v);
+            }
+        auto p = makeKl (sr, 1.0f, true, 0.0f);
+        const auto out = run (*p, b, &k, { 512 }, bpm);
+        const int latency = p->getLatencySamples();
+        double worst = 0.0, worstIntact = 0.0;
+        for (size_t j = 1; j < kt.size(); ++j)
+        {
+            const bool tooYoung = lead > 0.0 && lead < 0.02 && juce::exactlyEqual (hzs[j], 36.7); // under 1.2 periods before the kick
+            if (lead >= 0.0 && ! tooYoung)
+            {
+                const auto e = errorsAtKicks (out, latency, hzs[j], sr, { kt[j] }, 0.0, seconds);
+                if (! e.empty())
+                    worst = juce::jmax (worst, std::abs (e[0]));
+            }
+            // a note started on / after the kick (or too young to measure):
+            // left as it is, from its start
+            if (lead <= 0.01)
+            {
+                const int from = (int) ((kt[j] - lead) * sr);
+                for (int i = from; i < from + (int) (0.03 * sr) && i + latency < out.getNumSamples(); ++i)
+                    if (lead <= 0.0 || tooYoung)
+                        worstIntact = juce::jmax (worstIntact, (double) std::abs (out.getSample (0, i + latency) - b.getSample (0, i)));
+            }
+        }
+        INFO ("note " << lead * 1000.0 << " ms before the kick: worst phase " << worst << " deg, worst change of a note left in place " << worstIntact);
+        CHECK (worst < 5.0);
+        CHECK (worstIntact < 0.01);
     }
 }
 
@@ -1508,3 +1578,68 @@ TEST_CASE ("diag: same note every bar, phase-reset synth, note start vs kick", "
         WARN ("note " << lead * 1000.0 << " ms before the kick: phase at each kick " << line);
     }
 }
+
+TEST_CASE ("KL diag10. A sub melody: a different note before each kick", "[.kldiag10]")
+{
+    const double sr = 48000.0, bpm = 124.0, beat = 60.0 / bpm, seconds = 12.0;
+    const double notes[] { 41.2, 55.0, 49.0, 61.7, 36.7, 73.4, 46.2, 65.4 };
+    for (double lead : { 0.12, 0.06, 0.03, 0.01, 0.0, -0.01 })
+    {
+        Buffer b (2, (int) (seconds * sr));
+        b.clear();
+        std::vector<double> kt, hzs;
+        int n = 0;
+        for (double t = 0.5; t < seconds - 1.0; t += 2.0 * beat, ++n)
+        {
+            const double hz = notes[n % 8];
+            kt.push_back (t);
+            hzs.push_back (hz);
+            const double t0 = t - lead;
+            for (int i = (int) (t0 * sr); i < (int) ((t0 + 1.5 * beat) * sr); ++i)
+            {
+                const double tt = i / sr - t0, ph = hz * tt;
+                const double env = juce::jmin (1.0, tt / 0.003) * juce::jmin (1.0, (t0 + 1.5 * beat - i / sr) / 0.01);
+                const double y = 0.5 * std::sin (2.0 * juce::MathConstants<double>::pi * ph) + 0.2 * std::sin (2.0 * juce::MathConstants<double>::pi * 2.0 * ph);
+                b.setSample (0, i, (float) (env * y));
+                b.setSample (1, i, (float) (env * y));
+            }
+        }
+        Buffer k (2, b.getNumSamples());
+        k.clear();
+        for (double t : kt)
+            for (int i = (int) (t * sr); i < juce::jmin (k.getNumSamples(), (int) ((t + 0.25) * sr)); ++i)
+            {
+                const double tt = i / sr - t;
+                const float v = (float) (0.8 * std::exp (-tt / 0.18) * std::sin (2.0 * juce::MathConstants<double>::pi * (50.0 * tt + 3.0 * (1.0 - std::exp (-tt / 0.03)))));
+                k.setSample (0, i, v);
+                k.setSample (1, i, v);
+            }
+        auto p = makeKl (sr, 1.0f, true, 0.0f);
+        int seen = 0;
+        juce::String dbg;
+        const auto out = run (*p, b, &k, { 512 }, bpm, [&] (int)
+        {
+            auto& d = p->getDsp();
+            if (d.getTelemetry().kickEvents.load() != seen)
+            {
+                seen = d.getTelemetry().kickEvents.load();
+                const double hz = notes[(seen - 1) % 8];
+                dbg << " [age " << juce::String (d.lastNoteAgeMs, 0) << " T " << juce::String (d.lastTm, 1) << "/" << juce::String (sr / hz, 1) << " s" << d.lastSource << " ph " << juce::String (d.lastMeasuredPhase(), 1) << "/" << juce::String (KickLockDsp::wrap180 (360.0 * hz * lead), 1) << " conf " << juce::String (d.getTelemetry().phaseConfidence.load(), 2) << "]";
+            }
+        });
+        WARN (dbg);
+        std::string line;
+        double worst = 0.0;
+        for (size_t j = 1; j < kt.size(); ++j)
+        {
+            const auto e = errorsAtKicks (out, p->getLatencySamples(), hzs[j], sr, { kt[j] }, 0.0, seconds);
+            if (! e.empty())
+            {
+                line += juce::String (e[0], 1).toStdString() + " ";
+                worst = juce::jmax (worst, std::abs (e[0]));
+            }
+        }
+        WARN ("lead " << lead * 1000.0 << " ms: worst " << worst << " | " << line);
+    }
+}
+

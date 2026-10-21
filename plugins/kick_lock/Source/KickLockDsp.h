@@ -134,6 +134,7 @@ public:
     double currentRotationDeg() const noexcept { return psiNow; }
     /** Tests: the last phase measurement (degrees at the kick, before correction). */
     double lastMeasuredPhase() const noexcept { return lastPhase; }
+    static double fitPeriod (const float* x, int n, double rate, double T0) noexcept;
 
 private:
     void onKick (std::int64_t when);
@@ -146,6 +147,7 @@ private:
     /** The period (samples) of the note between `from` and `to`, from the bass
         itself (YIN, decimated by 4); 0 if none clear. */
     double periodBetween (std::int64_t from, std::int64_t to) const noexcept;
+    double differenceAt (std::int64_t from, std::int64_t to, double T) const noexcept;
     float monoSubAt (std::int64_t t) const noexcept { return mono[(size_t) (t & mask)]; }
     double targetPsiFor (double phaseDeg, double periodSamples) const noexcept;
     void rampTo (double psi, std::int64_t holdUntil, double returnSamples, int fadeSamples = -1) noexcept;
@@ -193,6 +195,7 @@ public:
     /** Tests / diagnosis: at the last kick measured, the phase coherence over
         8 cycles (before the caps), YIN's aperiodicity, the pitch spread (0.03 = 3 %). */
     double lastCoherence = 0.0, lastAperiodicity = 0.0, lastPitchSpread = 0.0, lastTm = 0.0, lastNoteAgeMs = 0.0;
+    int lastSource = 0; // diagnosis: young note period from 1 = itself, 2 = the note before
     /** Tests: bass note starts seen (each brings the rotation back to 0 before it is heard). */
     int noteStartsSeen() const noexcept { return noteOnsets; }
 
@@ -223,6 +226,8 @@ private:
     float trackGain = 0.0f, trackGainCoeff = 0.001f;
     int oscRenorm = 0;
     void setTrackHz (double hz) noexcept;
+    void retrack (std::int64_t from, double T) noexcept;
+    std::int64_t pitchHoldUntil = -1, pitchHoldNote = -1; // a young note's period, measured at its kick: YIN waits for it
     std::vector<float> mono;                      // mono sub, for the analysis
     std::vector<float> envRing;                   // the kick envelope (to find each kick's start)
     std::vector<float> kickRing;                  // the kick itself (mono), for the scope

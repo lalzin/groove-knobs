@@ -228,6 +228,7 @@ void KickLockDsp::reset()
     yinHop = 0;
     decWrite = 0;
     periodSamples = cleanPeriod = 0.0;
+    pitchHoldUntil = pitchHoldNote = -1;
     yinAperiodicity = 1.0f;
     recentCount = 0;
     psiNow = psiFrom = psiTo = 0.0;
@@ -282,8 +283,54 @@ void KickLockDsp::setTrackHz (double hz) noexcept
     rotIm = std::sin (w);
 }
 
+void KickLockDsp::retrack (std::int64_t from, double T) noexcept
+{
+    // the fundamental's tracking, from the note's start on, redone at the
+    // period measured at the kick: what is not heard yet is extracted at the
+    // right frequency (YIN still held the note before or a guess, its window
+    // was not yet in the note) — the kick's rotation turns the whole
+    // fundamental, not part of it
+    periodSamples = T;
+    setTrackHz (sampleRate / T);
+    const auto k0 = (size_t) ((from - 1) & mask);
+    double re = oscRingRe[k0], im = oscRingIm[k0];
+    std::array<double, 2> sRe {}, sIm {};
+    for (int c = 0; c < numChannels; ++c)
+    {
+        sRe[(size_t) c] = prefixRe[(size_t) c][k0];
+        sIm[(size_t) c] = prefixIm[(size_t) c][k0];
+    }
+    for (auto t = from; t <= clock; ++t)
+    {
+        const double nr = re * rotRe - im * rotIm;
+        im = re * rotIm + im * rotRe;
+        re = nr;
+        const auto k = (size_t) (t & mask);
+        oscRingRe[k] = re;
+        oscRingIm[k] = im;
+        for (int c = 0; c < numChannels; ++c)
+        {
+            const double x = input[(size_t) c][k];
+            sRe[(size_t) c] += x * re;
+            sIm[(size_t) c] -= x * im;
+            prefixRe[(size_t) c][k] = sRe[(size_t) c];
+            prefixIm[(size_t) c][k] = sIm[(size_t) c];
+        }
+    }
+    const double m = 1.0 / std::sqrt (re * re + im * im);
+    oscRe = re * m;
+    oscIm = im * m;
+    for (int c = 0; c < numChannels; ++c)
+    {
+        sumRe[(size_t) c] = sRe[(size_t) c];
+        sumIm[(size_t) c] = sIm[(size_t) c];
+    }
+}
+
 void KickLockDsp::updatePitch() noexcept
 {
+    if (clock < pitchHoldUntil && lastNoteStart == pitchHoldNote)
+        return; // a young note's period, measured at its kick: YIN's window still holds the note before
     // YIN on the decimated sub (~3 kHz): 35-160 Hz, 128-sample window (~43 ms)
     const double rate = sampleRate / decimation;
     // (under ~48 Hz 256 at ~3 kHz = 85 ms: almost 4 periods at 44 Hz — with
@@ -348,25 +395,168 @@ void KickLockDsp::updatePitch() noexcept
 
 void KickLockDsp::measureForward (std::int64_t at, double T, int length, double& phaseDeg, double& amplitude) const noexcept
 {
-    // the bass itself (the input ring, mono), from the kick on, projected on
-    // f0: over a whole period every harmonic cancels; no filter in the way
-    const double w = juce::MathConstants<double>::twoPi / T;
-    double I = 0.0, Q = 0.0, rc = 1.0, rs = 0.0;
-    const double cw = std::cos (w), sw = std::sin (w);
+    // the bass itself (the input ring, mono), from the kick on: its
+    // fundamental and next harmonics fitted together (least squares) at 1 / T.
+    // Over a whole period that is the plain projection on f0 (every harmonic
+    // cancels); over less (a note under ~40 Hz, the room before the kick is
+    // heard) the harmonics no longer cancel and would pull the phase
+    constexpr int H = 3, M = 2 * H;
+    double G[M][M] {}, r[M] {}, basis[M];
+    const double w = juce::MathConstants<double>::twoPi / T, cw = std::cos (w), sw = std::sin (w);
+    double c1 = 1.0, s1 = 0.0;
     for (int k = 0; k < length; ++k)
     {
         float x = 0.0f;
         for (int c = 0; c < numChannels; ++c)
             x += input[(size_t) c][(size_t) ((at + k) & mask)];
         x /= (float) numChannels;
-        I += x * rc; // cos (w k)
-        Q += x * rs; // sin (w k)
-        const double nc = rc * cw - rs * sw;
-        rs = rs * cw + rc * sw;
-        rc = nc;
+        double ch = c1, sh = s1;
+        for (int h = 0; h < H; ++h)
+        {
+            basis[2 * h] = ch;     // cos (h w k)
+            basis[2 * h + 1] = sh; // sin (h w k)
+            const double nc = ch * c1 - sh * s1;
+            sh = sh * c1 + ch * s1;
+            ch = nc;
+        }
+        for (int p = 0; p < M; ++p)
+        {
+            r[p] += basis[p] * x;
+            for (int q = 0; q <= p; ++q)
+                G[p][q] += basis[p] * basis[q];
+        }
+        const double nc = c1 * cw - s1 * sw;
+        s1 = s1 * cw + c1 * sw;
+        c1 = nc;
     }
-    phaseDeg = std::atan2 (I, Q) * 180.0 / juce::MathConstants<double>::pi;
-    amplitude = 2.0 * std::hypot (I, Q) / juce::jmax (1, length);
+    // Cholesky, then the coefficients (a little ridge: a short window makes
+    // the harmonics nearly dependent)
+    double L[M][M] {}, y[M] {}, coef[M] {};
+    for (int p = 0; p < M; ++p)
+        for (int q = 0; q <= p; ++q)
+        {
+            double sum = G[p][q] + (p == q ? 1.0e-6 * length : 0.0);
+            for (int k = 0; k < q; ++k)
+                sum -= L[p][k] * L[q][k];
+            L[p][q] = p == q ? std::sqrt (juce::jmax (sum, 1.0e-12)) : sum / L[q][q];
+        }
+    for (int p = 0; p < M; ++p)
+    {
+        double sum = r[p];
+        for (int k = 0; k < p; ++k)
+            sum -= L[p][k] * y[k];
+        y[p] = sum / L[p][p];
+    }
+    for (int p = M - 1; p >= 0; --p)
+    {
+        double sum = y[p];
+        for (int k = p + 1; k < M; ++k)
+            sum -= L[k][p] * coef[k];
+        coef[p] = sum / L[p][p];
+    }
+    phaseDeg = std::atan2 (coef[0], coef[1]) * 180.0 / juce::MathConstants<double>::pi;
+    amplitude = std::hypot (coef[0], coef[1]);
+}
+
+double KickLockDsp::differenceAt (std::int64_t from, std::int64_t to, double T) const noexcept
+{
+    // how far the note is from repeating itself after T (0 = exactly, 1 = no
+    // relation): checks a period known from before on a note too young to
+    // measure its own
+    const int lag = (int) std::round (T), n = (int) (to - from) - lag;
+    if (lag < 2 || n < 16)
+        return 1.0;
+    double diff = 0.0, energy = 0.0;
+    for (int i = 0; i < n; ++i)
+    {
+        float x = 0.0f, y = 0.0f;
+        for (int c = 0; c < numChannels; ++c)
+        {
+            x += input[(size_t) c][(size_t) ((from + i) & mask)];
+            y += input[(size_t) c][(size_t) ((from + i + lag) & mask)];
+        }
+        diff += (double) (x - y) * (x - y);
+        energy += (double) x * x + (double) y * y;
+    }
+    return energy > 0.0 ? diff / energy : 1.0;
+}
+
+double KickLockDsp::fitPeriod (const float* x, int n, double rate, double T0) noexcept
+{
+    // least squares: x ~ sum of cos / sin of the first harmonics (up to
+    // ~400 Hz, at most 6) at 1 / T; the T leaving the least residual, by a
+    // golden-section search within 4 % of T0 (one minimum there: the window
+    // is longer than a period)
+    const int H = juce::jlimit (1, 6, (int) std::floor (400.0 * T0 / rate));
+    auto residual = [&] (double T)
+    {
+        constexpr int M = 12;
+        const int m = 2 * H;
+        double G[M][M] {}, r[M] {}, basis[M];
+        double energy = 0.0;
+        const double w = juce::MathConstants<double>::twoPi / T, cw = std::cos (w), sw = std::sin (w);
+        double c1 = 1.0, s1 = 0.0;
+        for (int i = 0; i < n; ++i)
+        {
+            double ch = c1, sh = s1;
+            for (int h = 0; h < H; ++h)
+            {
+                basis[2 * h] = ch;
+                basis[2 * h + 1] = sh;
+                const double nc = ch * c1 - sh * s1;
+                sh = sh * c1 + ch * s1;
+                ch = nc;
+            }
+            const double v = x[i];
+            energy += v * v;
+            for (int p = 0; p < m; ++p)
+            {
+                r[p] += basis[p] * v;
+                for (int q = 0; q <= p; ++q)
+                    G[p][q] += basis[p] * basis[q];
+            }
+            const double nc = c1 * cw - s1 * sw;
+            s1 = s1 * cw + c1 * sw;
+            c1 = nc;
+        }
+        // Cholesky (a little ridge: harmonics nearly dependent on a short window)
+        double L[M][M] {};
+        for (int p = 0; p < m; ++p)
+            for (int q = 0; q <= p; ++q)
+            {
+                double sum = G[p][q] + (p == q ? 1.0e-6 * n : 0.0);
+                for (int k = 0; k < q; ++k)
+                    sum -= L[p][k] * L[q][k];
+                L[p][q] = p == q ? std::sqrt (juce::jmax (sum, 1.0e-12)) : sum / L[q][q];
+            }
+        double y[M] {}, projected = 0.0;
+        for (int p = 0; p < m; ++p)
+        {
+            double sum = r[p];
+            for (int k = 0; k < p; ++k)
+                sum -= L[p][k] * y[k];
+            y[p] = sum / L[p][p];
+            projected += y[p] * y[p];
+        }
+        return energy - projected;
+    };
+    double lo = T0 * 0.96, hi = T0 * 1.04;
+    constexpr double g = 0.6180339887498949;
+    double p1 = hi - g * (hi - lo), p2 = lo + g * (hi - lo), r1 = residual (p1), r2 = residual (p2);
+    for (int it = 0; it < 28; ++it)
+    {
+        if (r1 < r2)
+        {
+            hi = p2; p2 = p1; r2 = r1;
+            p1 = hi - g * (hi - lo); r1 = residual (p1);
+        }
+        else
+        {
+            lo = p1; p1 = p2; r1 = r2;
+            p2 = lo + g * (hi - lo); r2 = residual (p2);
+        }
+    }
+    return 0.5 * (lo + hi);
 }
 
 double KickLockDsp::periodBetween (std::int64_t from, std::int64_t to) const noexcept
@@ -383,9 +573,11 @@ double KickLockDsp::periodBetween (std::int64_t from, std::int64_t to) const noe
         x[(size_t) i] = acc / (float) (D * numChannels);
     }
     const double rate = sampleRate / D;
-    const int tauMin = juce::jmax (2, (int) std::floor (rate / 160.0)), tauMax = juce::jmin (n / 2, (int) std::ceil (rate / 35.0));
+    // a young note: as long a lag as the data allows (a fifth of it left to
+    // compare: enough for a clean synth note, not a guess)
+    const int tauMin = juce::jmax (2, (int) std::floor (rate / 160.0)), tauMax = juce::jmin (n - juce::jmax (8, n / 5), (int) std::ceil (rate / 35.0));
     const int window = n - tauMax;
-    if (tauMax <= tauMin + 2 || window < tauMax / 2)
+    if (tauMax <= tauMin + 2 || window < 8)
         return 0.0;
     std::array<float, 1100> d {};
     double running = 0.0;
@@ -405,19 +597,22 @@ double KickLockDsp::periodBetween (std::int64_t from, std::int64_t to) const noe
         {
             while (tau + 1 < tauMax - 1 && d[(size_t) tau + 1] < d[(size_t) tau])
                 ++tau;
+            // then refined: the note fitted as a periodic wave (its first
+            // harmonics) — a short window's lag estimate is 1-3 % short (the
+            // note growing, less than two periods to compare)
             const double a = d[(size_t) tau - 1], b = d[(size_t) tau], c = d[(size_t) tau + 1], den = a - 2.0 * b + c;
-            return (tau + (std::abs (den) > 1.0e-12 ? juce::jlimit (-0.5, 0.5, 0.5 * (a - c) / den) : 0.0)) * D;
+            const double coarse = (tau + (std::abs (den) > 1.0e-12 ? juce::jlimit (-0.5, 0.5, 0.5 * (a - c) / den) : 0.0)) * D;
+            return fitPeriod (x.data(), n, rate, coarse / D) * D;
         }
     return 0.0;
 }
 
 int KickLockDsp::measureLength() const noexcept
 {
-    // one period of the note (the lowest measured: 40 Hz), and room left for
-    // the crossfade before the kick is heard
-    const double T = periodSamples > 1.0 ? periodSamples : sampleRate / 55.0;
+    // all the room left before the kick is heard (its crossfade done): the
+    // cycle after the kick is measured on min (one period, this)
     const int room = latency - linkSlack - fadeLength - (int) std::round (0.0015 * sampleRate);
-    return juce::jlimit (16, juce::jmax (16, room), (int) std::round (T));
+    return juce::jmax (16, room);
 }
 
 double KickLockDsp::targetPsiFor (double phaseDeg, double T) const noexcept
@@ -525,6 +720,8 @@ void KickLockDsp::onKick (std::int64_t when)
     // 8 cycles before it used to be needed: a note starting 10-150 ms before
     // the kick was not locked, the same note sometimes locked, sometimes not)
     double Tm = periodSamples > 1.0 ? periodSamples : sampleRate / 55.0;
+    bool youngUnknown = false; // a note too young for its period to be known
+    lastSource = 0;
     // a note started since less than ~100 ms: the detector's estimate may be
     // the note before or a guess in the silence — its period from the note
     // itself (from its start to the end of the cycle after the kick)
@@ -532,12 +729,22 @@ void KickLockDsp::onKick (std::int64_t when)
     // detector's last one then, the note before's, right for a repeated note)
     if (when - lastNoteStart < (std::int64_t) (0.1 * sampleRate))
     {
-        const auto from = juce::jmax (lastNoteStart, when - (std::int64_t) (0.1 * sampleRate)), to = when + measureLength();
-        const double local = to - from >= (std::int64_t) (0.045 * sampleRate) ? periodBetween (from, to) : 0.0;
+        // (its attack left out: a growing note pulls the estimate 1-3 % short)
+        const auto from = juce::jmax (lastNoteStart + (std::int64_t) (0.005 * sampleRate), when - (std::int64_t) (0.1 * sampleRate)), to = when + measureLength();
+        const double local = periodBetween (from, to);
+        lastSource = local > 1.0 ? 1 : 2;
         if (local > 1.0)
             Tm = local;
-        else if (cleanPeriod > 1.0)
-            Tm = cleanPeriod; // the last note held steadily (a note's end moves the detector by a few %)
+        else if (cleanPeriod > 1.0 && differenceAt (from, to, cleanPeriod) < 0.05)
+            Tm = cleanPeriod; // the last note held steadily, if this one repeats with it (the same note again)
+        else
+            youngUnknown = true;
+        if (! youngUnknown && lastNoteStart <= when)
+        {
+            retrack (juce::jmax (lastNoteStart, clock - (std::int64_t) (0.2 * sampleRate)), Tm);
+            pitchHoldNote = lastNoteStart;
+            pitchHoldUntil = lastNoteStart + (std::int64_t) (0.15 * sampleRate);
+        }
     }
     lastTm = Tm;
     lastNoteAgeMs = (double) (when - lastNoteStart) / sampleRate * 1000.0;
@@ -558,7 +765,11 @@ void KickLockDsp::onKick (std::int64_t when)
                 rawPower += (double) x * x / (double) (len * numChannels);
             }
     }
-    if (subPeak > 1.0e-7 && fundPower < 0.01 * subPeak && rawPower < 0.03 * subPeak)
+    // no note after the kick, a note starting on it or after it (it starts in
+    // place: left as it is, no click, the same every time), or one too young
+    // to know its period (less than a period before the kick)
+    const bool startsAtKick = when - lastNoteStart < (std::int64_t) (0.002 * sampleRate);
+    if ((subPeak > 1.0e-7 && fundPower < 0.01 * subPeak && rawPower < 0.03 * subPeak) || startsAtKick || youngUnknown)
     {
         rampTo (0.0, when + releaseFor (when), returnFor (when));
         prevKick = when;
@@ -582,12 +793,14 @@ void KickLockDsp::onKick (std::int64_t when)
         // a held note: the cycles before the kick say the same (as many as the
         // note has had, up to two): a noise sub's "phase" wanders instead
         int agree = 0, compared = 0;
+        const int step = (int) std::round (Tm), backLength = juce::jmin (len, step);
         for (int back = 1; back <= 2; ++back)
-            if (noteAge > (std::int64_t) back * len + (std::int64_t) (0.005 * sampleRate))
+            if (noteAge > (std::int64_t) back * step + (std::int64_t) (0.005 * sampleRate))
             {
+                // whole periods back (with the fraction of one left over)
                 double before = 0.0, ampBefore = 0.0;
-                measureForward (when - back * len, Tm, len, before, ampBefore);
-                const double drift = std::abs (wrap180 (phase - before));
+                measureForward (when - back * step, Tm, backLength, before, ampBefore);
+                const double drift = std::abs (wrap180 (phase - before - 360.0 * back * (step / Tm - 1.0)));
                 ++compared;
                 agree += drift <= 30.0 ? 1 : 0;
                 lastCoherence = juce::jmin (lastCoherence, std::cos (juce::degreesToRadians (juce::jmin (drift, 90.0))));
