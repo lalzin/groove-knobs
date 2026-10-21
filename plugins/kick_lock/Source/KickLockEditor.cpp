@@ -54,7 +54,7 @@ namespace
             case Status::weakSub: return "The sub is too quiet to measure its phase";
             case Status::monoLoss: return "Mono sum: cancellation detected (the sides are out of phase)";
             case Status::noKick:
-            default: return "No kick on the sidechain: in Live, open Sidechain in the plug-in's title bar and pick the kick track in Audio From";
+            default: return "No kick on the sidechain: in Live, open the Sidechain section on the left of the device (the small triangle) and pick the kick track in Audio From";
         }
     }
 } // namespace
@@ -371,7 +371,7 @@ public:
             g.drawText ("NO KICK ON THE SIDECHAIN", m.withTrimmedBottom (m.getHeight() * 0.5f), juce::Justification::centredBottom);
             g.setColour (palette (cream).withAlpha (0.6f));
             g.setFont (gk::GrooveFonts::font (11.5f));
-            g.drawFittedText (fr ("Live: plug-in title bar \xe2\x96\xb8 Sidechain \xe2\x96\xb8 Audio From \xe2\x96\xb8 your kick track"),
+            g.drawFittedText (fr ("Live: the Sidechain section, left of this device \xe2\x96\xb8 Audio From \xe2\x96\xb8 your kick track"),
                               m.withTrimmedTop (m.getHeight() * 0.55f).withHeight (18.0f).toNearestInt(), juce::Justification::centred, 1, 0.8f);
         }
         dashed (g, kickX, m.getY(), m.getBottom(), 0.75f);

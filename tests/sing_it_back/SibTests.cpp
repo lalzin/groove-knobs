@@ -1258,3 +1258,48 @@ TEST_CASE ("SIB 26. Choir: unison by default, the lead keeps its consonants (-6 
         CHECK (db < -5.0);
     }
 }
+
+TEST_CASE ("diag: sub-octave per voice on a file (GK_SIB_FILE)", "[.sibdiag]")
+{
+    const char* path = std::getenv ("GK_SIB_FILE");
+    REQUIRE (path != nullptr);
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> r (fm.createReaderFor (juce::File (path)));
+    REQUIRE (r != nullptr);
+    Buffer in ((int) r->numChannels, (int) r->lengthInSamples);
+    r->read (&in, 0, (int) r->lengthInSamples, 0, true, true);
+    const double sr = r->sampleRate;
+    auto amp = [&] (const float* x, int n, double f)
+    {
+        double I = 0.0, Q = 0.0;
+        for (int k = 0; k < n; ++k)
+        {
+            const double w = 0.5 - 0.5 * std::cos (2.0 * juce::MathConstants<double>::pi * k / n);
+            I += w * x[k] * std::cos (2.0 * juce::MathConstants<double>::pi * f * k / sr);
+            Q += w * x[k] * std::sin (2.0 * juce::MathConstants<double>::pi * f * k / sr);
+        }
+        return std::hypot (I, Q);
+    };
+    const double t = 10.0, f = 436.4;
+    for (int voice = -1; voice < 8; ++voice)
+    {
+        auto p = makeProc ((int) r->numChannels, sr, 1.0f);
+        setParam (p->getRoomParameter(), 0.0f);
+        setParam (p->getDropoutsParameter(), 0.0f);
+        if (std::getenv ("GK_SIB_HUMANIZE") != nullptr)
+            setParam (p->getHumanizeParameter(), (float) std::atof (std::getenv ("GK_SIB_HUMANIZE")));
+        if (voice >= 0)
+            p->getDsp().soloVoice (voice);
+        else
+            p->getDsp().muteCrowd (true);
+        const auto out = run (*p, in);
+        const int at = (int) (t * sr) + p->getLatencySamples();
+        const auto* x = out.getReadPointer (0) + at;
+        const double a1 = amp (x, 2400, f);
+        juce::String line;
+        for (double m : { 0.5, 0.75, 1.25, 1.5, 2.5 })
+            line << "x" << m << ": " << juce::String (20.0 * std::log10 (amp (x, 2400, f * m) / a1 + 1.0e-12), 1) << " dB  ";
+        WARN ("voice " << voice << " " << line);
+    }
+}

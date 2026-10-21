@@ -185,10 +185,10 @@ private:
     double partTarget (double midi, int voice, Harmony::Role styleRole) const noexcept;
     static constexpr float consonantLevel = 0.12f; // the crowd's consonants / breaths (-18 dB): the lead carries them
     /** The lead's gain on its consonants: never below -6 dB (gate 0 = unvoiced, 1 = sung). */
-    float leadWithConsonants (float leadGain, float gate) const noexcept
+    float leadWithConsonants (float vowelGain, float voicing) const noexcept
     {
         constexpr float consonantLead = 0.5f;
-        return ! leadConsonantFloor || leadGain >= consonantLead ? leadGain : leadGain + (1.0f - gate) * (consonantLead - leadGain);
+        return ! leadConsonantFloor || vowelGain >= consonantLead ? vowelGain : vowelGain + (1.0f - voicing) * (consonantLead - vowelGain);
     }
     bool leadConsonantFloor = true;
     Harmony::Role effectiveRole (int voice, Harmony::Role styleRole) const noexcept;
@@ -205,10 +205,18 @@ private:
     float spread = 0.6f, humanize = 0.5f, dropouts = 0.3f, room = 0.4f;
     int key = 0, scale = 0, harmony = 0, voicesMax = 8, roomSize = 1, style = club, response = 0;
     bool unisonOnly = true; // HARMONY "Unisson" (default): a choir on the melody, its octaves; no thirds / fifths
-    /** In "Unisson", the style's harmony parts sing the melody. */
+    /** In "Unisson", the style's harmony (and octave) parts sing the melody. */
     Harmony::Role choirRole (Harmony::Role r) const noexcept
     {
-        return unisonOnly && (r == Harmony::harmonyUp || r == Harmony::harmonyDown || r == Harmony::fifthUp) ? Harmony::unison : r;
+        if (! unisonOnly)
+            return r;
+        if (r == Harmony::harmonyUp || r == Harmony::harmonyDown || r == Harmony::fifthUp)
+            return Harmony::unison;
+        // the octaves too, in the singer's register (an octave below a woman
+        // is a "machine" voice, not a choir), except the styles that are octaves
+        if ((r == Harmony::octaveDown || r == Harmony::octaveUp) && style != kids && style != giants)
+            return Harmony::unison;
+        return r;
     }
     std::array<int, maxVoices> part {};
     std::array<float, maxVoices> partGain {}, partPan {}, partSize {};

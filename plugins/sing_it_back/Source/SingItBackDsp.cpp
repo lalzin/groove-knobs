@@ -668,13 +668,41 @@ void SingItBackDsp::makeMarks (std::int64_t available)
         if (voiced)
         {
             const std::int64_t floorPos = markCount > 0 ? marks[(size_t) ((markCount - 1) % markRing)].pos + (std::int64_t) (period * 0.5) : 0;
-            float best = -1.0f;
-            for (auto t = juce::jmax (floorPos, predicted - radius); t <= predicted + radius; ++t)
-                if (const float a = std::abs (history[(size_t) (t & mask)]); a > best)
+            const auto prev = markCount > 0 ? marks[(size_t) ((markCount - 1) % markRing)] : Mark {};
+            const bool follows = markCount > 0 && prev.midi >= 0.0f && predicted - prev.pos < (std::int64_t) (1.5 * period) + 2;
+            if (follows)
+            {
+                // the same point of the cycle as the previous mark: the
+                // waveform around each candidate against the one around it
+                // (a peak alone flips between the positive and the negative
+                // one on many voices: grains half a period off, a rough noise
+                // between the harmonics)
+                const int half = juce::jmax (4, (int) (period * 0.5));
+                const int stride = period > 160.0 ? 2 : 1;
+                double best = -1.0e30;
+                for (auto t = juce::jmax (floorPos, predicted - radius); t <= predicted + radius; ++t)
                 {
-                    best = a;
-                    pos = t;
+                    double c = 0.0;
+                    for (int j = -half; j <= half; j += stride)
+                        c += (double) history[(size_t) ((t + j) & mask)] * history[(size_t) ((prev.pos + j) & mask)];
+                    if (c > best)
+                    {
+                        best = c;
+                        pos = t;
+                    }
                 }
+            }
+            else
+            {
+                // the start of a sung run: the largest peak
+                float best = -1.0f;
+                for (auto t = juce::jmax (floorPos, predicted - radius); t <= predicted + radius; ++t)
+                    if (const float a = std::abs (history[(size_t) (t & mask)]); a > best)
+                    {
+                        best = a;
+                        pos = t;
+                    }
+            }
             midi = (float) (69.0 + 12.0 * std::log2 (sampleRate / period / 440.0));
             // the note being sung, held with hysteresis: a vibrato or a slide
             // across the boundary between two notes does not flip the harmony
@@ -858,7 +886,10 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
                     const bool firstNote = v.lastNote == 0;
                     v.lastNote = m->noteId;
                     v.noteAge = 0.0;
-                    v.scoop = v.rng.nextDouble() < 0.6 ? -(12.0 + 38.0 * v.rng.nextDouble()) * h * (double) st.detune : 0.0;
+                    // (in unison, everyone on the same note: small scoops, or the
+                    // whole choir wobbles into every note)
+                    const double scoopRange = unisonOnly && v.role == Harmony::unison ? 0.35 : 1.0;
+                    v.scoop = v.rng.nextDouble() < 0.6 ? -(12.0 + 38.0 * v.rng.nextDouble()) * h * (double) st.detune * scoopRange : 0.0;
                     v.scoopTau = 0.05 + 0.1 * v.rng.nextDouble();
                     if (firstNote)
                         v.interval = target;
