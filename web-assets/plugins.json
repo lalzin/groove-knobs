@@ -426,7 +426,7 @@
       "downloads": {
         "macos": {
           "file": "KickLock-0.1.4-macOS.pkg",
-          "bytes": 74015452,
+          "bytes": 74019274,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
