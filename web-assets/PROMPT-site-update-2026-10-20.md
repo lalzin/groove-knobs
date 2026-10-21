@@ -45,6 +45,13 @@ done
   liste déjà les `ui-*.webp` existants : vérifie qu'elle les prend sans code en dur).
 - `DEFAULT_PUBLISHED` reste tel quel : la publication se fait depuis `/admin` (voir « À faire à la main »).
 
+### 1 bis. Toute la suite en un téléchargement
+- `plugins.json` → `suite.version` et `suite.downloads` (`macos` / `windows`, même forme que les
+  plugins) : l'installateur **GrooveKnobs** avec les cinq plugins (chacun décochable à l'installation).
+- Sur `/plugins` : un bouton « Télécharger toute la suite » (même formulaire email ; la demande
+  porte alors sur la suite : un seul lien par OS dans l'email). Côté API, accepte le slug spécial
+  `suite` (clé R2 `suite/<version>/<fichier>`), sans casser les demandes par plugin.
+
 ### 2. Pages
 - `/plugins` : la grille doit tenir **5 cartes** proprement (mobile d'abord ; 2 colonnes tablette,
   3 desktop, la 5e centrée ou en ligne de 2 — à toi de voir, sans trou disgracieux).
@@ -100,5 +107,7 @@ done
    - les 5 `.exe` Windows de la release GitHub v0.1.2
      (https://github.com/lalzin/groove-knobs/releases/tag/v0.1.2) (fichiers `…-0.1.2-Windows-Setup.exe`).
    Donne-moi les commandes exactes (`rclone` ou `aws s3 cp --endpoint-url`), une ligne par fichier.
+   - l'installateur de la suite : `../groove-knobs/dist/GrooveKnobs-0.1.2-macOS.pkg` et
+     `GrooveKnobs-0.1.2-Windows-Setup.exe` (release GitHub v0.1.2) → `suite/0.1.2/<fichier>`.
 2. **/admin** : publier `pew-pew` et `sing-it-back` (et les autres s'ils ne le sont pas).
 3. Vérifier en production : `https://www.lalzin.com/plugins/versions.json` répond 200.

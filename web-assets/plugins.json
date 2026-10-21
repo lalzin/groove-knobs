@@ -10,6 +10,30 @@
     "images": {
       "og": "groove-knobs-og.webp",
       "banner": "groove-knobs-banner.webp"
+    },
+    "version": "0.1.2",
+    "downloads": {
+      "macos": {
+        "file": "GrooveKnobs-0.1.2-macOS.pkg",
+        "bytes": 136329988,
+        "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
+        "formats": [
+          "VST3",
+          "AU",
+          "Standalone"
+        ],
+        "signed": "Developer ID + notarised by Apple"
+      },
+      "windows": {
+        "file": "GrooveKnobs-0.1.2-Windows-Setup.exe",
+        "bytes": null,
+        "requirements": "Windows 10/11 64-bit",
+        "formats": [
+          "VST3",
+          "Standalone"
+        ],
+        "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.2/GrooveKnobs-0.1.2-Windows-Setup.exe"
+      }
     }
   },
   "plugins": [
