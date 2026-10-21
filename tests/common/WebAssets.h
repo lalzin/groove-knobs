@@ -259,25 +259,35 @@ inline void writePlugin (const PluginInfo& info, const std::vector<Shot>& shots,
     }
 }
 
-/** The suite visuals, from the three plugins' outputs already on disk. */
-inline void writeSuite (const juce::File& outRoot, const std::vector<std::pair<juce::String, juce::String>>& slugsAndFrames, const gk::Palette& pal)
+/** The plug-ins in the suite visuals; for the banner, Kick Lock shows its
+    Send (a one-knob window: Kick Lock's own, wide, did not fit among them). */
+inline const std::vector<std::pair<juce::String, juce::String>>& suiteVisuals()
 {
-    std::vector<juce::Image> uis, mascots;
-    for (const auto& [slug, unused] : slugsAndFrames)
+    static const std::vector<std::pair<juce::String, juce::String>> v {
+        { "french-filter", "" }, { "boogie-trio", "" }, { "backwash", "" }, { "pew-pew", "" }, { "sing-it-back", "" }, { "kick-lock", "ui-send@3x.png" }
+    };
+    return v;
+}
+
+/** The suite visuals, from the plugins' outputs already on disk (the second
+    of each pair: another window for the banner, empty = the same). */
+inline void writeSuite (const juce::File& outRoot, const std::vector<std::pair<juce::String, juce::String>>& slugsAndBanner, const gk::Palette& pal)
+{
+    std::vector<juce::Image> uis, bannerUis;
+    for (const auto& [slug, banner] : slugsAndBanner)
     {
-        juce::ignoreUnused (unused);
         uis.push_back (juce::ImageFileFormat::loadFrom (outRoot.getChildFile (slug + "/ui-hero@3x.png")));
-        mascots.push_back (juce::ImageFileFormat::loadFrom (outRoot.getChildFile (slug + "/mascot.png")));
+        bannerUis.push_back (banner.isEmpty() ? uis.back() : juce::ImageFileFormat::loadFrom (outRoot.getChildFile (slug + "/" + banner)));
     }
-    for (const auto& u : uis)
-        if (! u.isValid())
+    for (size_t k = 0; k < uis.size(); ++k)
+        if (! uis[k].isValid() || ! bannerUis[k].isValid())
         {
             std::cout << "suite visuals skipped: render every plugin first\n";
             return;
         }
     const auto cream = pal.text, ink = pal.outline;
 
-    auto compose = [&] (int w, int h, float titleH, juce::Rectangle<float> windows, float /*mascotH*/, const juce::String& file)
+    auto compose = [&] (int w, int h, float titleH, juce::Rectangle<float> windows, const std::vector<juce::Image>& uis, const juce::String& file)
     {
         juce::Image img (juce::Image::RGB, w, h, true);
         juce::Graphics g (img);
@@ -306,7 +316,7 @@ inline void writeSuite (const juce::File& outRoot, const std::vector<std::pair<j
         }
         writePng (img, outRoot.getChildFile (file));
     };
-    compose (1200, 630, 64.0f, { 150.0f, 130.0f, 900.0f, 470.0f }, 120.0f, "groove-knobs-og.png");
-    compose (2400, 1000, 120.0f, { 360.0f, 230.0f, 1680.0f, 740.0f }, 220.0f, "groove-knobs-banner.png");
+    compose (1200, 630, 64.0f, { 150.0f, 130.0f, 900.0f, 470.0f }, uis, "groove-knobs-og.png");
+    compose (2400, 1000, 120.0f, { 360.0f, 230.0f, 1680.0f, 740.0f }, bannerUis, "groove-knobs-banner.png");
 }
 } // namespace gkweb

@@ -12,6 +12,8 @@ public:
     explicit KickSendEditor (KickSendProcessor& p);
     ~KickSendEditor() override;
     static gk::Palette makePalette();
+    /** Screenshots: the link's state read now (the screen's refresh does it otherwise). */
+    void refreshNow() { editorTick (0.0); }
 
 protected:
     void editorTick (double dt) override;

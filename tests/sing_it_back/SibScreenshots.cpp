@@ -89,7 +89,7 @@ int runWeb (const juce::File& out)
         info.poses.push_back (i);
     gkweb::writePlugin (info, shots, out);
 
-    gkweb::writeSuite (out, { { "french-filter", "" }, { "boogie-trio", "" }, { "backwash", "" }, { "pew-pew", "" }, { "sing-it-back", "" } }, info.palette);
+    gkweb::writeSuite (out, gkweb::suiteVisuals(), info.palette);
     return 0;
 }
 } // namespace

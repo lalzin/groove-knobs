@@ -10,6 +10,7 @@
 #include "KickLockEditor.h"
 #include "KickBass.h"
 #include "KickSendProcessor.h"
+#include "KickSendEditor.h"
 #include <iostream>
 #include "WebAssets.h"
 
@@ -87,6 +88,45 @@ juce::Image shoot (const Case& c, int& statusOut)
     return editor->createComponentSnapshot (editor->getLocalBounds(), true, juce::jmax (1.0f, c.scale / 2.0f));
 }
 
+// Kick Lock Send, as on the kick's track: kicks coming in, a Kick Lock
+// listening on its LINK (the status says LINKED), PUNCH a little up
+juce::Image shootSend (float scale)
+{
+    using namespace kickbass;
+    const double sr = 48000.0, bpm = 124.0, seconds = 2.0;
+    kl::KickLink::removeBlock();
+    kls::KickSendProcessor send;
+    send.setNonRealtime (true);
+    setParam (send.getAmountParameter(), 0.68f); // PUNCH a little up (0.5 = centre)
+    send.prepareToPlay (sr, 512);
+    kl::KickLockProcessor lock;
+    lock.setNonRealtime (true);
+    lock.prepareToPlay (sr, 512);
+    gk::OfflinePlayHead ph;
+    ph.bpm = bpm;
+    ph.sampleRate = sr;
+    ph.playing = true;
+    send.setPlayHead (&ph);
+    lock.setPlayHead (&ph);
+    auto k = kicks (seconds, sr, bpm, 0.1);
+    auto b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr);
+    juce::MidiBuffer midi;
+    for (int pos = 0; pos + 512 <= k.getNumSamples(); pos += 512)
+    {
+        ph.samplePosition = pos;
+        juce::AudioBuffer<float> kv (k.getArrayOfWritePointers(), 2, pos, 512), bv (b.getArrayOfWritePointers(), 2, pos, 512);
+        send.processBlock (kv, midi);
+        lock.processBlock (bv, midi);
+    }
+    send.setPlayHead (nullptr);
+    lock.setPlayHead (nullptr);
+    send.editorScale.store (juce::jmin (2.0f, scale));
+    std::unique_ptr<juce::AudioProcessorEditor> ed (send.createEditor());
+    if (auto* e = dynamic_cast<kls::KickSendEditor*> (ed.get()))
+        e->refreshNow(); // LINKED: the Kick Lock above has just read it
+    return ed->createComponentSnapshot (ed->getLocalBounds(), true, juce::jmax (1.0f, scale / 2.0f));
+}
+
 juce::File repoRoot()
 {
     for (auto d = juce::File::getCurrentWorkingDirectory(); d.exists() && ! d.isRoot(); d = d.getParentDirectory())
@@ -115,7 +155,9 @@ int runWeb (const juce::File& out)
     for (int i = 0; i < 21; ++i)
         info.poses.push_back (i);
     gkweb::writePlugin (info, shots, out);
-    // (the suite visuals stay the five one-knob windows: Alan, Kick Lock does not fit in them)
+    gkweb::writePng (shootSend (3.0f), out.getChildFile ("kick-lock/ui-send@3x.png"));
+    // (the suite visuals, Kick Lock included with its Send on the banner:
+    // sib_screenshots --web, after this)
     return 0;
 }
 
