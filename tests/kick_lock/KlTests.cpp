@@ -1400,10 +1400,10 @@ TEST_CASE ("KL 34. Link in a host loop: every kick followed after each loop rest
                 }
             for (auto tr : triggers)
             {
-                bool near = false;
+                bool onKick = false;
                 for (double t : times)
-                    near = near || std::abs ((double) tr / sr - t) < 0.002;
-                extra += near ? 0 : 1;
+                    onKick = onKick || std::abs ((double) tr / sr - t) < 0.002;
+                extra += onKick ? 0 : 1;
             }
             INFO (missing << " kicks missed, " << extra << " triggers off the kicks, of " << times.size());
             CHECK (missing == 0);
