@@ -25,17 +25,18 @@ struct KickTelemetry
 
 /** Kick Lock.
 
-        bass ─┬──────────────── dry (delayed by L) ─────────────────────────────┐
-              ├─> linear-phase FIR low-pass (SUB CUT, ±8 ms) ─> sub ─> fractional delay (lock + WAVE START + OFFSET) ─┐
-              └─> mids = bass (delayed 8 ms) − sub: sub + mids = bass exactly, no phase error ────────────────────┤
-                                                                            sum ─> ducking ─> MIX ─┴─> out
+        bass ─┬─> linear-phase FIR low-pass (SUB CUT, ±8 ms) ─> sub ─> YIN, phase at each kick
+              ├─> fundamental = projection on f0 over one period ─> delay (lock + WAVE START + OFFSET) ─┐
+              └─> rest = bass − fundamental: rest + fundamental = bass exactly ─────────────────────────┤
+                                                                            sum ─> ducking (× MIX) ─> out
         kick ─> 1 ms envelope > threshold (30 ms dead time) ─> ducking curve (shape, release, depth)
              └─> at each kick: the sub's phase there (demodulation at the YIN fundamental) ─> shift
 
-    Latency L = 16 ms: 8 ms for the FIR, 8 ms by which the sub can be moved
-    earlier. Each kick is measured as soon as the sub is known at its start
-    (8 ms after), and its shift is reached by a 5 ms crossfade that ends
-    before the kick is heard. */
+    Latency L = 16 ms: the analysis runs 8 ms behind (the FIR), each kick is
+    measured as soon as the sub is known just past it and its shift reached
+    by a 5 ms crossfade that ends before the kick is heard; the fundamental's
+    window needs half a period ahead (up to ~16 ms: notes down to 31 Hz).
+    The fundamental is only ever delayed (0 .. one period). */
 class KickLockDsp final : public gk::OneKnobEngine
 {
 public:
@@ -47,9 +48,10 @@ public:
     static constexpr double firSeconds = 0.008, advanceSeconds = 0.008, crossfadeSeconds = 0.005, attackSeconds = 0.004,
                             deadTimeSeconds = 0.030, noKickSeconds = 2.0, maxDelaySeconds = 0.080, kernelFadeSeconds = 0.020,
                             noteLookSeconds = 0.0025; // how far past the kick the sub is looked at (a note starting there)
+    static constexpr float shiftMixRamp = 0.25f; // MIX over which the shift comes in
 
     /** The sub's linear-phase low-pass: everything up to `cutoffHz` passes (the
-        fundamental entirely), the transition above (Blackman window). */
+        fundamental entirely), the transition above (Kaiser window). */
     static void designKernel (std::vector<float>& kernel, double cutoffHz, double sampleRate);
 
     KickLockDsp();
@@ -108,6 +110,19 @@ private:
     std::array<std::int64_t, 4> pendingKicks {};
     int pendingCount = 0;
     std::array<std::vector<float>, 2> input, sub; // rings (absolute time & mask)
+    // the fundamental alone, the only part that is shifted: the bass projected
+    // on f0 over exactly one period centred on each sample (every harmonic
+    // cancels over a whole period, gain 1 at f0, no lag); prefix sums of
+    // z = bass x e^-i theta give each window in O(1)
+    std::array<std::vector<float>, 2> fund;
+    std::array<std::vector<double>, 2> prefixRe, prefixIm;
+    std::array<double, 2> sumRe {}, sumIm {};
+    std::vector<double> oscRingRe, oscRingIm;
+    int lookahead = 0; // the window's half-length, at most (samples)
+    double trackHz = 0.0, oscRe = 1.0, oscIm = 0.0, rotRe = 1.0, rotIm = 0.0, shiftHz = 0.0;
+    float trackGain = 0.0f, trackGainCoeff = 0.001f;
+    int oscRenorm = 0;
+    void setTrackHz (double hz) noexcept;
     std::vector<float> mono;                      // mono sub, for the analysis
     std::vector<float> envRing;                   // the kick envelope (to find each kick's start)
 
@@ -137,8 +152,6 @@ private:
     double lastPhase = 0.0, lastConfidence = 0.0;
     float subRms = 0.0f, rmsCoeff = 0.001f, midRms = 0.0f, sideRms = 0.0f, lrRms = 0.0f;
 
-    gk::IntegerDelay dryDelay;
-    juce::AudioBuffer<float> dry;
     KickTelemetry telemetry;
     int scopeCounter = 0;
     float scopeKickPeak = 0.0f;

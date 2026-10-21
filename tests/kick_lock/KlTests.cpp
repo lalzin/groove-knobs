@@ -463,6 +463,50 @@ TEST_CASE ("KL 15. State round trip, the defaults, the reset button", "[kl][stat
     CHECK (c.getBus (true, 1)->getName() == "Sidechain");
 }
 
+TEST_CASE ("KL 18. Level: whatever MIX and the shift, the fundamental keeps its level (< 0.5 dB)", "[kl][level]")
+{
+    // the dry sub crossfaded with the shifted one would comb (up to -14 dB
+    // half a cycle apart): MIX scales the ducking, never the sub's phase
+    const double sr = 48000.0, bpm = 124.0, seconds = 4.0, hz = 55.0, T = 1.0 / hz;
+    auto amplitude = [&] (const float* x, int from, int to)
+    {
+        double I = 0.0, Q = 0.0, wsum = 0.0;
+        const int W = to - from;
+        for (int k = 0; k < W; ++k)
+        {
+            const double w = 0.5 - 0.5 * std::cos (2.0 * juce::MathConstants<double>::pi * k / W);
+            const double ph = 2.0 * juce::MathConstants<double>::pi * hz * k / sr;
+            I += w * x[from + k] * std::cos (ph);
+            Q += w * x[from + k] * std::sin (ph);
+            wsum += w;
+        }
+        return 2.0 * std::hypot (I, Q) / wsum;
+    };
+    const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr);
+    double worst = 0.0;
+    for (float mix : { 0.1f, 0.3f, 0.6f, 1.0f })
+        for (double frac : { 0.0, 0.25, 0.5, 0.75 })
+        {
+            auto p = makeKl (sr, mix, true, 0.0f); // depth 0: the level of the bass itself
+            const auto k = kicks (seconds, sr, bpm, 0.25 + frac * T);
+            const auto out = run (*p, b, &k, { 512 }, bpm);
+            const int L = p->getLatencySamples();
+            // between two kicks (the phase moves at each kick: a window across one would blur it)
+            const auto kt = kickTimes (seconds, bpm, 0.25 + frac * T);
+            for (size_t n = 3; n + 1 < kt.size(); ++n)
+            {
+                const int from = (int) ((kt[n] + 0.02) * sr), to = (int) ((kt[n + 1] - 0.02) * sr);
+                const double a = amplitude (out.getReadPointer (0), from + L, to + L);
+                const double r = amplitude (b.getReadPointer (0), from, to);
+                const double db = juce::Decibels::gainToDecibels (a / r);
+                worst = juce::jmax (worst, std::abs (db));
+                INFO ("MIX " << mix << ", kick " << frac << " cycle off, kick " << n << ": " << db << " dB");
+                CHECK (std::abs (db) < 0.5);
+            }
+        }
+    WARN ("worst level change of the fundamental: " << worst << " dB");
+}
+
 TEST_CASE ("KL 17. CPU: stereo bass + stereo sidechain, LOCK on, 48 kHz", "[kl][cpu]")
 {
     const double sr = 48000.0, bpm = 124.0, seconds = 8.0;
