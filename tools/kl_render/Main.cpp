@@ -60,13 +60,15 @@ int main (int argc, char** argv)
     writeWav (dir.getChildFile ("kick.wav"), kick, sr);
 
     const char* shapes[] { "exponential", "linear", "s_curve", "bounce" };
-    for (bool lock : { false, true })
+    // mode 0: LOCK off, 1: LOCK on (MODE Continu), 2: LOCK on (MODE Transition)
+    for (int mode = 0; mode < 3; ++mode)
         for (int shape = 0; shape < 4; ++shape)
         {
             kl::KickLockProcessor proc;
             proc.setNonRealtime (true);
             setParam (proc.getMixParameter(), 0.6f);
-            setParam (proc.getLockParameter(), lock ? 1.0f : 0.0f);
+            setParam (proc.getLockParameter(), mode > 0 ? 1.0f : 0.0f);
+            setParam (proc.getLockModeParameter(), mode == 2 ? 1.0f : 0.0f);
             setParam (proc.getShapeParameter(), (float) shape);
             proc.prepareToPlay (sr, 512);
             const auto out = kickbass::run (proc, bassLoop, &kick, { 512 }, bpm);
@@ -79,7 +81,8 @@ int main (int argc, char** argv)
                 mix.copyFrom (c, 0, bassOut, c, 0, mix.getNumSamples());
                 mix.addFrom (c, 0, kick, c, 0, juce::jmin (mix.getNumSamples(), kick.getNumSamples()));
             }
-            const juce::String name = juce::String (lock ? "lock_on_" : "lock_off_") + shapes[shape];
+            const char* prefix[] { "lock_off_", "lock_on_", "lock_transition_" };
+            const juce::String name = juce::String (prefix[mode]) + shapes[shape];
             writeWav (dir.getChildFile (name + "_bass.wav"), bassOut, sr);
             writeWav (dir.getChildFile (name + "_with_kick.wav"), mix, sr);
             std::cout << "wrote " << name << " (latency " << L << " samples = " << 1000.0 * L / sr << " ms)\n";
@@ -87,18 +90,21 @@ int main (int argc, char** argv)
         }
 
     // The phase table: the processed bass alone (MIX 100 %, no ducking: the
-    // sub that comes back after each kick), LOCK off / on
-    for (bool lock : { false, true })
+    // sub that comes back after each kick), LOCK off / Continu / Transition
+    for (int mode = 0; mode < 3; ++mode)
     {
+        const bool lock = mode > 0;
         kl::KickLockProcessor proc;
         proc.setNonRealtime (true);
         setParam (proc.getMixParameter(), 1.0f);
         setParam (proc.getDepthParameter(), 0.0f);
         setParam (proc.getLockParameter(), lock ? 1.0f : 0.0f);
+        setParam (proc.getLockModeParameter(), mode == 2 ? 1.0f : 0.0f);
         proc.prepareToPlay (sr, 512);
         const auto out = kickbass::run (proc, bassLoop, &kick, { 512 }, bpm);
         const int L = proc.getLatencySamples();
-        std::cout << "\n" << (lock ? "LOCK on" : "LOCK off") << " — phase of the fundamental at each kick of each note (deg, target 0):\n";
+        const char* title[] { "LOCK off", "LOCK on, MODE Continu", "LOCK on, MODE Transition" };
+        std::cout << "\n" << title[mode] << " — phase of the fundamental at each kick of each note (deg, target 0):\n";
         for (const auto& n : notes)
         {
             juce::String line;

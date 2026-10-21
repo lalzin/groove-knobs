@@ -123,6 +123,7 @@ void KickLockDsp::prepare (double sr, int, int nch)
         input[(size_t) c].assign ((size_t) size, 0.0f);
         sub[(size_t) c].assign ((size_t) size, 0.0f);
         fund[(size_t) c].assign ((size_t) size, 0.0f);
+        fundQ[(size_t) c].assign ((size_t) size, 0.0f);
         prefixRe[(size_t) c].assign ((size_t) size, 0.0);
         prefixIm[(size_t) c].assign ((size_t) size, 0.0);
     }
@@ -157,6 +158,7 @@ void KickLockDsp::reset()
         std::fill (input[(size_t) c].begin(), input[(size_t) c].end(), 0.0f);
         std::fill (sub[(size_t) c].begin(), sub[(size_t) c].end(), 0.0f);
         std::fill (fund[(size_t) c].begin(), fund[(size_t) c].end(), 0.0f);
+        std::fill (fundQ[(size_t) c].begin(), fundQ[(size_t) c].end(), 0.0f);
         std::fill (prefixRe[(size_t) c].begin(), prefixRe[(size_t) c].end(), 0.0);
         std::fill (prefixIm[(size_t) c].begin(), prefixIm[(size_t) c].end(), 0.0);
         sumRe[(size_t) c] = sumIm[(size_t) c] = 0.0;
@@ -166,7 +168,7 @@ void KickLockDsp::reset()
     trackGain = 0.0f;
     oscRe = 1.0;
     oscIm = 0.0;
-    shiftHz = 0.0;
+    noteHz = 0.0;
     setTrackHz (55.0);
     std::fill (mono.begin(), mono.end(), 0.0f);
     std::fill (envRing.begin(), envRing.end(), 0.0f);
@@ -183,8 +185,11 @@ void KickLockDsp::reset()
     periodSamples = 0.0;
     yinAperiodicity = 1.0f;
     recentCount = 0;
-    shiftNow = shiftFrom = shiftTo = lockShift = 0.0;
+    psiNow = psiFrom = psiTo = 0.0;
     fadeStart = -1;
+    holdEnd = 0;
+    prevKick = -1;
+    returnLength = 1.0;
     lastPhase = lastConfidence = 0.0;
     subRms = midRms = sideRms = lrRms = 0.0f;
     scopeCounter = 0;
@@ -210,6 +215,7 @@ void KickLockDsp::setChoices (const int* idx, int n)
 {
     shape = n > shapeChoice ? juce::jlimit (0, 3, idx[shapeChoice]) : exponential;
     release = n > releaseChoice ? juce::jlimit (0, 4, idx[releaseChoice]) : 2;
+    lockMode = n > modeChoice ? juce::jlimit (0, 1, idx[modeChoice]) : continuous;
 }
 
 void KickLockDsp::setSidechain (const float* const* channels, int n, int)
@@ -226,18 +232,6 @@ void KickLockDsp::setTrackHz (double hz) noexcept
     const double w = juce::MathConstants<double>::twoPi * hz / sampleRate;
     rotRe = std::cos (w);
     rotIm = std::sin (w);
-}
-
-float KickLockDsp::subAt (int c, double pos) const noexcept
-{
-    // the fundamental, Hermite (4 points) at absolute (aligned) time `pos`
-    const double f = std::floor (pos);
-    const auto i = (std::int64_t) f;
-    const auto& r = fund[(size_t) c];
-    const float x0 = r[(size_t) ((i - 1) & mask)], x1 = r[(size_t) (i & mask)], x2 = r[(size_t) ((i + 1) & mask)], x3 = r[(size_t) ((i + 2) & mask)];
-    const float t = (float) (pos - f);
-    const float c1 = 0.5f * (x2 - x0), c2 = x0 - 2.5f * x1 + 2.0f * x2 - 0.5f * x3, c3 = 0.5f * (x3 - x0) + 1.5f * (x1 - x2);
-    return ((c3 * t + c2) * t + c1) * t + x1;
 }
 
 void KickLockDsp::updatePitch() noexcept
@@ -326,20 +320,48 @@ bool KickLockDsp::measurePhase (std::int64_t at, double T, double& phaseDeg, dou
     return true;
 }
 
-double KickLockDsp::targetShiftFor (double phaseDeg, double T) const noexcept
+double KickLockDsp::targetPsiFor (double phaseDeg, double T) const noexcept
 {
-    // + = the fundamental later. Lock: the delay (0 .. one cycle) that brings
-    // it to the target phase at the kick; WAVE START and OFFSET are added on
-    // top (deliberate). Only ever delayed: its window looks half a period
-    // ahead, which uses the latency up
-    const double base = waveStart / 360.0 * T + offsetMs * 0.001 * sampleRate;
-    double s = base + (lock ? wrap180 (phaseDeg - targetPhase) / 360.0 * T : 0.0);
-    const double minShift = 0.0, maxShift = maxDelaySeconds * sampleRate - latency - 4.0;
-    while (s < minShift && T > 1.0)
-        s += T;
-    while (s > maxShift && T > 1.0 && s - T >= minShift)
-        s -= T;
-    return juce::jlimit (minShift, maxShift, s);
+    // + = later. Lock: the rotation that brings the fundamental to the
+    // target phase at the kick; WAVE START and OFFSET added on top (deliberate)
+    const double base = waveStart + offsetMs * 0.001 * sampleRate / T * 360.0;
+    return base + (lock ? wrap180 (phaseDeg - targetPhase) : 0.0);
+}
+
+void KickLockDsp::rampTo (double psi, std::int64_t holdUntil, double returnSamples, int fadeSamples) noexcept
+{
+    // the nearest equivalent turn (never more than half a turn to go)
+    psi = psiNow + wrap180 (psi - psiNow);
+    holdEnd = holdUntil;
+    returnLength = juce::jmax (1.0, returnSamples);
+    if (std::abs (psi - psiNow) < 0.05)
+    {
+        psiTo = psi;
+        return;
+    }
+    psiFrom = psiNow;
+    psiTo = psi;
+    fadeStart = clock;
+    fadeNow = fadeSamples > 0 ? fadeSamples : fadeLength;
+}
+
+double KickLockDsp::releaseSamplesNow() const noexcept
+{
+    return juce::jmax (1.0, releaseBeats (release) * 60.0 / bpm * sampleRate);
+}
+
+std::int64_t KickLockDsp::releaseFor (std::int64_t) const noexcept
+{
+    return (std::int64_t) releaseSamplesNow();
+}
+
+double KickLockDsp::returnFor (std::int64_t when) const noexcept
+{
+    // back to the original bass between the end of the release and the next
+    // kick (expected one interval later), 30 ms ahead of it: 60..400 ms
+    const double interval = prevKick >= 0 && when - prevKick < (std::int64_t) (2.0 * sampleRate) && when > prevKick
+                                ? (double) (when - prevKick) : 60.0 / bpm * sampleRate;
+    return juce::jlimit (0.06 * sampleRate, 0.4 * sampleRate, interval - releaseSamplesNow() - 0.03 * sampleRate);
 }
 
 void KickLockDsp::onKick (std::int64_t when)
@@ -367,13 +389,8 @@ void KickLockDsp::onKick (std::int64_t when)
         if (after > 1.0e-4 && (fromSilence ? after > 2.0 * before : (after > 3.0 * before && yinAperiodicity <= 0.3f)))
         {
             const double T = periodSamples > 1.0 ? periodSamples : sampleRate / 55.0;
-            const double neutral = targetShiftFor (targetPhase, T); // lock part 0: phase = target
-            if (std::abs (neutral - shiftTo) > 0.25)
-            {
-                shiftFrom = shiftNow;
-                shiftTo = neutral;
-                fadeStart = clock;
-            }
+            rampTo (targetPsiFor (targetPhase, T), when + releaseFor (when), returnFor (when)); // lock part 0: phase = target
+            prevKick = when;
             lastConfidence = 0.0; // no measurement for this kick
             telemetry.phaseConfidence.store (0.0f, std::memory_order_relaxed);
             return;
@@ -404,24 +421,18 @@ void KickLockDsp::onKick (std::int64_t when)
     else
         lastConfidence = 0.0;
     const double T = periodSamples > 1.0 ? periodSamples : sampleRate / 55.0;
-    double next = shiftTo;
-    if (measured && (! lock || conf >= 0.7))
-        next = targetShiftFor (phase, T);
-    else if (! lock)
-        next = targetShiftFor (0.0, T); // no lock: only WAVE START / OFFSET
-    // (unsure measurement with LOCK: the shift stays where it is — frozen)
-    if (std::abs (next - shiftTo) > 0.25)
-    {
-        shiftFrom = shiftNow;
-        shiftTo = next;
-        fadeStart = clock; // 5 ms crossfade, over before the kick is heard
-    }
-    shiftHz = measured && periodSamples > 1.0 ? sampleRate / periodSamples : 0.0;
+    // an unsure measurement with LOCK: Continu keeps the correction where it
+    // is (frozen), Transition makes none at this kick
+    const bool sure = measured && (! lock || conf >= 0.7);
+    if (sure || ! lock || lockMode == transition)
+        rampTo (sure ? targetPsiFor (phase, T) : targetPsiFor (targetPhase, T), when + releaseFor (when), returnFor (when)); // 5 ms, over before the kick is heard
+    prevKick = when;
+    noteHz = measured && periodSamples > 1.0 ? sampleRate / periodSamples : 0.0;
     // error left at the kick, relative to the intended phase
     if (measured)
     {
         const double intended = targetPhase - waveStart - offsetMs * 0.001 * sampleRate / T * 360.0;
-        const double atKick = phase - shiftTo / T * 360.0;
+        const double atKick = phase - psiTo;
         const double err = lock ? wrap180 (atKick - intended) : wrap180 (phase - targetPhase);
         telemetry.phaseErrorDeg.store ((float) err, std::memory_order_relaxed);
     }
@@ -526,6 +537,7 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
                 prefixAt (b, bRe, bIm);
                 const double sRe = (bRe - aRe) / N, sIm = (bIm - aIm) / N;
                 fund[(size_t) c][ta] = (float) (2.0 * trackGain * (sRe * oscRingRe[ta] - sIm * oscRingIm[ta]));
+                fundQ[(size_t) c][ta] = (float) (2.0 * trackGain * (sRe * oscRingIm[ta] + sIm * oscRingRe[ta]));
             }
         }
         mono[(size_t) (aligned & mask)] = monoSub;
@@ -594,30 +606,36 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         // a new note between two kicks (the fundamental moved > 3 %): its
         // window would use the old f0 — back to the neutral shift until the
         // next kick measures it
-        if (shiftHz > 0.0 && periodSamples > 1.0 && fadeStart < 0
-            && std::abs (sampleRate / periodSamples / shiftHz - 1.0) > 0.03)
+        if (noteHz > 0.0 && periodSamples > 1.0 && fadeStart < 0
+            && std::abs (sampleRate / periodSamples / noteHz - 1.0) > 0.03)
         {
-            shiftHz = 0.0;
-            const double neutral = targetShiftFor (targetPhase, periodSamples);
-            if (std::abs (neutral - shiftTo) > 0.25)
-            {
-                shiftFrom = shiftNow;
-                shiftTo = neutral;
-                fadeStart = clock;
-            }
+            noteHz = 0.0;
+            rampTo (0.0, clock - latency, 1.0, (int) (0.02 * sampleRate)); // a new note: 20 ms, no step
         }
 
         // --- output: L samples behind --------------------------------------
         const std::int64_t t = clock - latency; // output time (input time of what is heard now)
+        // the rotation now: reaching the kick's, held over the release, back to 0
         if (fadeStart >= 0)
         {
-            const double a = (double) (clock - fadeStart) / fadeLength;
+            const double a = (double) (clock - fadeStart) / fadeNow;
             if (a >= 1.0)
             {
                 fadeStart = -1;
-                shiftNow = shiftTo;
+                psiNow = psiTo;
             }
+            else
+                psiNow = psiFrom + (psiTo - psiFrom) * (double) smoothstep (0.0f, 1.0f, (float) a);
         }
+        else if (lockMode == continuous || t < holdEnd)
+            psiNow = psiTo;
+        else if ((double) (t - holdEnd) < returnLength)
+        {
+            const double home = 360.0 * std::round (psiTo / 360.0);
+            psiNow = psiTo + (home - psiTo) * (double) smoothstep (0.0f, 1.0f, (float) ((double) (t - holdEnd) / returnLength));
+        }
+        else if (! juce::exactlyEqual (psiNow, 0.0))
+            psiNow = psiTo = 0.0;
         float g = 1.0f; // ducking
         if (clock - lastKick < noKickSamples)
             for (int n = 0; n < juce::jmin (kickCount, (int) kicks.size()); ++n)
@@ -638,22 +656,19 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         const float mix = clamp01 (amount[i]);
         const double amt = (double) smoothstep (0.0f, shiftMixRamp, mix);
         const float duck = 1.0f - mix * (1.0f - g);
+        const double psi = amt * psiNow * juce::MathConstants<double>::pi / 180.0;
+        const bool rotate = ! juce::exactlyEqual (psi, 0.0);
+        const float cr = rotate ? (float) std::cos (psi) : 1.0f, sr = rotate ? (float) std::sin (psi) : 0.0f;
         float outs[2] {};
         float scopeSub = 0.0f;
         for (int c = 0; c < nch; ++c)
         {
-            const float x = input[(size_t) c][(size_t) (t & mask)];
-            const float s0 = fund[(size_t) c][(size_t) (t & mask)];
-            float s;
-            if (fadeStart >= 0)
-            {
-                const float a = (float) (clock - fadeStart) / (float) fadeLength;
-                s = (1.0f - a) * subAt (c, (double) t - amt * shiftFrom) + a * subAt (c, (double) t - amt * shiftTo);
-            }
-            else
-                s = juce::exactlyEqual (amt * shiftNow, 0.0) ? s0 : subAt (c, (double) t - amt * shiftNow);
-            outs[c] = duck * (x - s0 + s); // the rest + the shifted fundamental, ducked
-            scopeSub += s / (float) nch;
+            const auto ti = (size_t) (t & mask);
+            const float x = input[(size_t) c][ti];
+            const float e = fund[(size_t) c][ti], q = fundQ[(size_t) c][ti];
+            // the fundamental rotated by psi (cos psi e + sin psi q) instead of itself
+            outs[c] = duck * (rotate ? x + (cr - 1.0f) * e + sr * q : x);
+            scopeSub += (cr * e + sr * q) / (float) nch;
         }
         for (int c = 0; c < nch; ++c)
             buffer.getWritePointer (c)[i] = outs[c];
@@ -687,7 +702,7 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
     telemetry.kickLevelDb.store (gainToDb (kickPeak + 1.0e-9f), std::memory_order_relaxed);
     telemetry.monoSumLossDb.store (lossDb, std::memory_order_relaxed);
     telemetry.f0Hz.store (periodSamples > 1.0 ? (float) (sampleRate / periodSamples) : 0.0f, std::memory_order_relaxed);
-    telemetry.shiftMs.store ((float) (shiftTo / sampleRate * 1000.0), std::memory_order_relaxed);
+    telemetry.shiftMs.store ((float) currentShiftMs(), std::memory_order_relaxed);
     telemetry.duckGain.store (gainMin, std::memory_order_relaxed);
     telemetry.outputClock.store (clock - latency, std::memory_order_relaxed);
     Status st = Status::ok;

@@ -24,6 +24,7 @@ public:
     juce::RangedAudioParameter& getThresholdParameter() noexcept { return getKnobParameter (KickLockDsp::thresholdKnob); }
     juce::AudioParameterChoice& getShapeParameter() noexcept { return getChoiceParameter (KickLockDsp::shapeChoice); }
     juce::AudioParameterChoice& getReleaseParameter() noexcept { return getChoiceParameter (KickLockDsp::releaseChoice); }
+    juce::AudioParameterChoice& getLockModeParameter() noexcept { return getChoiceParameter (KickLockDsp::modeChoice); }
 
     /** Every parameter back to its default (the "Réinitialiser" button). */
     void resetAllToDefaults();

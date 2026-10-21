@@ -166,7 +166,7 @@ TEST_CASE ("KL 4. Confidence: a noise or FM sub is never OK", "[kl][confidence]"
     }
 }
 
-TEST_CASE ("KL 5. Freeze: below 0.7 confidence the shift does not move (< 0.1 ms)", "[kl][confidence]")
+TEST_CASE ("KL 5. Freeze: below 0.7 confidence the correction does not move (< 2 deg, 0.1 ms at 61.7 Hz)", "[kl][confidence]")
 {
     const double sr = 48000.0, bpm = 124.0, seconds = 5.0;
     // a steady note (locked), then noise: the shift stays where it was
@@ -186,11 +186,11 @@ TEST_CASE ("KL 5. Freeze: below 0.7 confidence the shift does not move (< 0.1 ms
     run (*p, steady, &k, { 512 }, bpm, [&] (int pos)
          {
              if (pos > (int) (2.8 * sr))
-                 shifts.push_back (p->getDsp().currentShiftMs());
+                 shifts.push_back (p->getDsp().currentRotationDeg());
          });
     const auto [lo, hi] = std::minmax_element (shifts.begin(), shifts.end());
-    INFO ("shift during the noise: " << *lo << " .. " << *hi << " ms");
-    CHECK (*hi - *lo < 0.1);
+    INFO ("rotation during the noise: " << *lo << " .. " << *hi << " deg");
+    CHECK (*hi - *lo < 2.0);
 }
 
 TEST_CASE ("KL 6. Null: MIX 0 is bit-exact with the input delayed by the latency, LOCK on or off", "[kl][null]")
@@ -428,6 +428,7 @@ TEST_CASE ("KL 15. State round trip, the defaults, the reset button", "[kl][stat
     setParam (a.getThresholdParameter(), -24.0f);
     setParam (a.getShapeParameter(), 3.0f);
     setParam (a.getReleaseParameter(), 4.0f);
+    setParam (a.getLockModeParameter(), 1.0f);
     a.editorScale.store (1.5f);
     juce::MemoryBlock state;
     a.getStateInformation (state);
@@ -444,6 +445,7 @@ TEST_CASE ("KL 15. State round trip, the defaults, the reset button", "[kl][stat
     CHECK (plain (b.getThresholdParameter()) == Catch::Approx (-24.0f).margin (0.01));
     CHECK (b.getShapeParameter().getIndex() == 3);
     CHECK (b.getReleaseParameter().getIndex() == 4);
+    CHECK (b.getLockModeParameter().getIndex() == 1);
     CHECK (b.editorScale.load() == Catch::Approx (1.5f));
     // defaults: MIX 60 % first, LOCK off, release 1/8, 120 Hz, -18 dB
     KickLockProcessor c;
@@ -451,6 +453,7 @@ TEST_CASE ("KL 15. State round trip, the defaults, the reset button", "[kl][stat
     CHECK (plain (c.getMixParameter()) == Catch::Approx (0.6f));
     CHECK_FALSE (c.getLockParameter().get());
     CHECK (c.getReleaseParameter().getCurrentChoiceName() == "1/8");
+    CHECK (c.getLockModeParameter().getCurrentChoiceName() == "Continu");
     CHECK (plain (c.getSubCutoffParameter()) == Catch::Approx (120.0f));
     CHECK (plain (c.getThresholdParameter()) == Catch::Approx (-18.0f));
     // the reset button
@@ -468,7 +471,9 @@ TEST_CASE ("KL 18. Level: whatever MIX and the shift, the fundamental keeps its 
     // the dry sub crossfaded with the shifted one would comb (up to -14 dB
     // half a cycle apart): MIX scales the ducking, never the sub's phase
     const double sr = 48000.0, bpm = 124.0, seconds = 4.0, hz = 55.0, T = 1.0 / hz;
-    auto amplitude = [&] (const float* x, int from, int to)
+    // magnitude at f0 over 2-period windows, averaged: insensitive to the
+    // phase moving between kicks (the rotation glides back to 0)
+    auto amplitude2 = [&] (const float* x, int from, int to)
     {
         double I = 0.0, Q = 0.0, wsum = 0.0;
         const int W = to - from;
@@ -481,6 +486,15 @@ TEST_CASE ("KL 18. Level: whatever MIX and the shift, the fundamental keeps its 
             wsum += w;
         }
         return 2.0 * std::hypot (I, Q) / wsum;
+    };
+    auto amplitude = [&] (const float* x, int from, int to)
+    {
+        const int W = (int) std::round (2.0 * sr / hz);
+        double sum = 0.0;
+        int n = 0;
+        for (int at = from; at + W <= to; at += W / 2, ++n)
+            sum += amplitude2 (x, at, at + W);
+        return sum / juce::jmax (1, n);
     };
     const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr);
     double worst = 0.0;
@@ -505,6 +519,34 @@ TEST_CASE ("KL 18. Level: whatever MIX and the shift, the fundamental keeps its 
             }
         }
     WARN ("worst level change of the fundamental: " << worst << " dB");
+}
+
+TEST_CASE ("KL 19. MODE Transition: locked at the kick, the original bass again before the next one", "[kl][mode]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 4.0, hz = 55.0;
+    const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr);
+    const double off = 0.25 + 0.4 / hz; // the kick 0.4 cycle off: a large correction
+    const auto k = kicks (seconds, sr, bpm, off);
+    auto p = makeKl (sr, 1.0f, true, 0.0f);
+    setParam (p->getLockModeParameter(), 1.0f);
+    p->prepareToPlay (sr, 512);
+    const auto out = run (*p, b, &k, { 512 }, bpm);
+    const int L = p->getLatencySamples();
+    const auto kt = kickTimes (seconds, bpm, off);
+    double worstLock = 0.0, worstBack = 0.0;
+    for (size_t n = 2; n + 1 < kt.size(); ++n)
+    {
+        // at the kick: the target phase (0)
+        const int at = (int) std::round (kt[n] * sr);
+        worstLock = juce::jmax (worstLock, std::abs (kl::KickLockDsp::wrap180 (phaseAt (out.getReadPointer (0), out.getNumSamples(), at + L, hz, sr))));
+        // just before the next kick: the original bass (sample by sample)
+        const int from = (int) std::round ((kt[n + 1] - 0.025) * sr), to = (int) std::round ((kt[n + 1] - 0.012) * sr);
+        for (int i = from; i < to; ++i)
+            worstBack = juce::jmax (worstBack, (double) std::abs (out.getSample (0, i + L) - b.getSample (0, i)));
+    }
+    INFO ("phase at the kicks within " << worstLock << " deg; largest difference from the bass before the next kick " << worstBack);
+    CHECK (worstLock < 5.0);
+    CHECK (worstBack < 1.0e-3);
 }
 
 TEST_CASE ("KL 17. CPU: stereo bass + stereo sidechain, LOCK on, 48 kHz", "[kl][cpu]")

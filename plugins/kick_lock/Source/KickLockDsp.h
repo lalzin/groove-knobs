@@ -26,7 +26,7 @@ struct KickTelemetry
 /** Kick Lock.
 
         bass ─┬─> linear-phase FIR low-pass (SUB CUT, ±8 ms) ─> sub ─> YIN, phase at each kick
-              ├─> fundamental = projection on f0 over one period ─> delay (lock + WAVE START + OFFSET) ─┐
+              ├─> fundamental = projection on f0 over one period ─> rotation (lock + WAVE START + OFFSET) ─┐
               └─> rest = bass − fundamental: rest + fundamental = bass exactly ─────────────────────────┤
                                                                             sum ─> ducking (× MIX) ─> out
         kick ─> 1 ms envelope > threshold (30 ms dead time) ─> ducking curve (shape, release, depth)
@@ -36,13 +36,15 @@ struct KickTelemetry
     measured as soon as the sub is known just past it and its shift reached
     by a 5 ms crossfade that ends before the kick is heard; the fundamental's
     window needs half a period ahead (up to ~16 ms: notes down to 31 Hz).
-    The fundamental is only ever delayed (0 .. one period). */
+    The rotation is only there around each kick: reached just before it,
+    held over the release, then glided back to the original phase. */
 class KickLockDsp final : public gk::OneKnobEngine
 {
 public:
     static constexpr int lockSwitch = 0;
     static constexpr int targetKnob = 0, offsetKnob = 1, subCutKnob = 2, depthKnob = 3, waveStartKnob = 4, thresholdKnob = 5;
-    static constexpr int shapeChoice = 0, releaseChoice = 1;
+    static constexpr int shapeChoice = 0, releaseChoice = 1, modeChoice = 2;
+    enum LockMode { continuous, transition };
     enum Shape { exponential, linear, sCurve, bounce };
 
     static constexpr double firSeconds = 0.008, advanceSeconds = 0.008, crossfadeSeconds = 0.005, attackSeconds = 0.004,
@@ -76,8 +78,14 @@ public:
 
     KickTelemetry& getTelemetry() noexcept { return telemetry; }
 
-    /** Tests: the shift applied to the sub now (ms, + = later). */
-    double currentShiftMs() const noexcept { return shiftNow / sampleRate * 1000.0; }
+    /** Tests: the shift of the fundamental heard now (ms, + = later). */
+    double currentShiftMs() const noexcept
+    {
+        const double T = periodSamples > 1.0 ? periodSamples : sampleRate / 55.0;
+        return psiNow / 360.0 * T / sampleRate * 1000.0;
+    }
+    /** Tests: the rotation of the fundamental heard now (degrees, + = later). */
+    double currentRotationDeg() const noexcept { return psiNow; }
     /** Tests: the last phase measurement (degrees at the kick, before correction). */
     double lastMeasuredPhase() const noexcept { return lastPhase; }
 
@@ -85,9 +93,12 @@ private:
     void onKick (std::int64_t when);
     void updatePitch() noexcept;
     bool measurePhase (std::int64_t at, double periodSamples, double& phaseDeg, double& confidence) const noexcept;
-    float subAt (int channel, double delaySamples) const noexcept;
     float monoSubAt (std::int64_t t) const noexcept { return mono[(size_t) (t & mask)]; }
-    double targetShiftFor (double phaseDeg, double periodSamples) const noexcept;
+    double targetPsiFor (double phaseDeg, double periodSamples) const noexcept;
+    void rampTo (double psi, std::int64_t holdUntil, double returnSamples, int fadeSamples = -1) noexcept;
+    double releaseSamplesNow() const noexcept;
+    std::int64_t releaseFor (std::int64_t kick) const noexcept;
+    double returnFor (std::int64_t kick) const noexcept;
 
     double sampleRate = 48000.0;
     int numChannels = 2, latency = 480;
@@ -96,7 +107,7 @@ private:
     // parameters
     bool lock = false;
     float targetPhase = 0.0f, offsetMs = 0.0f, subCutoff = 120.0f, depth = 1.0f, waveStart = 0.0f, thresholdDb = -18.0f;
-    int shape = exponential, release = 2;
+    int shape = exponential, release = 2, lockMode = continuous;
     double bpm = 120.0;
 
     // signal paths: the FIR (two kernels, crossfaded when SUB CUT moves)
@@ -114,12 +125,12 @@ private:
     // on f0 over exactly one period centred on each sample (every harmonic
     // cancels over a whole period, gain 1 at f0, no lag); prefix sums of
     // z = bass x e^-i theta give each window in O(1)
-    std::array<std::vector<float>, 2> fund;
+    std::array<std::vector<float>, 2> fund, fundQ; // the fundamental and its quadrature (+90°)
     std::array<std::vector<double>, 2> prefixRe, prefixIm;
     std::array<double, 2> sumRe {}, sumIm {};
     std::vector<double> oscRingRe, oscRingIm;
     int lookahead = 0; // the window's half-length, at most (samples)
-    double trackHz = 0.0, oscRe = 1.0, oscIm = 0.0, rotRe = 1.0, rotIm = 0.0, shiftHz = 0.0;
+    double trackHz = 0.0, oscRe = 1.0, oscIm = 0.0, rotRe = 1.0, rotIm = 0.0, noteHz = 0.0;
     float trackGain = 0.0f, trackGainCoeff = 0.001f;
     int oscRenorm = 0;
     void setTrackHz (double hz) noexcept;
@@ -145,9 +156,14 @@ private:
     int recentCount = 0;
     float yinAperiodicity = 1.0f;
 
-    // shift (+ = the sub later); crossfading from shiftFrom to shiftTo
-    double shiftNow = 0.0, shiftFrom = 0.0, shiftTo = 0.0, lockShift = 0.0;
-    std::int64_t fadeStart = -1;
+    // the correction: a rotation of the fundamental (degrees, + = later),
+    // reached before each kick (5 ms); MODE Continu: held until the next kick;
+    // Transition: held over the ducking's release, then back to 0 (the
+    // original bass) before the next kick
+    double psiNow = 0.0, psiFrom = 0.0, psiTo = 0.0;
+    std::int64_t fadeStart = -1, holdEnd = 0, prevKick = -1;
+    int fadeNow = 240; // this ramp's length
+    double returnLength = 1.0;
     int fadeLength = 240;
     double lastPhase = 0.0, lastConfidence = 0.0;
     float subRms = 0.0f, rmsCoeff = 0.001f, midRms = 0.0f, sideRms = 0.0f, lrRms = 0.0f;
