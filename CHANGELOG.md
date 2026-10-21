@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.3 — 2026-10-21 (six plugins)
+- **Kick Lock** (nouveau) : sur la basse, le ducking de sidechain (courbe éditable façon LFOTool sur l'oscilloscope, préréglages Exponential / Linear / S-curve / Bounce, RELEASE au tempo, DEPTH) et **LOCK** : la phase de la fondamentale de la basse est tournée pour repartir en phase avec chaque kick (erreur < 2° mesurée de 40 à 110 Hz), sans toucher au reste de la basse ; MODE Hold / Transition ; TARGET, OFFSET, SUB CUT, WAVE START expliqués à l'écran. TRIGGER Auto / Link / Beat / Sidechain. Latence 16 ms (plus avec un gros buffer et Kick Lock Send).
+- **Kick Lock Send** (nouveau, livré avec Kick Lock) : sur la piste du kick, il envoie ses kicks à Kick Lock sans aucun routage (LINK 0 à 10, plusieurs Kick Lock par Send) et sa forme d'onde pour l'oscilloscope ; transient shaper PUNCH / SUSTAIN, SENS.
+- **Sing It Back** : un chœur plutôt qu'un harmoniseur — HARMONY « Unisson » par défaut (tout le monde chante la mélodie, dans le registre du chanteur ; tierces / quintes au choix) ; plus de grésillement (marques d'analyse alignées par corrélation : 12 à 15 dB de bruit en moins entre les harmoniques sur une voix aiguë) ; consonnes discrètes dans la foule et gardées par la voix principale ; un timbre par voix.
+- Installateurs : Kick Lock (+ Send) dans la suite macOS et Windows.
+- Kick Lock, avant la sortie : basses graves (~44 Hz) et basses en notes courtes reconnues (plus de « UNSTABLE » permanent), pas de clic au début des notes, premier temps à la lecture, une seule détection par kick, kick et basse chacun à son échelle dans l'oscilloscope.
+
 ## 0.1.2 — 2026-10-20 (les cinq plugins)
 - **Vérification des mises à jour** : une fois par jour, chaque plugin lit `lalzin.com/plugins/versions.json` et affiche un badge « MAJ x.y.z » s'il existe une version plus récente (clic = page de téléchargement ; rien n'est installé automatiquement). Clic droit sur « made by LALZIN » pour la désactiver ou vérifier tout de suite.
 - **macOS** : installateurs signés (Developer ID) et notarisés par Apple, plugins et application notarisés eux aussi.

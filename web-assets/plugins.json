@@ -11,11 +11,11 @@
       "og": "groove-knobs-og.webp",
       "banner": "groove-knobs-banner.webp"
     },
-    "version": "0.1.2",
+    "version": "0.1.3",
     "downloads": {
       "macos": {
-        "file": "GrooveKnobs-0.1.2-macOS.pkg",
-        "bytes": 136329988,
+        "file": "GrooveKnobs-0.1.3-macOS.pkg",
+        "bytes": null,
         "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
         "formats": [
           "VST3",
@@ -25,14 +25,14 @@
         "signed": "Developer ID + notarised by Apple"
       },
       "windows": {
-        "file": "GrooveKnobs-0.1.2-Windows-Setup.exe",
-        "bytes": 39269214,
+        "file": "GrooveKnobs-0.1.3-Windows-Setup.exe",
+        "bytes": null,
         "requirements": "Windows 10/11 64-bit",
         "formats": [
           "VST3",
           "Standalone"
         ],
-        "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.2/GrooveKnobs-0.1.2-Windows-Setup.exe"
+        "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.3/GrooveKnobs-0.1.3-Windows-Setup.exe"
       }
     }
   },
@@ -40,7 +40,7 @@
     {
       "slug": "french-filter",
       "name": "French Filter",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "mascot": "Le mime French Touch",
       "colors": {
         "background": "#36363c",
@@ -83,8 +83,8 @@
       ],
       "downloads": {
         "macos": {
-          "file": "FrenchFilter-0.1.2-macOS.pkg",
-          "bytes": 36491156,
+          "file": "FrenchFilter-0.1.3-macOS.pkg",
+          "bytes": null,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -94,21 +94,21 @@
           "signed": "Developer ID + notarised by Apple"
         },
         "windows": {
-          "file": "FrenchFilter-0.1.2-Windows-Setup.exe",
-          "bytes": 14225470,
+          "file": "FrenchFilter-0.1.3-Windows-Setup.exe",
+          "bytes": null,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
             "Standalone"
           ],
-          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.2/FrenchFilter-0.1.2-Windows-Setup.exe"
+          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.3/FrenchFilter-0.1.3-Windows-Setup.exe"
         }
       }
     },
     {
       "slug": "boogie-trio",
       "name": "Boogie Trio",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "mascot": "Velvet et ses clones",
       "colors": {
         "background": "#36363c",
@@ -151,8 +151,8 @@
       ],
       "downloads": {
         "macos": {
-          "file": "BoogieTrio-0.1.2-macOS.pkg",
-          "bytes": 18575478,
+          "file": "BoogieTrio-0.1.3-macOS.pkg",
+          "bytes": null,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -162,21 +162,21 @@
           "signed": "Developer ID + notarised by Apple"
         },
         "windows": {
-          "file": "BoogieTrio-0.1.2-Windows-Setup.exe",
-          "bytes": 5785795,
+          "file": "BoogieTrio-0.1.3-Windows-Setup.exe",
+          "bytes": null,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
             "Standalone"
           ],
-          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.2/BoogieTrio-0.1.2-Windows-Setup.exe"
+          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.3/BoogieTrio-0.1.3-Windows-Setup.exe"
         }
       }
     },
     {
       "slug": "backwash",
       "name": "Backwash",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "mascot": "Swell le surfeur",
       "colors": {
         "background": "#36363c",
@@ -218,8 +218,8 @@
       ],
       "downloads": {
         "macos": {
-          "file": "Backwash-0.1.2-macOS.pkg",
-          "bytes": 19307072,
+          "file": "Backwash-0.1.3-macOS.pkg",
+          "bytes": null,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -229,21 +229,21 @@
           "signed": "Developer ID + notarised by Apple"
         },
         "windows": {
-          "file": "Backwash-0.1.2-Windows-Setup.exe",
-          "bytes": 6122190,
+          "file": "Backwash-0.1.3-Windows-Setup.exe",
+          "bytes": null,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
             "Standalone"
           ],
-          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.2/Backwash-0.1.2-Windows-Setup.exe"
+          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.3/Backwash-0.1.3-Windows-Setup.exe"
         }
       }
     },
     {
       "slug": "pew-pew",
       "name": "Pew Pew",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "type": "instrument",
       "mascot": "Tomi le batteur disco",
       "colors": {
@@ -289,8 +289,8 @@
       ],
       "downloads": {
         "macos": {
-          "file": "PewPew-0.1.2-macOS.pkg",
-          "bytes": 32986527,
+          "file": "PewPew-0.1.3-macOS.pkg",
+          "bytes": null,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -300,21 +300,21 @@
           "signed": "Developer ID + notarised by Apple"
         },
         "windows": {
-          "file": "PewPew-0.1.2-Windows-Setup.exe",
-          "bytes": 12754602,
+          "file": "PewPew-0.1.3-Windows-Setup.exe",
+          "bytes": null,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
             "Standalone"
           ],
-          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.2/PewPew-0.1.2-Windows-Setup.exe"
+          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.3/PewPew-0.1.3-Windows-Setup.exe"
         }
       }
     },
     {
       "slug": "sing-it-back",
       "name": "Sing It Back",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "type": "effect",
       "mascot": "Sugar la diva disco",
       "colors": {
@@ -329,8 +329,8 @@
         "en": "A crowd singing along with your voice, in one knob"
       },
       "description": {
-        "fr": "De SOLO (ta voix seule) à CROWD (jusqu'à 12 voix) : une foule qui chante avec toi, dans le ton et la gamme, à l'unisson, en harmonie ou à l'octave, chaque voix avec son timing, son vibrato et son timbre — naturelle, pas robotique. 7 styles (Club, Gospel, Stade, Chorale, Enfants, Géants, Robots) et RÉPONSE : la foule te renvoie ta phrase une demi-mesure ou une mesure plus tard. Pour une voix seule (stem, a cappella).",
-        "en": "From SOLO (just your voice) to CROWD (up to 12 voices): a crowd singing with you, in key and in scale, in unison, harmony or an octave apart, each voice with its own timing, vibrato and tone — natural, not robotic. 7 styles (Club, Gospel, Stadium, Choir, Kids, Giants, Robots) and RESPONSE: the crowd sings your phrase back half a bar or a bar later. For a solo voice (stem, a cappella)."
+        "fr": "De SOLO (ta voix seule) à CROWD (jusqu'à 12 voix) : un chœur qui chante avec toi : par défaut tout le monde à l'unisson, dans ton registre (comme un vrai chœur), ou en harmonie / à l'octave au choix, chaque voix avec son timing, son vibrato et son timbre — naturelle, pas robotique. 7 styles (Club, Gospel, Stade, Chorale, Enfants, Géants, Robots) et RÉPONSE : la foule te renvoie ta phrase une demi-mesure ou une mesure plus tard. Pour une voix seule (stem, a cappella).",
+        "en": "From SOLO (just your voice) to CROWD (up to 12 voices): a choir singing with you: by default everyone in unison, in your register (like a real choir), or in harmony / an octave apart if you like, each voice with its own timing, vibrato and tone — natural, not robotic. 7 styles (Club, Gospel, Stadium, Choir, Kids, Giants, Robots) and RESPONSE: the crowd sings your phrase back half a bar or a bar later. For a solo voice (stem, a cappella)."
       },
       "features": {
         "fr": [
@@ -358,8 +358,8 @@
       "latency_ms": 21.3,
       "downloads": {
         "macos": {
-          "file": "SingItBack-0.1.2-macOS.pkg",
-          "bytes": 29042807,
+          "file": "SingItBack-0.1.3-macOS.pkg",
+          "bytes": null,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -369,16 +369,92 @@
           "signed": "Developer ID + notarised by Apple"
         },
         "windows": {
-          "file": "SingItBack-0.1.2-Windows-Setup.exe",
-          "bytes": 11290164,
+          "file": "SingItBack-0.1.3-Windows-Setup.exe",
+          "bytes": null,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
             "Standalone"
           ],
-          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.2/SingItBack-0.1.2-Windows-Setup.exe"
+          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.3/SingItBack-0.1.3-Windows-Setup.exe"
         }
       }
+    },
+    {
+      "slug": "kick-lock",
+      "name": "Kick Lock",
+      "version": "0.1.3",
+      "type": "effect",
+      "mascot": "Phaze, le tambour de kick",
+      "colors": {
+        "background": "#35382f",
+        "accent": "#a4dc3a",
+        "accent2": "#4e9a1c",
+        "accent3": "#ff8a3d",
+        "cream": "#f3e9d2"
+      },
+      "tagline": {
+        "fr": "Le sidechain qui cale le sub sur chaque kick",
+        "en": "The sidechain that locks the sub on every kick"
+      },
+      "description": {
+        "fr": "Sur la piste de basse : le ducking de sidechain (courbe à dessiner sur l'oscilloscope, comme LFOTool) et LOCK, qui fait tourner la phase de la fondamentale de la basse pour qu'elle reparte en phase avec le kick à chaque coup — plus de creux ni d'annulation entre le kick et le sub, sans toucher au reste de la basse. Le kick arrive par Kick Lock Send (fourni) posé sur la piste du kick : aucun routage, LINK 0 à 10 pour plusieurs paires ; sans kick, Kick Lock suit le tempo. Kick Lock Send a aussi un transient shaper (PUNCH, SUSTAIN) pour le kick.",
+        "en": "On the bass track: sidechain ducking (draw the curve on the scope, LFOTool style) and LOCK, which turns the phase of the bass's fundamental so it starts back in phase with the kick on every hit — no more dip or cancellation between kick and sub, the rest of the bass untouched. The kick comes from Kick Lock Send (included) on the kick's track: no routing, LINK 0 to 10 for several pairs; without a kick, Kick Lock follows the tempo. Kick Lock Send also shapes the kick (PUNCH, SUSTAIN)."
+      },
+      "features": {
+        "fr": [
+          "Phase du sub calée sur le kick (< 2°)",
+          "Courbe de ducking éditable sur l'oscilloscope",
+          "Kick Lock Send : le kick sans routage + transient shaper",
+          "Phaze réagit au verrouillage, l'écran explique chaque réglage"
+        ],
+        "en": [
+          "Sub phase locked on the kick (< 2°)",
+          "Editable ducking curve on the scope",
+          "Kick Lock Send: the kick without routing + a transient shaper",
+          "Phaze reacts to the lock, the screen explains every setting"
+        ]
+      },
+      "presets": [
+        "Exponential",
+        "Linear",
+        "S-curve",
+        "Bounce",
+        "Custom"
+      ],
+      "latency_ms": 16.0,
+      "downloads": {
+        "macos": {
+          "file": "KickLock-0.1.3-macOS.pkg",
+          "bytes": null,
+          "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
+          "formats": [
+            "VST3",
+            "AU",
+            "Standalone"
+          ],
+          "signed": "Developer ID + notarised by Apple",
+          "includes": [
+            "Kick Lock",
+            "Kick Lock Send"
+          ]
+        },
+        "windows": {
+          "file": "KickLock-0.1.3-Windows-Setup.exe",
+          "bytes": null,
+          "requirements": "Windows 10/11 64-bit",
+          "formats": [
+            "VST3",
+            "Standalone"
+          ],
+          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.3/KickLock-0.1.3-Windows-Setup.exe",
+          "includes": [
+            "Kick Lock",
+            "Kick Lock Send"
+          ]
+        }
+      },
+      "images_note": "the window is 760 x 480: ui-hero.webp is 1520 x 960, ui-hero@3x.webp 2280 x 1440"
     }
   ],
   "images_per_plugin": {

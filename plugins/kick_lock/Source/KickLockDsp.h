@@ -159,7 +159,7 @@ private:
     // 0 before it is heard, so its attack is never rotated (a click in the
     // highs: Alan)
     float noteFast = 0.0f, noteFastAtt = 0.0f, noteFastRel = 0.0f;
-    std::array<float, 1024> noteRing {};
+    std::array<float, 4096> noteRing {};
     int noteLag = 480;
     std::int64_t noteDeadUntil = -1;
     int noteOnsets = 0;
@@ -174,6 +174,9 @@ public:
     int linkLateKicks() const noexcept { return lateKicks; }
     /** UI: live Kick Lock Sends on this channel (> 1: a conflict). */
     int linkSendersOnChannel() const noexcept { return link.getSendersOnChannel(); }
+    /** Tests / diagnosis: at the last kick measured, the phase coherence over
+        8 cycles (before the caps), YIN's aperiodicity, the pitch spread (0.03 = 3 %). */
+    double lastCoherence = 0.0, lastAperiodicity = 0.0, lastPitchSpread = 0.0;
     /** Tests: bass note starts seen (each brings the rotation back to 0 before it is heard). */
     int noteStartsSeen() const noexcept { return noteOnsets; }
 
@@ -241,6 +244,7 @@ private:
     double returnLength = 1.0;
     int fadeLength = 240;
     double lastPhase = 0.0, lastConfidence = 0.0;
+    float subPeak = 0.0f, subPeakDecay = 0.99999f;
     float subRms = 0.0f, rmsCoeff = 0.001f, midRms = 0.0f, sideRms = 0.0f, lrRms = 0.0f;
 
     KickTelemetry telemetry;

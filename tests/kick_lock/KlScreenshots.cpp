@@ -11,6 +11,7 @@
 #include "KickBass.h"
 #include "KickSendProcessor.h"
 #include <iostream>
+#include "WebAssets.h"
 
 namespace
 {
@@ -86,6 +87,38 @@ juce::Image shoot (const Case& c, int& statusOut)
     return editor->createComponentSnapshot (editor->getLocalBounds(), true, juce::jmax (1.0f, c.scale / 2.0f));
 }
 
+juce::File repoRoot()
+{
+    for (auto d = juce::File::getCurrentWorkingDirectory(); d.exists() && ! d.isRoot(); d = d.getParentDirectory())
+        if (d.getChildFile ("plugins").isDirectory() && d.getChildFile ("modules/groove_core").isDirectory())
+            return d;
+    return juce::File::getCurrentWorkingDirectory();
+}
+
+// --web: visuals for lalzin.com (web-assets/kick-lock)
+int runWeb (const juce::File& out)
+{
+    std::vector<gkweb::Shot> shots;
+    auto shot = [&] (const char* name, Case c) { int st = -1; shots.push_back ({ name, shoot (c, st) }); };
+    { Case c; c.slug = "hero"; c.scale = 3.0f; c.kicks = 1; shot ("hero", c); }
+    { Case c; c.slug = "curve"; c.scale = 2.0f; c.customCurve = true; shot ("curve", c); }
+    { Case c; c.slug = "explain"; c.scale = 2.0f; c.explain = 0; shot ("explain", c); }
+    gkweb::PluginInfo info;
+    info.slug = "kick-lock";
+    info.name = "Kick Lock";
+    info.taglineFr = juce::String::fromUTF8 ("Le sidechain qui cale le sub sur chaque kick");
+    info.taglineEn = "The sidechain that locks the sub on every kick";
+    info.palette = kl::KickLockEditor::makePalette();
+    info.assetsDir = repoRoot().getChildFile ("plugins/kick_lock/Assets");
+    info.framePrefix = "phaze_";
+    info.heroFrame = 13;
+    for (int i = 0; i < 21; ++i)
+        info.poses.push_back (i);
+    gkweb::writePlugin (info, shots, out);
+    // (the suite visuals stay the five one-knob windows: Alan, Kick Lock does not fit in them)
+    return 0;
+}
+
 const char* statusName (int s)
 {
     static const char* names[] { "OK", "Decale", "Instable", "Sub faible", "Pas de kick", "Somme en perte" };
@@ -101,6 +134,8 @@ int main (int argc, char** argv)
     setenv ("GK_NO_UPDATE_CHECK", "1", 1);
 #endif
     juce::ScopedJuceInitialiser_GUI juceInit;
+    if (argc > 1 && juce::String (argv[1]) == "--web")
+        return runWeb (juce::File::getCurrentWorkingDirectory().getChildFile (argc > 2 ? argv[2] : "web-assets"));
     const auto outDir = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 ? argv[1] : "screenshots/kick_lock");
     outDir.createDirectory();
 

@@ -1116,6 +1116,69 @@ TEST_CASE ("KL 30. Link in Auto over 10 s: kicks to the end, Send's kick in Kick
     kl::KickLink::removeBlock();
 }
 
+TEST_CASE ("KL 31. A low bass (44 Hz, many harmonics) held over the kicks locks; one cut before each kick is never 'unstable'", "[kl][status]")
+{
+    const double sr = 48000.0, bpm = 145.0, seconds = 4.0, beat = 60.0 / bpm, hz = 44.0;
+    auto saw = [&] (std::vector<std::pair<double, double>> notes)
+    {
+        Buffer b (2, (int) (seconds * sr));
+        b.clear();
+        for (auto [t0, len] : notes)
+        {
+            double ph = 0.0;
+            for (int i = (int) (t0 * sr); i < juce::jmin (b.getNumSamples(), (int) ((t0 + len) * sr)); ++i)
+            {
+                const double t = i / sr - t0;
+                ph += hz * (1.0 + 0.003 * std::sin (2.0 * juce::MathConstants<double>::pi * 5.0 * t)) / sr; // a little drift
+                const double env = juce::jmin (1.0, t / 0.004) * juce::jmin (1.0, (t0 + len - i / sr) / 0.01);
+                const float v = (float) (0.35 * env * (2.0 * (ph - std::floor (ph)) - 1.0));
+                b.setSample (0, i, v);
+                b.setSample (1, i, v);
+            }
+        }
+        return b;
+    };
+    const auto k = kicks (seconds, sr, bpm, 0.1);
+    const auto kt = kickTimes (seconds, bpm, 0.1);
+    // held: one long note over every kick
+    {
+        const auto b = saw ({ { 0.0, seconds } });
+        auto p = makeKl (sr, 1.0f, true, 0.0f);
+        int blocks = 0, unstable = 0;
+        const auto out = run (*p, b, &k, { 512 }, bpm, [&] (int pos)
+        {
+            if (pos > (int) (1.0 * sr))
+            {
+                ++blocks;
+                unstable += (Status) p->getDsp().getTelemetry().status.load() == Status::unstable ? 1 : 0;
+            }
+        });
+        const auto e = errorsAtKicks (out, p->getLatencySamples(), hz, sr, kt, 1.0, seconds - 0.3);
+        INFO ("held: unstable in " << unstable << " of " << blocks << " blocks; phase worst " << maxAbs (e) << " deg");
+        CHECK (unstable == 0);
+        CHECK (maxAbs (e) < 5.0);
+    }
+    // short notes: each ends 50 ms before a kick and starts 80 ms after it
+    {
+        std::vector<std::pair<double, double>> notes;
+        for (double t : kt)
+            notes.push_back ({ t + 0.08, beat - 0.13 });
+        const auto b = saw (notes);
+        auto p = makeKl (sr, 1.0f, true, 0.0f);
+        int blocks = 0, unstable = 0;
+        run (*p, b, &k, { 512 }, bpm, [&] (int pos)
+        {
+            if (pos > (int) (1.0 * sr))
+            {
+                ++blocks;
+                unstable += (Status) p->getDsp().getTelemetry().status.load() == Status::unstable ? 1 : 0;
+            }
+        });
+        INFO ("short notes: unstable in " << unstable << " of " << blocks << " blocks");
+        CHECK (unstable == 0);
+    }
+}
+
 TEST_CASE ("KL 17. CPU: stereo bass + stereo sidechain, LOCK on, 48 kHz", "[kl][cpu]")
 {
     const double sr = 48000.0, bpm = 124.0, seconds = 8.0;
@@ -1303,4 +1366,33 @@ TEST_CASE ("diag: high frequencies added by the lock on a raw saw bass", "[.kldi
               << tel.status.load() << " confidence " << tel.phaseConfidence.load() << " f0 " << tel.f0Hz.load() << " rotation " << p->getDsp().currentRotationDeg()
               << " kicks " << tel.kickEvents.load());
     }
+}
+
+TEST_CASE ("diag: a bass file (GK_KL_FILE, GK_KL_BPM)", "[.kldiag8]")
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> r (fm.createReaderFor (juce::File (std::getenv ("GK_KL_FILE"))));
+    REQUIRE (r != nullptr);
+    Buffer b ((int) r->numChannels, (int) r->lengthInSamples);
+    r->read (&b, 0, (int) r->lengthInSamples, 0, true, true);
+    const double sr = r->sampleRate, bpm = std::atof (std::getenv ("GK_KL_BPM"));
+    auto p = makeKl (sr, 1.0f, true, 0.0f);
+    setParam (p->getTriggerParameter(), (float) KickLockDsp::triggerBeat);
+    p->prepareToPlay (sr, 512);
+    int seen = 0;
+    juce::String log;
+    run (*p, b, nullptr, { 512 }, bpm, [&] (int)
+    {
+        auto& d = p->getDsp();
+        auto& t = d.getTelemetry();
+        if (t.kickEvents.load() != seen)
+        {
+            seen = t.kickEvents.load();
+            log << "\n kick " << seen << ": status " << t.status.load() << " conf " << juce::String (t.phaseConfidence.load(), 2) << " coherence "
+                << juce::String (d.lastCoherence, 2) << " aperiodic " << juce::String (d.lastAperiodicity, 2) << " spread " << juce::String (d.lastPitchSpread * 100.0, 1)
+                << "% f0 " << juce::String (t.f0Hz.load(), 1) << " err " << juce::String (t.phaseErrorDeg.load(), 1);
+        }
+    });
+    WARN (log);
 }

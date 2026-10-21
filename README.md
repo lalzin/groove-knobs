@@ -1,4 +1,4 @@
-# Groove Knobs — French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back
+# Groove Knobs — French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back, Kick Lock
 
 La suite **Groove Knobs** (LALZIN) : des plugins à un seul knob pour la funky house et la disco. **French Filter** (le filtre French Touch), **Boogie Trio** (chorus triple de string machine), **Backwash** (reverb inversée calée sur le tempo), **Pew Pew** (le pew disco, instrument) et **Sing It Back** (une foule qui chante avec ta voix).
 VST3 / AU / Standalone, macOS (universel) et Windows.
@@ -211,6 +211,32 @@ Une **foule qui chante avec ta voix**. Le knob **CROWD** va de **SOLO** (0 % : t
 Mascotte : **Sugar**, la diva disco. Elle chante quand tu chantes (une pose par syllabe), son énergie suit CROWD (bras tendu, doigt levé, sauts avec paillettes), elle invite la foule entre les phrases et la désigne pendant une RÉPONSE ; main sur le cœur après une longue phrase au maximum ; elle s'endort en bypass. Autour d'elle, une silhouette par voix qui chante vraiment ce que chante sa voix (et dont l'allure suit le STYLE).
 
 Outils : `sib_render` (rendus d'écoute depuis la racine du dépôt → `renders/sing_it_back`), captures `sib_screenshots`, poses de Sugar `scripts/make_sugar_frames.sh`.
+
+# Kick Lock
+
+Sur la **piste de basse**. Deux choses en une :
+
+- **Le ducking de sidechain** : à chaque kick la basse se creuse et revient selon une courbe — préréglages Exponential / Linear / S-curve / Bounce, ou **Custom** dessinée sur l'oscilloscope (glisser les points, double-clic pour en ajouter / ôter, l'anneau d'un segment pour le courber, clic droit = préréglages). RELEASE (1/16 … 1/2, au tempo), DEPTH, MIX.
+- **LOCK** : au moment du kick, la phase de la **fondamentale** de la basse est tournée pour tomber sur TARGET (0° = le sub monte par zéro sur le kick) : plus de creux ni d'annulation entre le kick et le sub. Seule la fondamentale (sous SUB CUT) est touchée, le reste de la basse jamais. MODE **Hold** (la correction tient d'un kick au suivant) ou **Transition** (seulement autour du kick, retour à la basse d'origine après le release). OFFSET et WAVE START ajoutent un décalage voulu. Survoler ou tourner TARGET / OFFSET / SUB CUT / WAVE START : l'écran montre ce qu'ils font.
+
+## Le kick : Kick Lock Send (fourni)
+
+Pose **Kick Lock Send** sur la **piste du kick**, au même numéro **LINK** (0 à 10) que Kick Lock : il lui envoie la position de chaque kick (et sa forme d'onde pour l'oscilloscope) — **aucun routage** dans Live, VST3 ou AU. Plusieurs Kick Lock peuvent écouter le même Send (basse, sub...) ; deux Send sur un même numéro = conflit affiché. Son knob PUNCH et SUSTAIN sculptent le kick (transient shaper), SENS règle la détection.
+
+TRIGGER : **Auto** (le Send de son LINK, sinon le tempo), **Link**, **Beat** (les temps de l'hôte), **Sidechain** (le routage sidechain de l'hôte, seulement si choisi : dans Live, section Sidechain à gauche de l'appareil, en VST3).
+
+## Limites de la mesure de phase
+
+- La fondamentale est mesurée (YIN, 35–160 Hz) puis projetée sur une période : juste pour une basse **monophonique** ; un accord grave ou des couches très désaccordées passent en partie avec elle.
+- Une note qui démarre sur le kick est laissée telle quelle (elle démarre déjà en phase) ; une note qui démarre entre deux kicks repart sans correction jusqu'au kick suivant (pas d'attaque tournée, pas de clic).
+- Glissés, FM large, bruit : statut UNSTABLE, la correction est gelée (Hold) ou absente (Transition).
+- Statut : LOCKED / LOCKING / UNSTABLE / LOW SUB / MONO LOSS / NO KICK (· LINK / · BEAT selon la source) ; la phrase complète en info-bulle, les chiffres en bas.
+
+## Latence
+
+16 ms (l'analyse du sub, la mesure au kick, le fondu avant qu'il soit entendu). Avec Kick Lock Send et un buffer audio de plus de 512 échantillons à 48 kHz, un peu plus (~28 ms à 1024) pour attendre les kicks de l'autre piste : Kick Lock ne devine jamais un kick. Kick Lock Send annonce la même latence ; l'hôte compense les deux.
+
+Tests : `kl_tests` (30 cas : phase, convergence, ducking, lien, détection, niveau...), `kl_render`, `kl_screenshots` (`--web` pour les visuels du site), pluginval 10 et auval (`aufx KkLk Lalz`, `aufx KkLs Lalz`).
 
 ## Installateurs de la suite
 

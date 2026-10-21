@@ -1,11 +1,20 @@
 ﻿; Groove Knobs — Windows installer for one plugin (Inno Setup 6).
-; Built by scripts/make_installer_win.ps1 -Plugin FF|BT|BW|PP|SIB, or:
+; Built by scripts/make_installer_win.ps1 -Plugin FF|BT|BW|PP|SIB|KL, or:
 ;   iscc /DPlugin=BT /DMyAppVersion=0.1.2 /DBuildDir=<...>\BoogieTrio_artefacts\Release installer\windows\GrooveKnobs.iss
 
 #ifndef Plugin
   #define Plugin "FF"
 #endif
-#if Plugin == "PP"
+#if Plugin == "KL"
+  #define MyAppName "Kick Lock"
+  #define MyFileName "KickLock"
+  #define MyAppId "{{D0FA33E8-99A4-4C9B-8869-F2AE1C683C48}"
+  #define MyBuildFolder "kick_lock\KickLock_artefacts"
+  ; Kick Lock ships with Kick Lock Send (on the kick's track)
+  #ifndef SendDir
+    #define SendDir "..\..\build-win\plugins\kick_lock_send\KickLockSend_artefacts\Release"
+  #endif
+#elif Plugin == "PP"
   #define MyAppName "Pew Pew"
   #define MyFileName "PewPew"
   #define MyAppId "{{A7969E38-1C2F-4467-9340-8E07EA24D4C6}"
@@ -33,7 +42,7 @@
 #endif
 #define MyPublisher "LALZIN"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.2"
+  #define MyAppVersion "0.1.3"
 #endif
 #ifndef BuildDir
   #define BuildDir "..\..\build-win\plugins\" + MyBuildFolder + "\Release"
@@ -77,6 +86,9 @@ Name: "standalone"; Description: "Standalone application"; Types: full
 [Files]
 Source: "{#BuildDir}\VST3\{#MyAppName}.vst3\*"; DestDir: "{commoncf64}\VST3\{#MyAppName}.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: vst3
 Source: "{#BuildDir}\Standalone\{#MyAppName}.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: standalone
+#if Plugin == "KL"
+Source: "{#SendDir}\VST3\Kick Lock Send.vst3\*"; DestDir: "{commoncf64}\VST3\Kick Lock Send.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: vst3
+#endif
 Source: "..\common\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\common\THIRD_PARTY_NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\common\LilitaOne-OFL.txt"; DestDir: "{app}"; Flags: ignoreversion
@@ -86,6 +98,9 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppName}.exe"; Compone
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{commoncf64}\VST3\{#MyAppName}.vst3"
+#if Plugin == "KL"
+Type: filesandordirs; Name: "{commoncf64}\VST3\Kick Lock Send.vst3"
+#endif
 
 #if Plugin == "BW"
 [CustomMessages]

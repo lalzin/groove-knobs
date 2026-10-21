@@ -153,13 +153,16 @@ inline void writePlugin (const PluginInfo& info, const std::vector<Shot>& shots,
     const auto& pal = info.palette;
     const auto cream = pal.text, ink = pal.outline;
     const auto& hero3x = shots.front().image;
-    const auto hero2x = hero3x.rescaled (840, 1040, juce::Graphics::highResamplingQuality);
+    // the 2x size keeps the window's own shape: 840 x 1040 for the one-knob
+    // 420 x 520 layout (as before), 1520 x 960 for a 760 x 480 one (Kick Lock)
+    const int w2x = hero3x.getWidth() * 2 / 3, h2x = hero3x.getHeight() * 2 / 3;
+    const auto hero2x = hero3x.rescaled (w2x, h2x, juce::Graphics::highResamplingQuality);
 
     // 1. UI screenshots
     writePng (hero3x, dir.getChildFile ("ui-hero@3x.png"));
     writePng (hero2x, dir.getChildFile ("ui-hero.png"));
     for (size_t i = 1; i < shots.size(); ++i)
-        writePng (shots[i].image.getWidth() > 840 ? shots[i].image.rescaled (840, 1040, juce::Graphics::highResamplingQuality) : shots[i].image,
+        writePng (shots[i].image.getWidth() > w2x ? shots[i].image.rescaled (w2x, h2x, juce::Graphics::highResamplingQuality) : shots[i].image,
                   dir.getChildFile ("ui-" + shots[i].name + ".png"));
 
     // 2. Mascot (transparent) and its poses
@@ -205,7 +208,8 @@ inline void writePlugin (const PluginInfo& info, const std::vector<Shot>& shots,
         juce::Graphics g (img);
         const auto b = img.getBounds().toFloat();
         background (g, b, pal, { 300.0f, 330.0f }, 520.0f);
-        drawWindow (g, hero3x, { 40.0f, 30.0f, 470.0f, 570.0f }, -0.03f);
+        const bool wide = hero3x.getWidth() > hero3x.getHeight();
+        drawWindow (g, hero3x, wide ? juce::Rectangle<float> { 24.0f, 60.0f, 520.0f, 510.0f } : juce::Rectangle<float> { 40.0f, 30.0f, 470.0f, 570.0f }, -0.03f);
         g.setColour (cream.withAlpha (0.55f));
         g.fillPath (textPath ("GROOVE KNOBS", 20.0f, 560.0f, 92.0f, 0.3f));
         cartoonText (g, textPath (info.name.toUpperCase(), info.name.length() > 10 ? 74.0f : 88.0f, 556.0f, 182.0f, 0.02f), cream, ink, 9.0f);
@@ -228,7 +232,8 @@ inline void writePlugin (const PluginInfo& info, const std::vector<Shot>& shots,
         g.setColour (cream.withAlpha (0.55f));
         g.fillPath (textPath ("GROOVE KNOBS", 24.0f, 540.0f, 92.0f, 0.3f, true));
         cartoonText (g, textPath (info.name.toUpperCase(), 104.0f, 540.0f, 200.0f, 0.02f, true), cream, ink, 11.0f);
-        drawWindow (g, hero3x, { 90.0f, 250.0f, 560.0f, 700.0f }, -0.035f);
+        const bool wide = hero3x.getWidth() > hero3x.getHeight();
+        drawWindow (g, hero3x, wide ? juce::Rectangle<float> { 50.0f, 300.0f, 640.0f, 560.0f } : juce::Rectangle<float> { 90.0f, 250.0f, 560.0f, 700.0f }, -0.035f);
         drawMascot (g, hero, { 600.0f, 520.0f, 440.0f, 400.0f }, juce::Justification::centredBottom);
         g.setColour (cream.withAlpha (0.6f));
         g.fillPath (textPath ("made by", 20.0f, 830.0f, 1000.0f, 0.08f, true));
@@ -295,7 +300,9 @@ inline void writeSuite (const juce::File& outRoot, const std::vector<std::pair<j
             const auto area = juce::Rectangle<float> (windows.getX() + ww * (float) k, windows.getY() + windows.getHeight() * 0.05f * std::abs (side), ww,
                                                       windows.getHeight())
                                   .expanded (ww * (n > 3 ? 0.22f : 0.08f), 0.0f);
-            drawWindow (g, uis[(size_t) k], area, 0.06f * side);
+            // a wide window (Kick Lock) gets a wider slot, or it is a stamp
+            const bool wideUi = uis[(size_t) k].getWidth() > uis[(size_t) k].getHeight();
+            drawWindow (g, uis[(size_t) k], wideUi ? area.withSizeKeepingCentre (area.getWidth() * 1.4f, area.getHeight() * 0.8f) : area, 0.06f * side);
         }
         writePng (img, outRoot.getChildFile (file));
     };

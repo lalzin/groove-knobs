@@ -1,6 +1,6 @@
 # Builds the Windows installers (VST3 + standalone, x64) of the Groove Knobs plugins:
 #   dist\<Plugin>-<version>-Windows-Setup.exe
-#   powershell -ExecutionPolicy Bypass -File scripts\make_installer_win.ps1 [-Plugin FF|BT|BW|PP|SIB|Suite|All] [-SkipBuild]
+#   powershell -ExecutionPolicy Bypass -File scripts\make_installer_win.ps1 [-Plugin FF|BT|BW|PP|SIB|KL|Suite|All] [-SkipBuild]
 # Requires Visual Studio 2022 and Inno Setup 6 (winget install JRSoftware.InnoSetup).
 #
 # Free public download: without an Authenticode certificate, Windows
@@ -32,9 +32,10 @@ $All = @{
   BT = @{ Name = "Boogie Trio";   File = "BoogieTrio";   Dir = "boogie_trio\BoogieTrio_artefacts" };
   BW = @{ Name = "Backwash";      File = "Backwash";     Dir = "backwash\Backwash_artefacts" };
   PP = @{ Name = "Pew Pew";       File = "PewPew";       Dir = "pew_pew\PewPew_artefacts" };
-  SIB = @{ Name = "Sing It Back"; File = "SingItBack";   Dir = "sing_it_back\SingItBack_artefacts" }
+  SIB = @{ Name = "Sing It Back"; File = "SingItBack";   Dir = "sing_it_back\SingItBack_artefacts" };
+  KL = @{ Name = "Kick Lock";     File = "KickLock";     Dir = "kick_lock\KickLock_artefacts" }
 }
-$Targets = if ($Plugin -eq "All") { @("FF", "BT", "BW", "PP", "SIB") } elseif ($Plugin -eq "Suite") { @() } else { @($Plugin) }
+$Targets = if ($Plugin -eq "All") { @("FF", "BT", "BW", "PP", "SIB", "KL") } elseif ($Plugin -eq "Suite") { @() } else { @($Plugin) }
 
 foreach ($P in $Targets) {
   $Info = $All[$P]
@@ -42,7 +43,9 @@ foreach ($P in $Targets) {
   $Art = Join-Path $Build ("plugins\" + $Info.Dir + "\Release")
   Sign (Join-Path $Art ("Standalone\" + $Info.Name + ".exe"))
   Get-ChildItem (Join-Path $Art ("VST3\" + $Info.Name + ".vst3")) -Recurse -Filter *.vst3 -File | ForEach-Object { Sign $_.FullName }
-  & $Iscc "/DPlugin=$P" "/DMyAppVersion=$Version" "/DBuildDir=$Art" (Join-Path $Root "installer\windows\GrooveKnobs.iss")
+  $SendArt = Join-Path $Build "plugins\kick_lock_send\KickLockSend_artefacts\Release"
+  if ($P -eq "KL") { Get-ChildItem (Join-Path $SendArt "VST3\Kick Lock Send.vst3") -Recurse -Filter *.vst3 -File | ForEach-Object { Sign $_.FullName } }
+  & $Iscc "/DPlugin=$P" "/DMyAppVersion=$Version" "/DBuildDir=$Art" "/DSendDir=$SendArt" (Join-Path $Root "installer\windows\GrooveKnobs.iss")
   if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed for $P" }
   $Setup = Join-Path $Root ("dist\" + $Info.File + "-$Version-Windows-Setup.exe")
   Sign $Setup

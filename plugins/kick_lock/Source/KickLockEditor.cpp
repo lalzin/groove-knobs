@@ -335,16 +335,20 @@ public:
             // the waveforms themselves (Alan: the wave, not blocks): every
             // stored sample (1 in 8) on a line, the kick behind, the bass as
             // heard in front, under the curve
-            float peak = 0.05f;
+            // each wave at its own scale (the scope shows when and how, not
+            // which is louder: a loud bass made the kick look tiny)
+            float peakBass = 0.05f, peakKick = 0.05f;
             for (auto t = shown - pre; t < shown - pre + span; t += dec)
             {
                 bool ok = false;
-                peak = juce::jmax (peak, std::abs (valueAt (bass, t, ok)), beats ? 0.0f : std::abs (valueAt (kick, t, ok)));
+                peakBass = juce::jmax (peakBass, std::abs (valueAt (bass, t, ok)));
+                peakKick = juce::jmax (peakKick, std::abs (valueAt (kick, t, ok)));
             }
-            const float half = m.getHeight() * 0.46f / peak, mid = m.getCentreY();
+            const float mid = m.getCentreY();
             for (int pass = beats ? 1 : 0; pass < 2; ++pass)
             {
                 const auto& ring = pass == 0 ? kick : bass;
+                const float half = m.getHeight() * 0.46f / (pass == 0 ? peakKick : peakBass);
                 wavePath.clear();
                 bool started = false;
                 for (auto t = shown - pre; t < shown - pre + span; t += dec)

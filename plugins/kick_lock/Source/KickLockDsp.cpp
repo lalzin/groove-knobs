@@ -159,18 +159,19 @@ void KickLockDsp::prepare (double sr, int maxBlock, int nch)
     lookahead = latency - 3; // Hermite reads 2 samples past the output time
     trackGainCoeff = (float) (1.0 - std::exp (-1.0 / (0.02 * sr)));
     noteFastAtt = (float) (1.0 - std::exp (-1.0 / (0.0005 * sr)));
-    noteFastRel = (float) (1.0 - std::exp (-1.0 / (0.004 * sr)));
-    noteLag = juce::jlimit (1, 1000, (int) std::round (0.01 * sr));
+    noteFastRel = (float) (1.0 - std::exp (-1.0 / (0.04 * sr))); // holds over a cycle of a low bass (a saw at 44 Hz dips every 22 ms)
+    noteLag = juce::jlimit (1, 4000, (int) std::round (0.025 * sr));
     mono.assign ((size_t) size, 0.0f);
     envRing.assign ((size_t) size, 0.0f);
     kickRing.assign ((size_t) size, 0.0f);
     decimation = juce::jmax (1, (int) std::round (sr / 3000.0));
-    dec.assign (512, 0.0f);
+    dec.assign (1024, 0.0f);
     fadeLength = juce::jmax (1, (int) std::round (crossfadeSeconds * sr));
     scAttack = (float) (1.0 - std::exp (-1.0 / (0.0002 * sr)));
     scRelease = (float) (1.0 - std::exp (-1.0 / (0.001 * sr)));
     slowRelease = (float) (1.0 - std::exp (-1.0 / (0.06 * sr)));
     rmsCoeff = (float) (1.0 - std::exp (-1.0 / (0.05 * sr)));
+    subPeakDecay = (float) std::exp (-1.0 / (1.0 * sr));
     telemetry.scopeSize = (int) (2.0 * sr) / KickTelemetry::scopeDecimation;
     telemetry.scopeSub = std::make_unique<std::atomic<float>[]> ((size_t) telemetry.scopeSize);
     telemetry.scopeBass = std::make_unique<std::atomic<float>[]> ((size_t) telemetry.scopeSize);
@@ -234,6 +235,7 @@ void KickLockDsp::reset()
     returnLength = 1.0;
     lastPhase = lastConfidence = 0.0;
     subRms = midRms = sideRms = lrRms = 0.0f;
+    subPeak = 0.0f;
     scopeCounter = 0;
     for (int i = 0; i < telemetry.scopeSize; ++i)
     {
@@ -282,11 +284,14 @@ void KickLockDsp::updatePitch() noexcept
 {
     // YIN on the decimated sub (~3 kHz): 35-160 Hz, 128-sample window (~43 ms)
     const double rate = sampleRate / decimation;
-    const int window = 128, tauMin = (int) std::floor (rate / 160.0), tauMax = juce::jmin (180, (int) std::ceil (rate / 35.0));
-    std::array<float, 512> frame {};
+    // (under ~48 Hz 256 at ~3 kHz = 85 ms: almost 4 periods at 44 Hz — with
+    // 128, under two, a low bass looked aperiodic and unsteady: UNSTABLE on
+    // Alan's bass; above, 128: a glide is followed sooner)
+    const int window = periodSamples / decimation > 62.0 ? 256 : 128, tauMin = (int) std::floor (rate / 160.0), tauMax = juce::jmin (180, (int) std::ceil (rate / 35.0));
+    std::array<float, 1024> frame {};
     const int len = window + tauMax;
     for (int i = 0; i < len; ++i)
-        frame[(size_t) i] = dec[(size_t) ((decWrite - len + i) & 511)];
+        frame[(size_t) i] = dec[(size_t) ((decWrite - len + i) & 1023)];
     std::array<float, 200> d {};
     double running = 0.0;
     for (int tau = 1; tau <= tauMax; ++tau)
@@ -496,6 +501,27 @@ void KickLockDsp::onKick (std::int64_t when)
         }
     }
 
+    // No note held over the kick (a bass played in short notes: the last one
+    // has ended, the next starts after the kick): nothing to put in phase —
+    // in place, not "unstable" (Alan's bass: red all the time)
+    {
+        const double T = periodSamples > 1.0 ? periodSamples : sampleRate / 55.0;
+        double e = 0.0;
+        const auto from = when - (std::int64_t) (2.0 * T);
+        for (auto n = from; n < when; ++n)
+            e += (double) monoSubAt (n) * monoSubAt (n);
+        const double atKick = e / juce::jmax (1.0, 2.0 * T);
+        if (subPeak > 1.0e-7 && atKick < 0.01 * subPeak) // 20 dB under the bass's recent level
+        {
+            rampTo (0.0, when + releaseFor (when), returnFor (when));
+            prevKick = when;
+            lastConfidence = 1.0;
+            telemetry.phaseConfidence.store (1.0f, std::memory_order_relaxed);
+            telemetry.phaseErrorDeg.store (0.0f, std::memory_order_relaxed);
+            return;
+        }
+    }
+
     // The sub's phase at this kick (heard in L samples), and the shift for it
     double phase = 0.0, conf = 0.0;
     // (subRms is a mean square: the threshold squared — compared to the
@@ -507,6 +533,8 @@ void KickLockDsp::onKick (std::int64_t when)
     {
         // a steady phase over 8 cycles, and a periodic sub (YIN): a noise
         // sub can line up its phases by chance, never both
+        lastCoherence = conf;
+        lastAperiodicity = yinAperiodicity;
         if (yinAperiodicity > 0.3f)
             conf = juce::jmin (conf, 0.5);
         // and a fundamental that holds still (a glide, a wide FM: not lockable)
@@ -519,6 +547,7 @@ void KickLockDsp::onKick (std::int64_t when)
             for (int j = 0; j < n; ++j)
                 last[(size_t) j] = recentPeriods[(size_t) ((recentCount - 1 - j) % (int) recentPeriods.size())];
             const auto [lo, hi] = std::minmax_element (last.begin(), last.begin() + n);
+            lastPitchSpread = (*hi - *lo) / (0.5 * (*hi + *lo));
             if ((*hi - *lo) / (0.5 * (*hi + *lo)) > 0.03)
                 conf = juce::jmin (conf, 0.5);
         }
@@ -592,10 +621,10 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             for (int c = 0; c < nch; ++c)
                 level = juce::jmax (level, std::abs (buffer.getSample (c, i)));
             noteFast += (level - noteFast) * (level > noteFast ? noteFastAtt : noteFastRel);
-            // against the level 10 ms earlier (kept in the envelope ring of the
+            // against the level 25 ms earlier (kept in the envelope ring of the
             // sub: here its own small ring)
-            noteRing[(size_t) (clock & 1023)] = noteFast;
-            const float before = noteRing[(size_t) ((clock - noteLag) & 1023)];
+            noteRing[(size_t) (clock & 4095)] = noteFast;
+            const float before = noteRing[(size_t) ((clock - noteLag) & 4095)];
             if (clock >= noteDeadUntil && noteFast > 0.003f && noteFast > 3.0f * before + 0.002f)
             {
                 noteDeadUntil = clock + (std::int64_t) (0.05 * sampleRate);
@@ -676,6 +705,7 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         }
         mono[(size_t) (aligned & mask)] = monoSub;
         subRms += (monoSub * monoSub - subRms) * rmsCoeff;
+        subPeak = juce::jmax (subRms, subPeak * subPeakDecay); // the bass's recent level (mean square), ~1 s memory
         // pitch: decimated (box average, the sub is far below its Nyquist)
         if (++decCounter >= decimation)
         {
@@ -683,7 +713,7 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             float acc = 0.0f;
             for (int k = 0; k < decimation; ++k)
                 acc += mono[(size_t) ((aligned - k) & mask)];
-            dec[(size_t) (decWrite & 511)] = acc / (float) decimation;
+            dec[(size_t) (decWrite & 1023)] = acc / (float) decimation;
             ++decWrite;
             if (++yinHop >= 32)
             {
