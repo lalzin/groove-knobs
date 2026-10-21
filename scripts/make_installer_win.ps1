@@ -57,8 +57,8 @@ foreach ($P in $Targets) {
   Get-ChildItem (Join-Path $Art ("VST3\" + $Info.Name + ".vst3")) -Recurse -Filter *.vst3 -File | ForEach-Object { Sign $_.FullName }
   $SendArt = Join-Path $Build "plugins\kick_lock_send\KickLockSend_artefacts\Release"
   if ($P -eq "KL") { Get-ChildItem (Join-Path $SendArt "VST3\Kick Lock Send.vst3") -Recurse -Filter *.vst3 -File | ForEach-Object { Sign $_.FullName } }
-  & $Iscc "/DPlugin=$P" "/DMyAppVersion=$Version" "/DBuildDir=$Art" "/DSendDir=$SendArt" (Join-Path $Root "installer\windows\GrooveKnobs.iss")
-  if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed for $P" }
+  & $Iscc "/DPlugin=$P" "/DMyAppVersion=$Version" "/DBuildDir=$Art" "/DSendDir=$SendArt" (Join-Path $Root "installer\windows\GrooveKnobs.iss") 2>&1 | Tee-Object -Variable IsccOut
+  if ($LASTEXITCODE -ne 0) { Report $IsccOut "Error|error|not found|cannot|No files" "Inno Setup ($P)" }
   $Setup = Join-Path $Root ("dist\" + $Info.File + "-$Version-Windows-Setup.exe")
   Sign $Setup
   Write-Host "Installer: $Setup"
@@ -77,8 +77,8 @@ if ($Plugin -eq "All" -or $Plugin -eq "Suite") {
     if ($Plugin -eq "Suite") { throw ($Behind -join "; ") }
     Write-Host ("Suite skipped: " + ($Behind -join "; "))
   } else {
-  & $Iscc "/DMyAppVersion=$SuiteVersion" "/DBuildRoot=$(Join-Path $Build 'plugins')" (Join-Path $Root "installer\windows\GrooveKnobsSuite.iss")
-  if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed for the suite" }
+  & $Iscc "/DMyAppVersion=$SuiteVersion" "/DBuildRoot=$(Join-Path $Build 'plugins')" (Join-Path $Root "installer\windows\GrooveKnobsSuite.iss") 2>&1 | Tee-Object -Variable IsccOut
+  if ($LASTEXITCODE -ne 0) { Report $IsccOut "Error|error|not found|cannot|No files" "Inno Setup (suite)" }
   $Setup = Join-Path $Root ("dist\GrooveKnobs-$SuiteVersion-Windows-Setup.exe")
   Sign $Setup
   Write-Host "Installer: $Setup"
