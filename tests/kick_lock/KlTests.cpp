@@ -805,6 +805,52 @@ TEST_CASE ("KL 24. A bass note starting on each kick: in place, not 'unstable'",
     CHECK (unstable == 0);
 }
 
+TEST_CASE ("KL 25. The ducking never moves the phase: LOCK with any curve = LOCK without ducking", "[kl][curve][phase]")
+{
+    // the lock rotates the fundamental at the kick; the curve only multiplies
+    // the bass by a gain: once the bass is back, the sub's phase must be the
+    // same whatever the curve (presets, a hand-drawn one, either MODE)
+    const double sr = 48000.0, bpm = 124.0, seconds = 4.0, hz = 55.0;
+    const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr);
+    const auto k = kicks (seconds, sr, bpm, 0.25 + 0.4 / hz); // 0.4 cycle off: a big correction
+    const auto kt = kickTimes (seconds, bpm, 0.25 + 0.4 / hz);
+    for (int mode : { 0, 1 })
+    {
+        auto runWith = [&] (float depth, int shape, bool custom)
+        {
+            auto p = makeKl (sr, 1.0f, true, depth);
+            setParam (p->getLockModeParameter(), (float) mode);
+            setParam (p->getReleaseParameter(), 0.0f); // 1/16: the bass is back well before the next kick
+            if (custom)
+            {
+                p->setCustomCurve ({ { 0.0f, 0.0f, 0.0f }, { 0.4f, 0.05f, -4.0f }, { 0.8f, 0.9f, 3.0f }, { 1.0f, 1.0f, 0.0f } });
+                setParam (p->getShapeParameter(), (float) KickLockDsp::custom);
+            }
+            else
+                setParam (p->getShapeParameter(), (float) shape);
+            p->prepareToPlay (sr, 512);
+            auto out = run (*p, b, &k, { 512 }, bpm);
+            return std::make_pair (std::move (out), p->getLatencySamples());
+        };
+        const auto [ref, L] = runWith (0.0f, 0, false); // the lock alone
+        for (int variant = 0; variant < 5; ++variant)
+        {
+            const auto [out, L2] = runWith (1.0f, juce::jmin (variant, 3), variant == 4);
+            double worst = 0.0;
+            for (size_t n = 2; n + 1 < kt.size(); ++n)
+            {
+                // just after the release (1/16 = 121 ms), before the next kick
+                const int at = (int) std::round ((kt[n] + 0.14) * sr) + L;
+                const double a = phaseAt (ref.getReadPointer (0), ref.getNumSamples(), at, hz, sr);
+                const double c = phaseAt (out.getReadPointer (0), out.getNumSamples(), at, hz, sr);
+                worst = juce::jmax (worst, std::abs (KickLockDsp::wrap180 (c - a)));
+            }
+            INFO ("MODE " << mode << ", curve " << (variant == 4 ? "custom" : juce::String (variant)) << ": phase difference with / without ducking " << worst << " deg");
+            CHECK (worst < 1.0);
+        }
+    }
+}
+
 TEST_CASE ("KL 17. CPU: stereo bass + stereo sidechain, LOCK on, 48 kHz", "[kl][cpu]")
 {
     const double sr = 48000.0, bpm = 124.0, seconds = 8.0;
