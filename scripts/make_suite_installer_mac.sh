@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds dist/GrooveKnobs-<version>-macOS.pkg: the whole suite in one installer.
 #
-#   scripts/make_suite_installer_mac.sh [--skip-build]
+#   scripts/make_suite_installer_mac.sh [--skip-build | --check-versions]
+#   (--check-versions: only checks every plug-in is at the suite's version)
 #
 # Reuses each plug-in's component packages (VST3 / AU / app, their bundles
 # already signed, notarised and stapled) made by make_installer_mac.sh, which
@@ -35,6 +36,7 @@ PLUGINS=(FF BT BW PP SIB KL)
 for P in "${PLUGINS[@]}"; do
   [[ "$(get ${P}_VERSION)" == "$VERSION" ]] || { echo "$P is $(get ${P}_VERSION), the suite is $VERSION: align cmake/GrooveIds.cmake"; exit 1; }
 done
+[[ "${1:-}" == "--check-versions" ]] && exit 0
 
 [[ "$SKIP_BUILD" == 1 ]] || "$ROOT/scripts/build_mac.sh" --no-tests
 WORK="$ROOT/build-release/installer-suite"

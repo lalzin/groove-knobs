@@ -67,13 +67,20 @@ foreach ($P in $Targets) {
 # The whole suite in one installer (with -Plugin All or -Plugin Suite)
 if ($Plugin -eq "All" -or $Plugin -eq "Suite") {
   $SuiteVersion = [regex]::Match($Ids, "set\(GK_SUITE_VERSION\s+`"([^`"]+)`"").Groups[1].Value
+  $Behind = @()
   foreach ($P in $All.Keys) {
     $V = [regex]::Match($Ids, "set\(${P}_VERSION\s+`"([^`"]+)`"").Groups[1].Value
-    if ($V -ne $SuiteVersion) { throw "$P is $V but the suite is $SuiteVersion (cmake/GrooveIds.cmake)" }
+    if ($V -ne $SuiteVersion) { $Behind += "$P is $V but the suite is $SuiteVersion (cmake/GrooveIds.cmake)" }
   }
+  # -Plugin All: a plug-in released alone runs ahead of the suite, skip it
+  if ($Behind.Count -gt 0) {
+    if ($Plugin -eq "Suite") { throw ($Behind -join "; ") }
+    Write-Host ("Suite skipped: " + ($Behind -join "; "))
+  } else {
   & $Iscc "/DMyAppVersion=$SuiteVersion" "/DBuildRoot=$(Join-Path $Build 'plugins')" (Join-Path $Root "installer\windows\GrooveKnobsSuite.iss")
   if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed for the suite" }
   $Setup = Join-Path $Root ("dist\GrooveKnobs-$SuiteVersion-Windows-Setup.exe")
   Sign $Setup
   Write-Host "Installer: $Setup"
+  }
 }

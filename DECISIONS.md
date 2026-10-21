@@ -567,3 +567,9 @@ Une ligne par décision : **contexte** — choix — raison.
 - **Laissée telle quelle** (rotation 0, la note démarre intacte, pas de clic) : une note qui démarre sur le kick ou après, ou trop jeune pour connaître sa période (moins de ~1,2 période avant le kick et pas la même note que la précédente).
 - Le contrôle de cohérence avec les cycles d'avant recule de périodes entières (il reculait de la longueur mesurée : des désaccords inventés, confiance 0,5, correction gelée).
 - Test 33 : erreur < 1,2° partout où la note est mesurable ; note laissée en place : écart à la basse 0.
+
+## Kick Lock 0.1.4, sorti seul (2026-10-21)
+- Alan : « fais d'abord juste le Kick Lock ». La 0.1.3 n'est jamais sortie (la CI Windows du tag a échoué : pas de release), Kick Lock passe seul en 0.1.4 avec les corrections du lock ; les autres plugins restent 0.1.3 (non publiés) jusqu'à la suite suivante.
+- **Tag `kick-lock-v<version>`** : release GitHub de Kick Lock seul (installateur Windows KickLock, notes `.github/release-notes-kick-lock.md`) ; le garde-fou ne vérifie que KL_VERSION. Les tags `v<version>` restent la release de toute la suite.
+- L'installateur de la suite (macOS et Windows) est sauté, avec un message, tant qu'un plugin est en avance sur la suite (`make_suite_installer_mac.sh --check-versions`) ; `-Plugin Suite` sous Windows refuse toujours.
+- CI Windows : un échec de build ou de tests est publié en annotation (lisible sans compte GitHub, contrairement au log).

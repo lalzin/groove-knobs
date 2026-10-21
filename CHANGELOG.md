@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased] — Kick Lock : le même verrouillage à chaque fois
+## Kick Lock 0.1.4 — 2026-10-21 (Kick Lock seul) : le même verrouillage à chaque fois
 - **LOCK identique pour une note identique** (Alan : « parfois le recalage est parfait, mais pour la même note ... un résultat différent ») : la phase est mesurée sur le cycle de la basse qui suit le kick (Kick Lock l'entend en avance), plus sur les cycles d'avant. Même note, même attaque : la même correction à chaque kick, à moins de 3° près, que la note démarre 120 ms avant le kick, dessus ou juste après. Latence 16 → ~32 ms (Live la compense).
 - **Une mélodie de sub** (une note différente avant chaque kick) : chaque note verrouillée à ~1° près, qu'elle démarre 120 ms ou 10 ms avant le kick (avant : jusqu'à 170° d'erreur pour une note démarrée 10 à 60 ms avant le kick — la hauteur de la note d'avant était utilisée). Une note qui démarre sur le kick ou après est laissée telle quelle (pas de clic).
 

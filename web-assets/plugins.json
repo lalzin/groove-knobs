@@ -383,7 +383,7 @@
     {
       "slug": "kick-lock",
       "name": "Kick Lock",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "type": "effect",
       "mascot": "Phaze, le tambour de kick",
       "colors": {
@@ -422,10 +422,10 @@
         "Bounce",
         "Custom"
       ],
-      "latency_ms": 16.0,
+      "latency_ms": 31.5,
       "downloads": {
         "macos": {
-          "file": "KickLock-0.1.3-macOS.pkg",
+          "file": "KickLock-0.1.4-macOS.pkg",
           "bytes": null,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
@@ -440,14 +440,14 @@
           ]
         },
         "windows": {
-          "file": "KickLock-0.1.3-Windows-Setup.exe",
+          "file": "KickLock-0.1.4-Windows-Setup.exe",
           "bytes": null,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
             "Standalone"
           ],
-          "url": "https://github.com/lalzin/groove-knobs/releases/download/v0.1.3/KickLock-0.1.3-Windows-Setup.exe",
+          "url": "https://github.com/lalzin/groove-knobs/releases/download/kick-lock-v0.1.4/KickLock-0.1.4-Windows-Setup.exe",
           "includes": [
             "Kick Lock",
             "Kick Lock Send"

@@ -1,12 +1,13 @@
 # Builds, tests and packages the Groove Knobs plugins (French Filter, Boogie
 # Trio, Backwash, Pew Pew, Sing It Back) on macOS and Windows. Installers are attached to each run;
 # pushing a tag "v<version>" also publishes a GitHub Release with the
-# Windows installers (permanent public links).
+# Windows installers (permanent public links); a tag "kick-lock-v<version>",
+# a release of Kick Lock (+ Send) alone.
 name: build
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ["v*", "kick-lock-v*"]
   workflow_dispatch:
 
 jobs:
@@ -16,12 +17,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Tag = plug-in versions
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
-          tag="${GITHUB_REF_NAME#v}"
-          bad=$(grep -E '^set\((FF|BT|BW|PP|SIB|KL|GK_SUITE)_VERSION ' cmake/GrooveIds.cmake | grep -v "\"$tag\"" || true)
+          case "$GITHUB_REF_NAME" in
+            kick-lock-v*) tag="${GITHUB_REF_NAME#kick-lock-v}"; ids='KL' ;;
+            *) tag="${GITHUB_REF_NAME#v}"; ids='FF|BT|BW|PP|SIB|KL|GK_SUITE' ;;
+          esac
+          bad=$(grep -E "^set\(($ids)_VERSION " cmake/GrooveIds.cmake | grep -v "\"$tag\"" || true)
           if [ -n "$bad" ]; then echo "tag v$tag but:"; echo "$bad"; exit 1; fi
-          echo "all plug-ins are $tag"
+          echo "$ids: $tag"
 
   macos:
     runs-on: macos-14
@@ -32,7 +36,9 @@ jobs:
           brew install ninja
           scripts/build_mac.sh
           for p in FF BT BW PP SIB KL; do scripts/make_installer_mac.sh --skip-build $p; done
-          scripts/make_suite_installer_mac.sh --skip-build
+          # the suite: only when every plug-in is at its version (a plug-in
+          # released alone runs ahead)
+          if scripts/make_suite_installer_mac.sh --check-versions; then scripts/make_suite_installer_mac.sh --skip-build; else echo "suite skipped"; fi
       - uses: actions/upload-artifact@v4
         with:
           name: GrooveKnobs-macOS
@@ -46,14 +52,14 @@ jobs:
         run: choco install innosetup --no-progress -y
       - name: Build, test, package
         shell: pwsh
-        run: scripts/make_installer_win.ps1 -Plugin All
+        run: scripts/make_installer_win.ps1 -Plugin ${{ startsWith(github.ref_name, 'kick-lock-v') && 'KL' || 'All' }}
       - uses: actions/upload-artifact@v4
         with:
           name: GrooveKnobs-Windows
           path: dist/*.exe
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/')
     needs: [version, macos, windows]
     runs-on: ubuntu-latest
     permissions:
@@ -67,10 +73,13 @@ jobs:
       - name: Check the installers are there
         run: |
           ls -la release
-          v="${GITHUB_REF_NAME#v}"
-          for f in FrenchFilter BoogieTrio Backwash PewPew SingItBack KickLock GrooveKnobs; do ls release/$f-$v-Windows-Setup.exe; done
+          case "$GITHUB_REF_NAME" in
+            kick-lock-v*) v="${GITHUB_REF_NAME#kick-lock-v}"; files="KickLock" ;;
+            *) v="${GITHUB_REF_NAME#v}"; files="FrenchFilter BoogieTrio Backwash PewPew SingItBack KickLock GrooveKnobs" ;;
+          esac
+          for f in $files; do ls release/$f-$v-Windows-Setup.exe; done
       - uses: softprops/action-gh-release@v2
         with:
-          name: Groove Knobs ${{ github.ref_name }}
-          body_path: .github/release-notes.md
+          name: ${{ startsWith(github.ref_name, 'kick-lock-v') && 'Kick Lock' || 'Groove Knobs' }} ${{ github.ref_name }}
+          body_path: ${{ startsWith(github.ref_name, 'kick-lock-v') && '.github/release-notes-kick-lock.md' || '.github/release-notes.md' }}
           files: release/*.exe
