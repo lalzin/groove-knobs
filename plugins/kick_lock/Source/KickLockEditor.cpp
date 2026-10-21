@@ -724,7 +724,7 @@ public:
           << "confidence " << (measuring ? num (tel.phaseConfidence.load (std::memory_order_relaxed), 2) : juce::String ("--")) << dot
           << "mono sum " << fr ("\xe2\x88\x92") << num (tel.monoSumLossDb.load (std::memory_order_relaxed), 1) << " dB" << dot
           << "f0 " << (f0 > 1.0f ? num (f0, 1) + " Hz" : juce::String ("--")) << dot
-          << (tel.linkSlot.load (std::memory_order_relaxed) >= 0 ? "link: " + proc.getDsp().linkName() + (proc.getDsp().linkPredicting() ? " (predicted)" : "") + dot : juce::String())
+          << (tel.linkSlot.load (std::memory_order_relaxed) >= 0 ? "link: " + proc.getDsp().linkName() + (proc.getDsp().linkLateKicks() > 0 ? " (late kicks: " + juce::String (proc.getDsp().linkLateKicks()) + ")" : juce::String()) + dot : juce::String())
           << "latency "
           << num (1000.0 * proc.getLatencySamples() / sr, 0) << " ms";
         if (t != text)

@@ -3,12 +3,12 @@
 
 namespace kls
 {
-void KickSendDsp::prepare (double sr, int, int nch)
+void KickSendDsp::prepare (double sr, int maxBlock, int nch)
 {
     sampleRate = sr;
     numChannels = juce::jlimit (1, 2, nch);
-    // Kick Lock's own latency: the host then delays both tracks alike
-    latency = (int) std::round (kl::KickLockDsp::firSeconds * sr) + (int) std::round (kl::KickLockDsp::advanceSeconds * sr);
+    // Kick Lock's own latency (same rate, same buffer): the host then treats both tracks alike
+    latency = kl::KickLockDsp::latencyFor (sr, maxBlock);
     delay.prepare (numChannels, latency);
     attack = (float) (1.0 - std::exp (-1.0 / (0.0002 * sr)));
     releaseFast = (float) (1.0 - std::exp (-1.0 / (0.001 * sr)));

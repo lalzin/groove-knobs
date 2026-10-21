@@ -76,6 +76,22 @@ public:
         fundamental entirely), the transition above (Kaiser window). */
     static void designKernel (std::vector<float>& kernel, double cutoffHz, double sampleRate);
 
+    /** Kick Lock Send's kicks arrive up to one host buffer late (tracks
+        computed in parallel); up to ~11 ms is followed live (the rotation and
+        the ducking's descent still have time). Beyond: this much more latency
+        (0 for buffers up to 512 at 48 kHz) — never a guess (a predicted kick
+        would duck where a kick was removed at the end of a bar). */
+    static int linkSlackFor (double sampleRate, int maxBlock) noexcept
+    {
+        const int budget = (int) std::round (0.011 * sampleRate);
+        return maxBlock > budget ? maxBlock - budget + 32 : 0;
+    }
+    /** The latency for a rate and a host buffer (Kick Lock Send reports the same). */
+    static int latencyFor (double sampleRate, int maxBlock) noexcept
+    {
+        return (int) std::round (firSeconds * sampleRate) + (int) std::round (advanceSeconds * sampleRate) + linkSlackFor (sampleRate, maxBlock);
+    }
+
     KickLockDsp();
 
     /** Release length in beats for the RELEASE choice. */
@@ -135,18 +151,16 @@ private:
     KickLinkReceiver link;
     std::array<std::int64_t, 32> linkPending {};
     int linkPendingCount = 0;
-    std::array<double, 32> linkHistory {}; // recent kicks (quarter notes): the previous bar predicts this one
-    int linkHistoryCount = 0;
     std::int64_t lastLinkKick = -1000000;
-    int lateCount = 0, onTimeCount = 0;
-    bool linkLate = false; // its kicks arrive too late to be followed live: predicted from the bar before
-    void pollLink (int numSamples, const gk::BlockTiming& timing);
+    int linkSlack = 0, lateKicks = 0;
+    void pollLink (const gk::BlockTiming& timing);
     void scheduleLink (std::int64_t onset);
 
 public:
     /** Tests: the name of the Kick Lock Send followed (empty = none). */
     juce::String linkName() const { return link.followedName(); }
-    bool linkPredicting() const noexcept { return linkLate; }
+    /** Tests / UI: kicks of the link that came later than the latency allows (should stay 0). */
+    int linkLateKicks() const noexcept { return lateKicks; }
 
 private:
     double bpm = 120.0;

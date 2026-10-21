@@ -687,22 +687,28 @@ TEST_CASE ("KL 21. No kick, the host playing: ducking and lock on the beats (TRI
     }
 }
 
-TEST_CASE ("KL 22. Link: Kick Lock Send on the kick's track drives Kick Lock, on time or a block late", "[kl][link]")
+TEST_CASE ("KL 22. Link: Kick Lock Send drives Kick Lock, on time or a buffer late; a removed kick triggers nothing", "[kl][link]")
 {
     kl::KickLink::removeBlock(); // a fresh block
     const double sr = 48000.0, bpm = 124.0, seconds = 6.0, hz = 55.0;
     const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr);
-    const auto kickTrack = kicks (seconds, sr, bpm, 0.0);
-    const auto times = kickTimes (seconds, bpm, 0.0);
-    for (int order : { 0, 1 }) // 0: the kick's track first (on time); 1: the bass first, 1024-sample blocks (a block late)
+    auto kickTrack = kicks (seconds, sr, bpm, 0.0);
+    auto times = kickTimes (seconds, bpm, 0.0);
+    // the end of bar 2: its last kick removed (a fill, a break)
+    const double removed = times[7];
+    kickTrack.clear ((int) std::round (removed * sr), (int) (0.3 * sr));
+    times.erase (times.begin() + 7);
+    for (int order : { 0, 1 }) // 0: the kick's track first, 512; 1: the bass first, 1024-sample buffers (its kicks a buffer late)
     {
+        const int block = order == 0 ? 512 : 1024;
         kls::KickSendProcessor send;
         send.setNonRealtime (true);
-        send.prepareToPlay (sr, 1024);
-        auto p = makeKl (sr, 1.0f, true, 0.0f, 1024); // depth 0: the phase of the bass itself
+        send.prepareToPlay (sr, block);
+        auto p = makeKl (sr, 1.0f, true, 0.0f, block); // depth 0: the phase of the bass itself
         setParam (p->getTriggerParameter(), (float) KickLockDsp::triggerLink);
-        p->prepareToPlay (sr, 1024);
-        REQUIRE (send.getLatencySamples() == p->getLatencySamples()); // the host keeps both tracks in step
+        p->prepareToPlay (sr, block);
+        REQUIRE (send.getLatencySamples() == p->getLatencySamples()); // the host treats both tracks alike
+        INFO ("latency " << p->getLatencySamples() << " samples at " << block);
         gk::OfflinePlayHead ph;
         ph.bpm = bpm;
         ph.sampleRate = sr;
@@ -711,7 +717,7 @@ TEST_CASE ("KL 22. Link: Kick Lock Send on the kick's track drives Kick Lock, on
         p->setPlayHead (&ph);
         Buffer kickIo (kickTrack), bassIo (b);
         juce::MidiBuffer midi;
-        const int block = order == 0 ? 512 : 1024;
+        std::vector<std::int64_t> triggers;
         for (int pos = 0; pos < b.getNumSamples(); pos += block)
         {
             const int len = juce::jmin (block, b.getNumSamples() - pos);
@@ -727,27 +733,35 @@ TEST_CASE ("KL 22. Link: Kick Lock Send on the kick's track drives Kick Lock, on
                 p->processBlock (bv, midi);
                 send.processBlock (kv, midi);
             }
+            const auto last = p->getDsp().getTelemetry().lastKickSample.load();
+            if (triggers.empty() || triggers.back() != last)
+                triggers.push_back (last);
         }
         send.setPlayHead (nullptr);
         p->setPlayHead (nullptr);
-        const auto e = errorsAtKicks (bassIo, p->getLatencySamples(), hz, sr, times, order == 0 ? 0.7 : 2.5, seconds - 0.2);
-        INFO ((order == 0 ? "on time" : "a block late (predicted)") << ": phase at the kicks, worst " << maxAbs (e) << " deg over " << e.size()
-              << " kicks; predicting " << p->getDsp().linkPredicting());
-        {
-            const auto last = p->getDsp().getTelemetry().lastKickSample.load();
-            double nearest = 1.0e9;
-            for (double t : times)
-                if (std::abs (t * sr - (double) last) < std::abs (nearest - (double) last))
-                    nearest = t * sr;
-            INFO ("last link kick at sample " << last << ", the kick is at " << nearest << "; Send detected " << send.getDsp().getTelemetry().kicks.load()
-                  << " kicks for " << times.size());
-            CHECK (std::abs ((double) last - nearest) < 0.002 * sr);
-        }
+        const auto e = errorsAtKicks (bassIo, p->getLatencySamples(), hz, sr, times, 0.7, seconds - 0.2);
+        INFO ((order == 0 ? "on time" : "a buffer late") << ": phase at the kicks, worst " << maxAbs (e) << " deg over " << e.size() << " kicks");
         CHECK (! e.empty());
         CHECK (maxAbs (e) < 5.0);
+        CHECK (p->getDsp().linkLateKicks() == 0);
         CHECK (p->getDsp().getTelemetry().triggerSource.load() == 3);
-        CHECK (p->getDsp().linkPredicting() == (order == 1));
         CHECK (p->getDsp().linkName().isNotEmpty());
+        // nothing where the kick was removed
+        for (auto t : triggers)
+        {
+            INFO ("trigger at " << t / sr << " s, the removed kick was at " << removed << " s");
+            CHECK (std::abs ((double) t / sr - removed) > 0.05);
+        }
+        // and every other kick placed within 2 ms
+        for (double t : times)
+            if (t > 0.3 && t < seconds - 0.3)
+            {
+                bool found = false;
+                for (auto tr : triggers)
+                    found = found || std::abs ((double) tr / sr - t) < 0.002;
+                INFO ("kick at " << t << " s");
+                CHECK (found);
+            }
     }
     // Auto with Kick Lock Send connected but no kick (an intro, a break): no
     // ducking on the beats (that looked like "the link drops")
