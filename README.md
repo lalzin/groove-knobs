@@ -220,6 +220,7 @@ scripts/make_installer_mac.sh BT    # Boogie Trio
 scripts/make_installer_mac.sh BW    # Backwash
 scripts/make_installer_mac.sh PP    # Pew Pew
 scripts/make_installer_mac.sh SIB   # Sing It Back
+scripts/make_suite_installer_mac.sh  # toute la suite en un seul installateur → dist/GrooveKnobs-<v>-macOS.pkg
 ```
 
 Windows : `scripts\make_installer_win.ps1 -Plugin FF|BT|BW|PP|SIB|All` (Visual Studio 2022 + Inno Setup 6), ou le workflow GitHub Actions, qui construit les cinq plugins et leurs installateurs Mac et Windows à chaque push.

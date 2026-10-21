@@ -17,6 +17,8 @@
 - *Update check (an "MAJ" badge when a new version is out, nothing installs by itself); Sing It Back voice panel and a more natural crowd; Pew Pew SOLO / MULTI mode.*
 
 ### Windows (10 / 11, 64 bits)
+**Toute la suite d'un coup** : `GrooveKnobs-…-Windows-Setup.exe` (les cinq plugins, chacun décochable). *The whole suite at once: `GrooveKnobs-…-Windows-Setup.exe`.*
+
 Télécharge le `…-Windows-Setup.exe` du plugin ci-dessous et lance-le : VST3 dans `C:\Program Files\Common Files\VST3` + application autonome.
 Si Windows affiche « Windows a protégé votre ordinateur » : **Informations complémentaires → Exécuter quand même** (l'installateur n'est pas encore signé pour Windows).
 Puis dans Ableton : Préférences → Plug-Ins → **Rescan**. Pew Pew est un **instrument** (piste MIDI) ; Sing It Back se met sur une piste de **voix seule**.

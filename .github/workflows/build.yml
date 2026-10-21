@@ -19,7 +19,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           tag="${GITHUB_REF_NAME#v}"
-          bad=$(grep -E '^set\((FF|BT|BW|PP|SIB)_VERSION ' cmake/GrooveIds.cmake | grep -v "\"$tag\"" || true)
+          bad=$(grep -E '^set\((FF|BT|BW|PP|SIB|GK_SUITE)_VERSION ' cmake/GrooveIds.cmake | grep -v "\"$tag\"" || true)
           if [ -n "$bad" ]; then echo "tag v$tag but:"; echo "$bad"; exit 1; fi
           echo "all plug-ins are $tag"
 
@@ -32,6 +32,7 @@ jobs:
           brew install ninja
           scripts/build_mac.sh
           for p in FF BT BW PP SIB; do scripts/make_installer_mac.sh --skip-build $p; done
+          scripts/make_suite_installer_mac.sh --skip-build
       - uses: actions/upload-artifact@v4
         with:
           name: GrooveKnobs-macOS
@@ -67,7 +68,7 @@ jobs:
         run: |
           ls -la release
           v="${GITHUB_REF_NAME#v}"
-          for f in FrenchFilter BoogieTrio Backwash PewPew SingItBack; do ls release/$f-$v-Windows-Setup.exe; done
+          for f in FrenchFilter BoogieTrio Backwash PewPew SingItBack GrooveKnobs; do ls release/$f-$v-Windows-Setup.exe; done
       - uses: softprops/action-gh-release@v2
         with:
           name: Groove Knobs ${{ github.ref_name }}

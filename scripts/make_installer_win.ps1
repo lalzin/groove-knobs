@@ -1,6 +1,6 @@
 # Builds the Windows installers (VST3 + standalone, x64) of the Groove Knobs plugins:
 #   dist\<Plugin>-<version>-Windows-Setup.exe
-#   powershell -ExecutionPolicy Bypass -File scripts\make_installer_win.ps1 [-Plugin FF|BT|BW|PP|SIB|All] [-SkipBuild]
+#   powershell -ExecutionPolicy Bypass -File scripts\make_installer_win.ps1 [-Plugin FF|BT|BW|PP|SIB|Suite|All] [-SkipBuild]
 # Requires Visual Studio 2022 and Inno Setup 6 (winget install JRSoftware.InnoSetup).
 #
 # Free public download: without an Authenticode certificate, Windows
@@ -34,7 +34,7 @@ $All = @{
   PP = @{ Name = "Pew Pew";       File = "PewPew";       Dir = "pew_pew\PewPew_artefacts" };
   SIB = @{ Name = "Sing It Back"; File = "SingItBack";   Dir = "sing_it_back\SingItBack_artefacts" }
 }
-$Targets = if ($Plugin -eq "All") { @("FF", "BT", "BW", "PP", "SIB") } else { @($Plugin) }
+$Targets = if ($Plugin -eq "All") { @("FF", "BT", "BW", "PP", "SIB") } elseif ($Plugin -eq "Suite") { @() } else { @($Plugin) }
 
 foreach ($P in $Targets) {
   $Info = $All[$P]
@@ -45,6 +45,20 @@ foreach ($P in $Targets) {
   & $Iscc "/DPlugin=$P" "/DMyAppVersion=$Version" "/DBuildDir=$Art" (Join-Path $Root "installer\windows\GrooveKnobs.iss")
   if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed for $P" }
   $Setup = Join-Path $Root ("dist\" + $Info.File + "-$Version-Windows-Setup.exe")
+  Sign $Setup
+  Write-Host "Installer: $Setup"
+}
+
+# The whole suite in one installer (with -Plugin All or -Plugin Suite)
+if ($Plugin -eq "All" -or $Plugin -eq "Suite") {
+  $SuiteVersion = [regex]::Match($Ids, "set\(GK_SUITE_VERSION\s+`"([^`"]+)`"").Groups[1].Value
+  foreach ($P in $All.Keys) {
+    $V = [regex]::Match($Ids, "set\(${P}_VERSION\s+`"([^`"]+)`"").Groups[1].Value
+    if ($V -ne $SuiteVersion) { throw "$P is $V but the suite is $SuiteVersion (cmake/GrooveIds.cmake)" }
+  }
+  & $Iscc "/DMyAppVersion=$SuiteVersion" "/DBuildRoot=$(Join-Path $Build 'plugins')" (Join-Path $Root "installer\windows\GrooveKnobsSuite.iss")
+  if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed for the suite" }
+  $Setup = Join-Path $Root ("dist\GrooveKnobs-$SuiteVersion-Windows-Setup.exe")
   Sign $Setup
   Write-Host "Installer: $Setup"
 }

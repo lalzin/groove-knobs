@@ -7,6 +7,7 @@
 
 # Suite-wide
 set(GK_SUITE_NAME          "Groove Knobs")
+set(GK_SUITE_VERSION       "0.1.2")          # the suite installer (= every plug-in's version for a release)
 set(GK_COMPANY_NAME        "LALZIN")
 set(GK_MANUFACTURER_CODE   "Lalz")
 set(GK_BUNDLE_ID_PREFIX    "com.lalzin.grooveknobs")

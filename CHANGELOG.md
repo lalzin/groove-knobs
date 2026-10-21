@@ -6,6 +6,7 @@
 - **Numéro de version** partout : noms des installateurs, paquets, plugins (VST3 / AU / application), installateurs Windows ; un tag de release qui ne correspond pas aux versions des plugins est refusé par le build.
 - **Sing It Back** : panneau VOIX (partie, niveau, pan, timbre de chaque voix), foule plus naturelle (voir plus bas).
 - **Pew Pew** : MODE SOLO / MULTI.
+- **Installateur de la suite** : `GrooveKnobs-0.1.2` (macOS signé et notarisé, Windows) — les cinq plugins en une fois, chacun décochable.
 
 ## [Unreleased] — Sing It Back 0.1.0 (nouveau)
 - Panneau **VOIX** façon harmoniseur : partie, niveau, pan et timbre de chacune des 12 voix (48 paramètres automatisables), voyants d'activité, réinitialisation.
