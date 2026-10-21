@@ -43,7 +43,7 @@ namespace
             cfg.knobs.push_back ({ "v" + juce::String (k + 1) + "Size", "Voice " + juce::String (k + 1) + " size", "SIZE", 0.0f, -0.3f, 0.3f });
         cfg.choices = { { "key", "Key", "KEY", { "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B" }, 0 },
                         { "scale", "Scale", "SCALE", { "Majeure", "Mineure", "Dorienne", "Mixolydienne", "Penta majeure", "Penta mineure" }, 0 },
-                        { "harmony", "Harmony", "HARMONY", { "Auto", "Octaves", "Tierces", "Quintes", "Quartes" }, 0 },
+                        { "harmony", "Harmony", "HARMONY", { "Unisson", "Auto", "Octaves", "Tierces", "Quintes", "Quartes" }, 0 },
                         { "voices", "Voices", "VOICES", { "4", "8", "12" }, 1 },
                         { "roomSize", "Room size", "ROOM SIZE", { "Petite", "Club", "Stade" }, 1 },
                         { "style", "Style", "STYLE",

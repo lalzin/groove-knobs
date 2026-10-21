@@ -142,6 +142,8 @@ public:
     VoiceInfo voiceInfo (int i) const;
     /** Tests: only voice `i` is heard (-1 = all), without dropouts. */
     void soloVoice (int i) noexcept { solo = i; }
+    /** Tests: the lead's consonants follow the lead's gain (no -6 dB floor), so out - lead = the crowd. */
+    void plainLead (bool p) noexcept { leadConsonantFloor = ! p; }
     /** Tests: the crowd is muted (the lead alone). */
     void muteCrowd (bool m) noexcept { crowdMuted = m; }
 
@@ -173,6 +175,7 @@ private:
         float semis = 0.0f;              // smoothed own tuning + vibrato (semitones)
         float audible = 0.0f;            // crowd count fade (60 ms)
         float drop = 1.0f, dropTarget = 1.0f; int dropLeft = 0; // dropouts
+        float darkHz = 6500.0f, darkState = 0.0f; // its own timbre: a gentle low-pass (4.8..8 kHz), a darker choir
     };
     static constexpr int markRing = 8192;                  // > 4 s of marks at 1100 Hz
     void designVoices();
@@ -180,6 +183,14 @@ private:
     const Mark* findMark (double u, std::int64_t available, double span) const noexcept;
     double roleTarget (double midi, Harmony::Role role) const noexcept;
     double partTarget (double midi, int voice, Harmony::Role styleRole) const noexcept;
+    static constexpr float consonantLevel = 0.12f; // the crowd's consonants / breaths (-18 dB): the lead carries them
+    /** The lead's gain on its consonants: never below -6 dB (gate 0 = unvoiced, 1 = sung). */
+    float leadWithConsonants (float leadGain, float gate) const noexcept
+    {
+        constexpr float consonantLead = 0.5f;
+        return ! leadConsonantFloor || leadGain >= consonantLead ? leadGain : leadGain + (1.0f - gate) * (consonantLead - leadGain);
+    }
+    bool leadConsonantFloor = true;
     Harmony::Role effectiveRole (int voice, Harmony::Role styleRole) const noexcept;
     float historyAt (double t) const noexcept;
     void processChunk (std::int64_t chunkStart, float crowdNow);
@@ -193,6 +204,12 @@ private:
     // parameters
     float spread = 0.6f, humanize = 0.5f, dropouts = 0.3f, room = 0.4f;
     int key = 0, scale = 0, harmony = 0, voicesMax = 8, roomSize = 1, style = club, response = 0;
+    bool unisonOnly = true; // HARMONY "Unisson" (default): a choir on the melody, its octaves; no thirds / fifths
+    /** In "Unisson", the style's harmony parts sing the melody. */
+    Harmony::Role choirRole (Harmony::Role r) const noexcept
+    {
+        return unisonOnly && (r == Harmony::harmonyUp || r == Harmony::harmonyDown || r == Harmony::fifthUp) ? Harmony::unison : r;
+    }
     std::array<int, maxVoices> part {};
     std::array<float, maxVoices> partGain {}, partPan {}, partSize {};
     bool snap = true;

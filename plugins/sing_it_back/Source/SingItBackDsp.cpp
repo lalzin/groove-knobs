@@ -312,7 +312,7 @@ Harmony::Role SingItBackDsp::effectiveRole (int k, Harmony::Role styleRole) cons
         case partOctaveUp: return Harmony::octaveUp;
         case partThirdDown: case partFifthDown: return Harmony::harmonyDown;
         case partOctaveDown: return Harmony::octaveDown;
-        default: return styleRole;
+        default: return choirRole (styleRole);
     }
 }
 
@@ -329,7 +329,7 @@ double SingItBackDsp::partTarget (double midi, int k, Harmony::Role styleRole) c
         case partThirdDown: return at (Harmony::thirds, Harmony::harmonyDown);
         case partFifthDown: return at (Harmony::fifths, Harmony::harmonyDown);
         case partOctaveDown: return at (harmony, Harmony::octaveDown);
-        default: return roleTarget (midi, styleRole);
+        default: return roleTarget (midi, choirRole (styleRole));
     }
 }
 
@@ -398,6 +398,8 @@ void SingItBackDsp::designVoices()
         v.wanderPhase[1] = rng.nextDouble() * juce::MathConstants<double>::twoPi;
         v.ampRate = 0.15 + 0.3 * rng.nextDouble();
         v.ampPhase = rng.nextDouble() * juce::MathConstants<double>::twoPi;
+        const double plastic = 0.7548776662466927 * (i + 1); // not from rng: the other draws stay as they were
+        v.darkHz = (float) (4800.0 + 3200.0 * (plastic - std::floor (plastic)));
     }
 }
 
@@ -465,6 +467,7 @@ void SingItBackDsp::reset()
     {
         std::fill (v.acc.begin(), v.acc.end(), 0.0f);
         v.running = false;
+        v.darkState = 0.0f;
         v.nextGrain = 0.0;
         v.semis = 0.0f;
         v.audible = 0.0f;
@@ -517,7 +520,10 @@ void SingItBackDsp::setChoices (const int* idx, int n)
 {
     key = n > keyChoice ? juce::jlimit (0, 11, idx[keyChoice]) : 0;
     scale = n > scaleChoice ? juce::jlimit (0, Harmony::numScales - 1, idx[scaleChoice]) : 0;
-    harmony = n > harmonyChoice ? juce::jlimit (0, 4, idx[harmonyChoice]) : 0;
+    // HARMONY: 0 = Unisson (a choir on the melody), then Auto, Octaves, Tierces, Quintes, Quartes
+    const int h = n > harmonyChoice ? juce::jlimit (0, 5, idx[harmonyChoice]) : 0;
+    unisonOnly = h == 0;
+    harmony = juce::jmax (0, h - 1);
     voicesMax = n > voicesChoice ? (idx[voicesChoice] == 0 ? 4 : idx[voicesChoice] == 2 ? 12 : 8) : 8;
     roomSize = n > roomSizeChoice ? juce::jlimit (0, 2, idx[roomSizeChoice]) : 1;
     style = n > styleChoice ? juce::jlimit (0, numStyles - 1, idx[styleChoice]) : club;
@@ -572,8 +578,11 @@ void SingItBackDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples
             leadGain = leadTarget; // lands exactly (1 = the input, bit for bit)
         else
             leadGain += (leadTarget - leadGain) * leadCoeff;
-        float outA = leadGain * lead.getSample (0, i) + (nch == 2 ? l : 0.5f * (l + r));
-        float outB = nch == 2 ? leadGain * lead.getSample (1, i) + r : outA;
+        // its consonants stay up (the crowd gives way on them): the words
+        // remain clear while the vowels go to the choir
+        const float lg0 = leadWithConsonants (leadGain, gateHistory[(size_t) ((clock - latency) & mask)]);
+        float outA = lg0 * lead.getSample (0, i) + (nch == 2 ? l : 0.5f * (l + r));
+        float outB = nch == 2 ? lg0 * lead.getSample (1, i) + r : outA;
         // ceiling at -1.5 dBFS (a big crowd peaks with the voice), planned a
         // chunk ahead; 1 (untouched) below it
         if (const float lg = limGain[(size_t) j]; ! juce::exactlyEqual (lg, 1.0f))
@@ -798,7 +807,9 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
         }
         v.semis += (semis - v.semis) * semiCoeff;
         // its voice size (formants): the style's, a little different for each
-        const double alpha = (double) st.formant * (1.0 + (double) st.formantSpread * v.formantJitter) * (1.0 + (double) partSize[(size_t) k]);
+        // (at least ±8 %: different singers, not copies; the robots stay identical)
+        const double spreadF = style == robots ? 0.0 : juce::jmax (0.08, (double) st.formantSpread);
+        const double alpha = (double) st.formant * (1.0 + spreadF * v.formantJitter) * (1.0 + (double) partSize[(size_t) k]);
 
         // its own delay, drifting slowly (±2 ms x humanize)
         v.driftPhase += juce::MathConstants<double>::twoPi * v.driftRate * dt;
@@ -921,15 +932,18 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
         const float gr = std::sin ((panPos + 1.0f) * 0.25f * juce::MathConstants<float>::pi) * 1.41421356f;
         const auto gateDelay = (std::int64_t) std::llround (latency + offset) - gateLag;
         float sumSq = 0.0f;
+        const float dark = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * v.darkHz / (float) sampleRate);
         for (int j = 0; j < chunk; ++j)
         {
             const auto t = outStart + j;
             float& a = v.acc[(size_t) (t & accMask)];
-            const float y = a;
+            v.darkState += (a - v.darkState) * dark;
+            const float y = v.darkState;
             a = 0.0f;
-            // its voicing, read where its own (late) copy of the input is
-            // consonants and breaths are doubled at half level, not cut
-            const float gt = 0.5f + 0.5f * gateHistory[(size_t) (juce::jmin (available, t - gateDelay) & mask)];
+            // its voicing, read where its own (late) copy of the input is:
+            // consonants and breaths stay in the lead (12 copies of an "s",
+            // each a little late, are a hiss, not a choir), quietly doubled
+            const float gt = consonantLevel + (1.0f - consonantLevel) * gateHistory[(size_t) (juce::jmin (available, t - gateDelay) & mask)];
             v.drop += juce::jlimit (-dropStep, dropStep, v.dropTarget - v.drop);
             const float s = y * g * v.drop * gt;
             sumSq += (y * v.drop * gt) * (y * v.drop * gt);
@@ -954,7 +968,7 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
     float peak = 0.0f;
     for (int j = 0; j < chunk; ++j)
     {
-        const float ld = leadGain < 0.0f ? 1.0f : leadGain;
+        const float ld = leadWithConsonants (leadGain < 0.0f ? 1.0f : leadGain, gateHistory[(size_t) ((outStart + j - latency) & mask)]);
         const float x = ld * history[(size_t) ((outStart + j - latency) & mask)];
         const float cm = crowdMuted ? 0.0f : 1.0f;
         const float a = std::abs (x + cm * (outL[(size_t) (hb + j)] + rm * revL[(size_t) (hb + j)]));

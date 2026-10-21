@@ -79,7 +79,7 @@ double soloVoicePitch (int voice, int midi, int key, int scale, bool snap, int h
     auto p = makeProc (1, sr, 1.0f, key, scale);
     setParam (p->getStyleParameter(), (float) style);
     setParam (p->getSnapParameter(), snap ? 1.0f : 0.0f);
-    setParam (p->getHarmonyParameter(), (float) harmony);
+    setParam (p->getHarmonyParameter(), (float) harmony + 1.0f); // the parameter starts with "Unisson"
     setParam (p->getRoomParameter(), 0.0f);
     setParam (p->getHumanizeParameter(), 0.2f);
     p->getDsp().soloVoice (voice);
@@ -120,6 +120,7 @@ TEST_CASE ("SIB 2. The lead voice is the input (delayed): untouched up to 40 %, 
     {
         auto p = makeProc (2, sr, crowd);
         p->getDsp().muteCrowd (true);
+        p->getDsp().plainLead (true); // the vowels' gain (the consonants' floor: SIB 26)
         const int L = p->getLatencySamples();
         // after 0.2 s of silence (the engine's own start-up fade-in is over)
         const auto sung = vocalsynth::sing (vocalsynth::phrase ({ 60, 62, 64, 65, 67, 69, 71 }), sr, 120.0);
@@ -370,15 +371,17 @@ TEST_CASE ("SIB 8. Anti-robot: every voice different, never in lockstep", "[sib]
     }
 }
 
-TEST_CASE ("SIB 9. Consonants: doubled at half level, not transposed, no buzz", "[sib][voicing]")
+TEST_CASE ("SIB 9. Consonants: quietly doubled (the lead carries them), not transposed, no buzz", "[sib][voicing]")
 {
     // (DECISIONS.md: the crowd used to go silent on unvoiced sound; Alan found
-    // the cut-outs robotic. Consonants are now doubled, untransposed, with
+    // the cut-outs robotic. Then doubled at half level: 12 late copies of an
+    // "s" made a hiss. Now -18 dB and darker: present, not a hiss; untransposed,
     // irregular grains: no pitched buzz.)
     const double sr = 48000.0;
     auto p = makeProc (1, sr, 1.0f);
     setParam (p->getRoomParameter(), 0.0f);
     setParam (p->getDropoutsParameter(), 0.0f);
+    p->getDsp().plainLead (true); // out - lead = the crowd
     // a sustained "sss": high-passed noise only
     Buffer in (1, (int) (1.5 * sr));
     gk::testsignals::Rng rng (5);
@@ -406,8 +409,8 @@ TEST_CASE ("SIB 9. Consonants: doubled at half level, not transposed, no buzz", 
         }
     const double db = 10.0 * std::log10 (e / ein + 1.0e-30);
     INFO ("crowd / input energy on the consonant: " << db << " dB; crowd voiced " << voiced << " / " << hops << " hops");
-    CHECK (db < 0.0);
-    CHECK (db > -20.0);
+    CHECK (db < -12.0);
+    CHECK (db > -40.0);
     CHECK (voiced <= hops / 20);
 }
 
@@ -637,6 +640,7 @@ TEST_CASE ("SIB 18. RÉPONSE: the crowd sings the phrase back half a bar / a bar
         setParam (p->getRoomParameter(), 0.0f);
         setParam (p->getDropoutsParameter(), 0.0f);
         setParam (p->getResponseParameter(), (float) response);
+        p->getDsp().plainLead (true); // out - lead: the crowd alone, the lead's consonant floor included
         // a 0.6 s note at 0.2 s, then silence (120 BPM, 4/4: 1 s / 2 s later)
         const auto note = mono (vocalsynth::sustained (64, 0.6, sr, 'a'));
         Buffer in (1, (int) (3.5 * sr));
@@ -1207,5 +1211,50 @@ TEST_CASE ("SIB 24. Voice panel: part, mute, level, pan, size of each voice", "[
     {
         CHECK (q.getVoicePanParameter (k).convertFrom0to1 (q.getVoicePanParameter (k).getDefaultValue()) == Catch::Approx (D::defaultPan (k)).margin (1.0e-4));
         CHECK (q.getPartParameter (k).getIndex() == D::partStyle);
+    }
+}
+
+TEST_CASE ("SIB 26. Choir: unison by default, the lead keeps its consonants (-6 dB at most)", "[sib][choir]")
+{
+    const double sr = 48000.0;
+    // HARMONY "Unisson" (the default): Club's harmony voices sing the melody
+    {
+        sib::SingItBackProcessor proc;
+        CHECK (proc.getHarmonyParameter().getCurrentChoiceName() == "Unisson");
+    }
+    {
+        auto p = makeProc (1, sr, 1.0f);
+        setParam (p->getHarmonyParameter(), 0.0f);
+        setParam (p->getHumanizeParameter(), 0.2f);
+        p->getDsp().soloVoice (1); // Club's voice 1: a third up when harmonising
+        const auto in = mono (vocalsynth::sustained (64, 1.6, sr, 'a'));
+        const auto out = run (*p, in);
+        const auto w = crowdOf (out, in, p->getLatencySamples(), p->getCrowdParameter().getValue());
+        const double f = medianPitch (w.data(), (int) (0.5 * sr), (int) w.size(), sr) / std::exp2 (p->getDsp().voiceInfo (1).detuneCents / 1200.0);
+        INFO ("voice 1 in Unisson: " << f << " Hz (E4 = " << midiHz (64) << ")");
+        CHECK (std::abs (cents (f, midiHz (64))) < 8.0);
+    }
+    // at 100 % the lead is -18 dB on the vowels, but its "sss" stays near -6 dB
+    {
+        auto p = makeProc (1, sr, 1.0f);
+        p->getDsp().muteCrowd (true);
+        Buffer in (1, (int) (1.5 * sr));
+        gk::testsignals::Rng rng (5);
+        gk::TptSvf hp;
+        const auto c = gk::TptSvf::Coeffs::make (4500.0, sr, 0.7);
+        for (int i = 0; i < in.getNumSamples(); ++i)
+            in.setSample (0, i, 0.3f * (float) hp.processHighpass (rng.bipolar(), c));
+        const auto out = run (*p, in);
+        const int L = p->getLatencySamples();
+        double e = 0.0, ein = 0.0;
+        for (int i = (int) (0.4 * sr); i < in.getNumSamples() - L; ++i)
+        {
+            e += (double) out.getSample (0, i + L) * out.getSample (0, i + L);
+            ein += (double) in.getSample (0, i) * in.getSample (0, i);
+        }
+        const double db = 10.0 * std::log10 (e / ein);
+        INFO ("the lead's consonant at 100 %: " << db << " dB");
+        CHECK (db > -7.0);
+        CHECK (db < -5.0);
     }
 }
