@@ -35,7 +35,7 @@ namespace
                       { "depth", "Depth", "DEPTH", 1.0f },
                       { "waveStart", "Wave start", "WAVE START", 0.0f, 0.0f, 360.0f, 1.0f, juce::String::fromUTF8 ("\xc2\xb0") },
                       { "kickThreshold", "Kick threshold", "THRESHOLD", -18.0f, -40.0f, 0.0f, 1.0f, "dBFS" } };
-        cfg.choices = { { "shape", "Shape", "SHAPE", { "Exponential", "Linear", "S-curve", "Bounce" }, 0 },
+        cfg.choices = { { "shape", "Shape", "SHAPE", { "Exponential", "Linear", "S-curve", "Bounce", "Custom" }, 0 },
                         { "release", "Release", "RELEASE", { "1/16", "1/8 dotted", "1/8", "1/4", "1/2" }, 2 },
                         // Hold: the correction held from kick to kick; Transition: only
                         // around each kick, then back to the original bass
@@ -49,7 +49,57 @@ namespace
     }
 } // namespace
 
-KickLockProcessor::KickLockProcessor() : OneKnobProcessor (makeConfig(), std::make_unique<KickLockDsp>()) {}
+KickLockProcessor::KickLockProcessor() : OneKnobProcessor (makeConfig(), std::make_unique<KickLockDsp>())
+{
+    customCurve = KickLockDsp::presetCurve (KickLockDsp::exponential);
+    getDsp().setCustomCurve (customCurve);
+}
+
+std::vector<KickLockDsp::CurveNode> KickLockProcessor::curveFor (int shape) const
+{
+    return shape == KickLockDsp::custom ? customCurve : KickLockDsp::presetCurve (shape);
+}
+
+void KickLockProcessor::setCustomCurve (std::vector<KickLockDsp::CurveNode> nodes)
+{
+    // sane: 2..32 points, x from 0 to 1 in order, gains 0..1, tensions ±12
+    if (nodes.size() < 2)
+        nodes = KickLockDsp::presetCurve (KickLockDsp::exponential);
+    if (nodes.size() > (size_t) KickLockDsp::maxCurveNodes)
+        nodes.resize ((size_t) KickLockDsp::maxCurveNodes);
+    std::sort (nodes.begin(), nodes.end(), [] (const auto& a, const auto& b) { return a.x < b.x; });
+    for (auto& n : nodes)
+    {
+        n.x = juce::jlimit (0.0f, 1.0f, n.x);
+        n.y = juce::jlimit (0.0f, 1.0f, n.y);
+        n.tension = juce::jlimit (-12.0f, 12.0f, n.tension);
+    }
+    nodes.front().x = 0.0f;
+    nodes.back().x = 1.0f;
+    customCurve = std::move (nodes);
+    getDsp().setCustomCurve (customCurve);
+    ++curveVersion;
+}
+
+void KickLockProcessor::saveExtraState (juce::ValueTree& state)
+{
+    juce::StringArray pts;
+    for (const auto& n : customCurve)
+        pts.add (juce::String (n.x, 4) + "," + juce::String (n.y, 4) + "," + juce::String (n.tension, 3));
+    state.setProperty ("curve", pts.joinIntoString (";"), nullptr);
+}
+
+void KickLockProcessor::loadExtraState (const juce::ValueTree& state)
+{
+    std::vector<KickLockDsp::CurveNode> nodes;
+    for (const auto& p : juce::StringArray::fromTokens (state.getProperty ("curve").toString(), ";", {}))
+    {
+        const auto v = juce::StringArray::fromTokens (p, ",", {});
+        if (v.size() == 3)
+            nodes.push_back ({ v[0].getFloatValue(), v[1].getFloatValue(), v[2].getFloatValue() });
+    }
+    setCustomCurve (nodes.size() >= 2 ? nodes : KickLockDsp::presetCurve (KickLockDsp::exponential));
+}
 
 juce::AudioProcessorEditor* KickLockProcessor::createEditor()
 {
@@ -65,5 +115,6 @@ void KickLockProcessor::resetAllToDefaults()
             r->setValueNotifyingHost (r->getDefaultValue());
             r->endChangeGesture();
         }
+    setCustomCurve (KickLockDsp::presetCurve (KickLockDsp::exponential));
 }
 } // namespace kl

@@ -549,6 +549,49 @@ TEST_CASE ("KL 19. MODE Transition: locked at the kick, the original bass again 
     CHECK (worstBack < 1.0e-3);
 }
 
+TEST_CASE ("KL 20. Custom curve (LFOTool style): the gain follows the points, saved with the session", "[kl][curve]")
+{
+    // the exponential preset is exactly the old curve: 1 - exp(-3x), normalised
+    for (float x : { 0.0f, 0.1f, 0.37f, 0.8f, 1.0f })
+        CHECK (KickLockDsp::evalCurve (KickLockDsp::presetCurve (KickLockDsp::exponential), x)
+               == Catch::Approx ((1.0f - std::exp (-3.0f * x)) / (1.0f - std::exp (-3.0f))).margin (1.0e-5));
+
+    // a step: 0 for the first half of the release, then 0.5, held after
+    const double sr = 48000.0, bpm = 120.0, seconds = 2.0;
+    auto p = makeKl (sr, 1.0f, false, 1.0f);
+    setParam (p->getShapeParameter(), (float) KickLockDsp::custom);
+    setParam (p->getReleaseParameter(), 3.0f); // 1/4 = 0.5 s at 120 BPM
+    p->setCustomCurve ({ { 0.0f, 0.0f, 0.0f }, { 0.5f, 0.0f, 0.0f }, { 0.52f, 0.5f, 0.0f }, { 1.0f, 0.5f, 0.0f } });
+    Buffer dc (2, (int) (seconds * sr));
+    for (int c = 0; c < 2; ++c)
+        juce::FloatVectorOperations::fill (dc.getWritePointer (c), 0.5f, dc.getNumSamples());
+    Buffer k (2, dc.getNumSamples());
+    k.clear();
+    for (int i = (int) (0.5 * sr); i < (int) (0.52 * sr); ++i)
+        for (int c = 0; c < 2; ++c)
+            k.setSample (c, i, 0.8f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 60.0 * (i / sr)));
+    const auto out = run (*p, dc, &k, { 512 }, bpm);
+    const int L = p->getLatencySamples();
+    auto gainAt = [&] (double t) { return out.getSample (0, (int) (t * sr) + L) / 0.5f; };
+    INFO ("gain at +0.1 s " << gainAt (0.6) << ", +0.4 s " << gainAt (0.9) << ", +1 s " << gainAt (1.5));
+    CHECK (gainAt (0.6) == Catch::Approx (0.0f).margin (0.02));  // first half of the release
+    CHECK (gainAt (0.9) == Catch::Approx (0.5f).margin (0.02));  // second half
+    CHECK (gainAt (1.5) == Catch::Approx (0.5f).margin (0.02));  // the last value held after the release
+
+    // saved and restored with the session; the reset button brings the exponential back
+    juce::MemoryBlock state;
+    p->getStateInformation (state);
+    KickLockProcessor b;
+    b.setStateInformation (state.getData(), (int) state.getSize());
+    REQUIRE (b.getCustomCurve().size() == 4);
+    CHECK (b.getCustomCurve()[2].x == Catch::Approx (0.52f).margin (1.0e-3));
+    CHECK (b.getCustomCurve()[2].y == Catch::Approx (0.5f).margin (1.0e-3));
+    CHECK (b.getShapeParameter().getIndex() == KickLockDsp::custom);
+    b.resetAllToDefaults();
+    CHECK (b.getCustomCurve().size() == 2);
+    CHECK (b.getShapeParameter().getIndex() == KickLockDsp::exponential);
+}
+
 TEST_CASE ("KL 17. CPU: stereo bass + stereo sidechain, LOCK on, 48 kHz", "[kl][cpu]")
 {
     const double sr = 48000.0, bpm = 124.0, seconds = 8.0;
@@ -620,4 +663,25 @@ TEST_CASE ("diag: ducking trace", "[.kldiag3]")
     for (int ms = -5; ms < 480; ms += 20)
         s << ms << ":" << juce::String (out.getSample (0, kick + ms * 48) / 0.25f, 3) << " ";
     WARN (s << " kicks " << p->getDsp().getTelemetry().kickEvents.load());
+}
+
+TEST_CASE ("diag: output envelope around a kick", "[.kldiag4]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 3.2;
+    auto p = makeKl (sr, 0.6f, true, 1.0f);
+    const auto b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr);
+    const auto k = kicks (seconds, sr, bpm, 0.1);
+    const auto out = run (*p, b, &k, { 512 }, bpm);
+    const int L = p->getLatencySamples();
+    const double kt = 0.1 + 4 * 60.0 / bpm;
+    juce::String line;
+    for (int ms = -20; ms <= 480; ms += 20)
+    {
+        const int at = (int) ((kt + ms / 1000.0) * sr) + L;
+        float pk = 0.0f;
+        for (int i = at - 480; i < at + 480; ++i)
+            pk = juce::jmax (pk, std::abs (out.getSample (0, i)));
+        line << ms << ":" << juce::String (pk, 2) << " ";
+    }
+    WARN (line);
 }

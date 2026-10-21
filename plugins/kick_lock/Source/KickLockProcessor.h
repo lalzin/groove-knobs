@@ -26,7 +26,23 @@ public:
     juce::AudioParameterChoice& getReleaseParameter() noexcept { return getChoiceParameter (KickLockDsp::releaseChoice); }
     juce::AudioParameterChoice& getLockModeParameter() noexcept { return getChoiceParameter (KickLockDsp::modeChoice); }
 
-    /** Every parameter back to its default (the "Réinitialiser" button). */
+    /** Every parameter back to its default, and the custom curve (the Reset button). */
     void resetAllToDefaults();
+
+    /** The ducking curve of a SHAPE (a preset's, or the custom one). */
+    std::vector<KickLockDsp::CurveNode> curveFor (int shape) const;
+    const std::vector<KickLockDsp::CurveNode>& getCustomCurve() const noexcept { return customCurve; }
+    /** The custom curve (message thread), saved with the session. */
+    void setCustomCurve (std::vector<KickLockDsp::CurveNode> nodes);
+    /** Bumped on every change of the custom curve (the editor redraws). */
+    int getCurveVersion() const noexcept { return curveVersion; }
+
+protected:
+    void saveExtraState (juce::ValueTree& state) override;
+    void loadExtraState (const juce::ValueTree& state) override;
+
+private:
+    std::vector<KickLockDsp::CurveNode> customCurve;
+    int curveVersion = 0;
 };
 } // namespace kl

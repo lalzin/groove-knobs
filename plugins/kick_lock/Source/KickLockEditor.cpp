@@ -226,26 +226,28 @@ private:
 };
 
 //==============================================================================
-/** The oscilloscope: the sub as heard around the last kicks, overlaid (when
-    it is locked they fall on top of each other and cross zero on the dashed
-    line — the kick), the kick's envelope; underneath, the last 2 seconds. */
+/** The oscilloscope, one beat from the last kick: the kick (orange) and the
+    bass as heard (lime), and over them the ducking curve, editable like
+    LFOTool's: drag a point; double-click to add one (or remove it); drag the
+    small ring in the middle of a segment to bend it; right-click for the
+    presets. */
 class KickLockEditor::Scope final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    static constexpr double preSeconds = 0.025, postSeconds = 0.075;
-    static constexpr int shownKicks = 4;
+    using Node = KickLockDsp::CurveNode;
+    static constexpr double preBeats = 0.06;
 
     Scope (KickLockProcessor& p, const gk::Palette& pal) : proc (p), palette (pal)
     {
         auto& tel = proc.getDsp().getTelemetry();
         sub.assign ((size_t) juce::jmax (1, tel.scopeSize), 0.0f);
         kick.assign (sub.size(), 0.0f);
-        for (auto& path : subPaths)
-            path.preallocateSpace (4096);
-        kickPath.preallocateSpace (4096);
-        overview.preallocateSpace (4096);
-        setTooltip ("The sub as heard around the last kicks (lime), the kick's envelope (orange). Locked: the curves overlap "
-                    "and cross zero on the dashed line.");
+        bass.assign (sub.size(), 0.0f);
+        curvePath.preallocateSpace (4096);
+        kickEnv.reserve (1024);
+        bassEnv.reserve (1024);
+        setTooltip ("Drag the points of the ducking curve, double-click to add or remove one, drag a segment's ring to bend it, "
+                    "right-click for the presets.");
     }
 
     void update()
@@ -254,26 +256,22 @@ public:
         const int size = tel.scopeSize;
         if (size <= 0 || (int) sub.size() != size)
             return;
-        // the kicks, as they come (output time = the kick's own time)
-        const auto k = tel.lastKickSample.load (std::memory_order_relaxed);
-        if (k >= 0 && k != lastKick)
-        {
-            lastKick = k;
-            for (int i = shownKicks - 1; i > 0; --i)
-                pending[(size_t) i] = pending[(size_t) i - 1];
-            pending[0] = k;
-            pendingCount = juce::jmin (shownKicks, pendingCount + 1);
-        }
+        // the last kicks, newest first
+        const int count = tel.kickEvents.load (std::memory_order_acquire);
+        for (int i = 0; i < 4; ++i)
+            kicks[(size_t) i] = count - i > 0 ? tel.recentKicks[(size_t) ((count - i) % 4)].load (std::memory_order_relaxed) : -1;
         write = tel.scopeWrite.load (std::memory_order_acquire);
         endTime = tel.scopeTime.load (std::memory_order_relaxed);
         for (int i = 0; i < size; ++i)
         {
             sub[(size_t) i] = tel.scopeSub[(size_t) i].load (std::memory_order_relaxed);
             kick[(size_t) i] = tel.scopeKick[(size_t) i].load (std::memory_order_relaxed);
+            bass[(size_t) i] = tel.scopeBass[(size_t) i].load (std::memory_order_relaxed);
         }
         repaint();
     }
 
+    //==========================================================================
     void paint (juce::Graphics& g) override
     {
         const auto b = getLocalBounds().toFloat();
@@ -281,13 +279,12 @@ public:
         g.fillRoundedRectangle (b, 10.0f);
         g.setColour (palette (palette.outline));
         g.drawRoundedRectangle (b.reduced (0.5f), 10.0f, 1.5f);
-        const auto lane = b.reduced (10.0f, 0.0f).removeFromBottom (40.0f).withTrimmedBottom (8.0f);
-        const auto main = b.reduced (10.0f, 0.0f).withTrimmedTop (20.0f).withTrimmedBottom (46.0f);
         g.setColour (palette (cream).withAlpha (0.5f));
         g.setFont (gk::GrooveFonts::font (10.5f).withExtraKerningFactor (0.12f));
-        g.drawText ("OSCILLOSCOPE", b.reduced (12.0f, 4.0f).withHeight (14.0f), juce::Justification::centredLeft);
-        g.drawText (fr ("last kicks \xc2\xb7 100 ms"), b.reduced (12.0f, 4.0f).withHeight (14.0f), juce::Justification::centredRight);
+        g.drawText ("SIDECHAIN", b.reduced (12.0f, 4.0f).withHeight (14.0f), juce::Justification::centredLeft);
+        g.drawText (beatsLabel(), b.reduced (12.0f, 4.0f).withHeight (14.0f).withTrimmedLeft (80.0f), juce::Justification::centredLeft);
 
+        const auto m = mainArea();
         const int size = (int) sub.size();
         const double sr = 4.0 * size; // the rings hold 2 s at 1 in 8
         const int dec = KickTelemetry::scopeDecimation;
@@ -298,147 +295,323 @@ public:
             return ok ? ring[(size_t) ((((std::int64_t) write - 1 - back) % size + size) % size)] : 0.0f;
         };
 
-        // centre line and the kick (target) line
-        g.setColour (palette (juce::Colours::white).withAlpha (0.1f));
-        g.drawHorizontalLine (juce::roundToInt (main.getCentreY()), main.getX(), main.getRight());
-        const float kickX = main.getX() + (float) (preSeconds / (preSeconds + postSeconds)) * main.getWidth();
-        {
-            juce::Path line;
-            line.startNewSubPath (kickX, main.getY());
-            line.lineTo (kickX, main.getBottom());
-            juce::Path dashed;
-            const float dashes[] { 4.0f, 4.0f };
-            juce::PathStrokeType (1.2f).createDashedStroke (dashed, line, dashes, 2);
-            g.setColour (palette (juce::Colours::white).withAlpha (0.75f));
-            g.fillPath (dashed);
-        }
+        // grid: gain 0 / 50 / 100 %
+        g.setColour (palette (juce::Colours::white).withAlpha (0.07f));
+        for (float y : { 0.0f, 0.5f, 1.0f })
+            g.drawHorizontalLine (juce::roundToInt (gainY (m, y)), m.getX(), m.getRight());
 
-        // the windows that have been heard entirely, oldest first
-        const auto pre = (std::int64_t) (preSeconds * sr), post = (std::int64_t) (postSeconds * sr);
-        float peak = 0.05f; // a weak sub stays small (not blown up to full height)
-        int ready = 0;
-        std::array<std::int64_t, shownKicks> wins {};
-        for (int i = 0; i < pendingCount; ++i)
-            if (pending[(size_t) i] + post <= endTime && endTime - (pending[(size_t) i] - pre) < (std::int64_t) (size - 2) * dec)
-                wins[(size_t) ready++] = pending[(size_t) i];
-        for (int w = 0; w < ready; ++w)
-            for (auto t = wins[(size_t) w] - pre; t <= wins[(size_t) w] + post; t += dec)
+        // the kick to show: the latest one heard entirely over the window
+        const double beat = 60.0 / bpmNow();
+        const double winBeats = windowBeats();
+        const auto pre = (std::int64_t) (preBeats * beat * sr), span = (std::int64_t) ((preBeats + winBeats) * beat * sr);
+        std::int64_t shown = -1;
+        for (auto k : kicks)
+            if (k >= 0 && k - pre + span <= endTime && endTime - (k - pre) < (std::int64_t) (size - 2) * dec)
             {
-                bool ok = false;
-                peak = juce::jmax (peak, std::abs (valueAt (sub, t, ok)));
+                shown = k;
+                break;
             }
-        gain += ((0.85f / peak) - gain) * (gain <= 0.0f ? 1.0f : 0.2f);
-        const float half = main.getHeight() * 0.5f;
-        for (int w = ready - 1; w >= 0; --w)
+        const float kickX = m.getX() + (float) (preBeats / (preBeats + winBeats)) * m.getWidth();
+        if (shown >= 0)
         {
-            auto& path = subPaths[(size_t) w];
-            path.clear();
-            bool started = false;
-            for (auto t = wins[(size_t) w] - pre; t <= wins[(size_t) w] + post; t += dec)
+            // the waveforms as envelopes (peak over ~a bass cycle around each
+            // column), mirrored: the bass filled, the kick outlined over it
+            const int cols = juce::jmax (1, (int) m.getWidth());
+            const auto reach = (std::int64_t) (0.009 * sr);
+            float peak = 0.05f;
+            for (int pass = 0; pass < 2; ++pass)
             {
-                bool ok = false;
-                const float v = valueAt (sub, t, ok);
-                if (! ok)
-                    continue;
-                const float x = main.getX() + (float) (t - (wins[(size_t) w] - pre)) / (float) (pre + post) * main.getWidth();
-                const float y = main.getCentreY() - juce::jlimit (-1.0f, 1.0f, v * gain) * half;
-                if (! started)
-                    path.startNewSubPath (x, y);
-                else
-                    path.lineTo (x, y);
-                started = true;
+                auto& env = pass == 0 ? kickEnv : bassEnv;
+                env.resize ((size_t) cols);
+                const auto& ring = pass == 0 ? kick : bass;
+                for (int c = 0; c < cols; ++c)
+                {
+                    const auto centre = shown - pre + span * c / cols;
+                    float hi = 0.0f;
+                    for (auto t = centre - reach; t <= centre + reach; t += dec)
+                    {
+                        bool ok = false;
+                        hi = juce::jmax (hi, std::abs (valueAt (ring, t, ok)));
+                    }
+                    env[(size_t) c] = hi;
+                    peak = juce::jmax (peak, hi);
+                }
             }
-            const float alpha = w == 0 ? 1.0f : 0.5f - 0.12f * (float) w;
-            g.setColour (palette (lime).withAlpha (alpha));
-            g.strokePath (path, juce::PathStrokeType (w == 0 ? 2.2f : 1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        }
-        if (ready > 0)
-        {
-            // the latest kick's envelope (orange), from the bottom
-            kickPath.clear();
-            bool started = false;
-            float env = 0.0f;
-            const float holdDecay = (float) std::exp (-(double) dec / (0.05 * sr));
-            for (auto t = wins[0] - pre; t <= wins[0] + post; t += dec)
+            const float half = m.getHeight() * 0.46f / peak, mid = m.getCentreY();
+            for (int pass = 0; pass < 2; ++pass) // the bass filled, then the kick's outline over it
             {
-                bool ok = false;
-                const float raw = valueAt (kick, t, ok);
-                if (! ok)
-                    continue;
-                // the detector's 1 ms envelope follows each cycle: held, it reads as the kick's envelope
-                env = juce::jmax (raw, env * holdDecay);
-                const float v = env;
-                const float x = main.getX() + (float) (t - (wins[0] - pre)) / (float) (pre + post) * main.getWidth();
-                const float y = main.getBottom() - juce::jlimit (0.0f, 1.0f, v) * main.getHeight() * 0.9f;
-                if (! started)
-                    kickPath.startNewSubPath (x, y);
+                const auto& env = pass == 0 ? bassEnv : kickEnv;
+                juce::Path shapePath;
+                shapePath.startNewSubPath (m.getX(), mid);
+                for (int c = 0; c < cols; ++c)
+                    shapePath.lineTo (m.getX() + (float) c, mid - env[(size_t) c] * half);
+                for (int c = cols - 1; c >= 0; --c)
+                    shapePath.lineTo (m.getX() + (float) c, mid + env[(size_t) c] * half);
+                shapePath.closeSubPath();
+                if (pass == 0)
+                {
+                    g.setColour (palette (lime).withAlpha (0.6f));
+                    g.fillPath (shapePath);
+                    g.setColour (palette (lime));
+                    g.strokePath (shapePath, juce::PathStrokeType (1.0f));
+                }
                 else
-                    kickPath.lineTo (x, y);
-                started = true;
+                {
+                    g.setColour (palette (orange).withAlpha (0.12f));
+                    g.fillPath (shapePath);
+                    g.setColour (palette (orange));
+                    g.strokePath (shapePath, juce::PathStrokeType (1.6f));
+                }
             }
-            g.setColour (palette (orange).withAlpha (0.9f));
-            g.strokePath (kickPath, juce::PathStrokeType (1.6f));
         }
         else
         {
-            // nothing on the sidechain: how to route it
             g.setColour (palette (cream).withAlpha (0.85f));
             g.setFont (gk::GrooveFonts::font (15.0f));
-            g.drawText ("NO KICK ON THE SIDECHAIN", main.withTrimmedBottom (main.getHeight() * 0.45f), juce::Justification::centredBottom);
+            g.drawText ("NO KICK ON THE SIDECHAIN", m.withTrimmedBottom (m.getHeight() * 0.5f), juce::Justification::centredBottom);
             g.setColour (palette (cream).withAlpha (0.6f));
             g.setFont (gk::GrooveFonts::font (11.5f));
             g.drawFittedText (fr ("Live: plug-in title bar \xe2\x96\xb8 Sidechain \xe2\x96\xb8 Audio From \xe2\x96\xb8 your kick track"),
-                              main.withTrimmedTop (main.getHeight() * 0.58f).withHeight (18.0f).toNearestInt(), juce::Justification::centred, 1, 0.8f);
+                              m.withTrimmedTop (m.getHeight() * 0.55f).withHeight (18.0f).toNearestInt(), juce::Justification::centred, 1, 0.8f);
         }
-        g.setColour (palette (cream).withAlpha (0.55f));
-        g.setFont (gk::GrooveFonts::font (9.5f));
-        g.drawText ("KICK", juce::Rectangle<float> (40.0f, 12.0f).withCentre ({ kickX, main.getBottom() + 6.0f }), juce::Justification::centred);
+        dashed (g, kickX, m.getY(), m.getBottom(), 0.75f);
 
-        // the last 2 s: the sub's level (lime) and the kick (orange), per column
-        g.setColour (palette (juce::Colours::black).withAlpha (0.25f));
-        g.fillRoundedRectangle (lane, 4.0f);
-        const int cols = juce::jmax (1, (int) lane.getWidth());
-        const int per = juce::jmax (1, size / cols);
-        overview.clear();
-        float kickHold = 0.0f;
-        for (int c = 0; c < cols; ++c)
+        // the ducking curve (gain over the release, then held)
+        const auto nodes = proc.curveFor (proc.getShapeParameter().getIndex());
+        curvePath.clear();
+        curvePath.startNewSubPath (m.getX(), gainY (m, 1.0f));
+        curvePath.lineTo (kickX - 3.0f, gainY (m, 1.0f));
+        const int steps = 160;
+        for (int i = 0; i <= steps; ++i)
         {
-            float s = 0.0f, k = 0.0f;
-            for (int j = 0; j < per; ++j)
-            {
-                const int idx = ((write + c * per + j) % size + size) % size; // oldest first
-                s = juce::jmax (s, std::abs (sub[(size_t) idx]));
-                k = juce::jmax (k, kick[(size_t) idx]);
-            }
-            const float x = lane.getX() + (float) c;
-            const float hs = juce::jlimit (0.0f, 1.0f, s * gain) * lane.getHeight() * 0.45f;
-            overview.addRectangle (x, lane.getCentreY() - hs, 1.0f, juce::jmax (0.5f, 2.0f * hs));
-            kickHold = juce::jmax (k, kickHold * 0.8f);
-            if (kickHold > 0.05f)
-            {
-                const float hk = juce::jlimit (0.0f, 1.0f, kickHold) * lane.getHeight();
-                g.setColour (palette (orange).withAlpha (0.75f));
-                g.fillRect (x, lane.getBottom() - hk, 1.0f, hk);
-            }
+            const float x = (float) i / (float) steps;
+            curvePath.lineTo (curveX (m, x), gainY (m, KickLockDsp::evalCurve (nodes, x)));
         }
-        g.setColour (palette (lime).withAlpha (0.8f));
-        g.fillPath (overview);
+        curvePath.lineTo (m.getRight(), gainY (m, nodes.back().y));
+        juce::Path fill (curvePath);
+        fill.lineTo (m.getRight(), m.getY());
+        fill.lineTo (m.getX(), m.getY());
+        fill.closeSubPath();
+        g.setColour (palette (juce::Colours::black).withAlpha (0.22f)); // what the ducking takes away
+        g.fillPath (fill);
+        g.setColour (palette (cream));
+        g.strokePath (curvePath, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        for (size_t i = 0; i + 1 < nodes.size(); ++i)
+        {
+            const auto h = handlePos (m, nodes, (int) i);
+            g.setColour (palette (cream).withAlpha (hover == handleId ((int) i) ? 1.0f : 0.55f));
+            g.drawEllipse (juce::Rectangle<float> (7.0f, 7.0f).withCentre (h), 1.3f);
+        }
+        for (size_t i = 0; i < nodes.size(); ++i)
+        {
+            const auto pt = nodePos (m, nodes[i]);
+            const float r = hover == (int) i || dragging == (int) i ? 6.5f : 5.0f;
+            g.setColour (palette (lime));
+            g.fillEllipse (juce::Rectangle<float> (2 * r, 2 * r).withCentre (pt));
+            g.setColour (palette (palette.outline));
+            g.drawEllipse (juce::Rectangle<float> (2 * r, 2 * r).withCentre (pt), 1.5f);
+        }
+        // where the ducking is now
+        auto& tel = proc.getDsp().getTelemetry();
+        const auto since = tel.outputClock.load (std::memory_order_relaxed) - tel.lastKickSample.load (std::memory_order_relaxed);
+        const double rel = KickLockDsp::releaseBeats (proc.getReleaseParameter().getIndex()) * beat * sr;
+        if (shown >= 0 && since >= 0 && (double) since < rel && ! proc.getBypassParameterObject().get())
+        {
+            const float x = (float) ((double) since / rel);
+            g.setColour (palette (orange));
+            g.fillEllipse (juce::Rectangle<float> (8.0f, 8.0f).withCentre ({ curveX (m, x), gainY (m, KickLockDsp::evalCurve (nodes, x)) }));
+        }
         g.setColour (palette (cream).withAlpha (0.4f));
         g.setFont (gk::GrooveFonts::font (9.0f));
-        g.drawText ("2 s", lane.withTrimmedLeft (4.0f), juce::Justification::centredLeft);
+        g.drawText ("100 %", juce::Rectangle<float> (m.getX() + 2.0f, gainY (m, 1.0f) + 1.0f, 40.0f, 10.0f), juce::Justification::topLeft);
+        g.drawText ("KICK", juce::Rectangle<float> (40.0f, 10.0f).withCentre ({ kickX, m.getBottom() + 6.0f }), juce::Justification::centred);
+
+    }
+
+    //==========================================================================
+    void mouseMove (const juce::MouseEvent& e) override
+    {
+        const int h = hitTestCurve (e.position);
+        if (h != hover)
+        {
+            hover = h;
+            setMouseCursor (h >= 0 ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::NormalCursor);
+            repaint();
+        }
+    }
+    void mouseExit (const juce::MouseEvent&) override
+    {
+        hover = -1;
+        repaint();
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu())
+        {
+            showPresets();
+            return;
+        }
+        dragging = hitTestCurve (e.position);
+        if (dragging < 0)
+            return;
+        edit = startEditing();
+        lastY = e.position.y;
+    }
+
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (dragging < 0)
+            return;
+        const auto m = mainArea();
+        const float fine = e.mods.isShiftDown() ? 0.2f : 1.0f;
+        if (dragging >= handleBase)
+        {
+            // bend the segment: up = rises fast (negative tension)
+            auto& n = edit[(size_t) (dragging - handleBase)];
+            const float dir = edit[(size_t) (dragging - handleBase) + 1].y >= n.y ? 1.0f : -1.0f;
+            n.tension = juce::jlimit (-12.0f, 12.0f, n.tension + dir * (e.position.y - lastY) * 0.08f * fine);
+            lastY = e.position.y;
+        }
+        else
+        {
+            auto& n = edit[(size_t) dragging];
+            const bool end = dragging == 0 || dragging == (int) edit.size() - 1;
+            if (! end)
+            {
+                const float lo = edit[(size_t) dragging - 1].x + 0.005f, hi = edit[(size_t) dragging + 1].x - 0.005f;
+                n.x = juce::jlimit (lo, hi, xFromCurve (m, e.position.x));
+            }
+            n.y = juce::jlimit (0.0f, 1.0f, yFromGain (m, e.position.y));
+        }
+        proc.setCustomCurve (edit);
+        repaint();
+    }
+
+    void mouseUp (const juce::MouseEvent&) override { dragging = -1; }
+
+    void mouseDoubleClick (const juce::MouseEvent& e) override
+    {
+        const int h = hitTestCurve (e.position);
+        edit = startEditing();
+        if (h >= 0 && h < handleBase)
+        {
+            if (h > 0 && h < (int) edit.size() - 1) // the ends stay
+                edit.erase (edit.begin() + h);
+        }
+        else if (h >= handleBase)
+            edit[(size_t) (h - handleBase)].tension = 0.0f; // straight again
+        else if ((int) edit.size() < KickLockDsp::maxCurveNodes)
+        {
+            const auto m = mainArea();
+            const float x = xFromCurve (m, e.position.x);
+            if (x > 0.0f && x < 1.0f)
+            {
+                Node n { x, juce::jlimit (0.0f, 1.0f, yFromGain (m, e.position.y)), 0.0f };
+                edit.insert (std::upper_bound (edit.begin(), edit.end(), n, [] (const Node& a, const Node& b) { return a.x < b.x; }), n);
+            }
+        }
+        proc.setCustomCurve (edit);
+        hover = -1;
+        repaint();
     }
 
 private:
+    static constexpr int handleBase = 1000;
+    static int handleId (int segment) noexcept { return handleBase + segment; }
+
+    juce::Rectangle<float> mainArea() const { return getLocalBounds().toFloat().reduced (10.0f, 0.0f).withTrimmedTop (22.0f).withTrimmedBottom (14.0f); }
+    double bpmNow() const { return juce::jmax (40.0, (double) proc.getFeatures().bpm.load (std::memory_order_relaxed)); }
+    double windowBeats() const { return juce::jmax (1.0, KickLockDsp::releaseBeats (proc.getReleaseParameter().getIndex())); }
+    juce::String beatsLabel() const { return fr ("1 beat \xc2\xb7 curve = RELEASE ") + proc.getReleaseParameter().getCurrentChoiceName(); }
+
+    float curveX (juce::Rectangle<float> m, float x) const
+    {
+        const double total = preBeats + windowBeats(), rel = KickLockDsp::releaseBeats (proc.getReleaseParameter().getIndex());
+        return m.getX() + (float) ((preBeats + x * rel) / total) * m.getWidth();
+    }
+    float xFromCurve (juce::Rectangle<float> m, float px) const
+    {
+        const double total = preBeats + windowBeats(), rel = KickLockDsp::releaseBeats (proc.getReleaseParameter().getIndex());
+        return (float) juce::jlimit (0.0, 1.0, (((double) (px - m.getX()) / m.getWidth()) * total - preBeats) / rel);
+    }
+    static float gainY (juce::Rectangle<float> m, float gain) { return m.getBottom() - 4.0f - gain * (m.getHeight() - 10.0f); }
+    static float yFromGain (juce::Rectangle<float> m, float y) { return (m.getBottom() - 4.0f - y) / (m.getHeight() - 10.0f); }
+    juce::Point<float> nodePos (juce::Rectangle<float> m, const Node& n) const { return { curveX (m, n.x), gainY (m, n.y) }; }
+    juce::Point<float> handlePos (juce::Rectangle<float> m, const std::vector<Node>& n, int seg) const
+    {
+        const float x = 0.5f * (n[(size_t) seg].x + n[(size_t) seg + 1].x);
+        return { curveX (m, x), gainY (m, KickLockDsp::evalCurve (n, x)) };
+    }
+
+    int hitTestCurve (juce::Point<float> p) const
+    {
+        const auto m = mainArea();
+        const auto nodes = proc.curveFor (proc.getShapeParameter().getIndex());
+        for (size_t i = 0; i < nodes.size(); ++i)
+            if (p.getDistanceFrom (nodePos (m, nodes[i])) < 9.0f)
+                return (int) i;
+        for (size_t i = 0; i + 1 < nodes.size(); ++i)
+            if (p.getDistanceFrom (handlePos (m, nodes, (int) i)) < 7.0f)
+                return handleId ((int) i);
+        return -1;
+    }
+
+    /** Editing a preset turns it into the custom curve (SHAPE = Custom). */
+    std::vector<Node> startEditing()
+    {
+        auto& shapeParam = proc.getShapeParameter();
+        const int current = shapeParam.getIndex();
+        if (current != KickLockDsp::custom)
+        {
+            proc.setCustomCurve (proc.curveFor (current));
+            shapeParam.beginChangeGesture();
+            shapeParam.setValueNotifyingHost (shapeParam.convertTo0to1 ((float) KickLockDsp::custom));
+            shapeParam.endChangeGesture();
+        }
+        return proc.getCustomCurve();
+    }
+
+    void showPresets()
+    {
+        juce::PopupMenu menu;
+        menu.addSectionHeader ("Ducking curve");
+        const char* names[] { "Exponential", "Linear", "S-curve", "Bounce" };
+        for (int s = 0; s < 4; ++s)
+            menu.addItem (names[s], [this, s]
+                          {
+                              auto& shapeParam = proc.getShapeParameter();
+                              proc.setCustomCurve (KickLockDsp::presetCurve (s));
+                              shapeParam.beginChangeGesture();
+                              shapeParam.setValueNotifyingHost (shapeParam.convertTo0to1 ((float) KickLockDsp::custom));
+                              shapeParam.endChangeGesture();
+                              repaint();
+                          });
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition());
+    }
+
+    void dashed (juce::Graphics& g, float x, float y0, float y1, float alpha)
+    {
+        juce::Path line, out;
+        line.startNewSubPath (x, y0);
+        line.lineTo (x, y1);
+        const float dashes[] { 4.0f, 4.0f };
+        juce::PathStrokeType (1.2f).createDashedStroke (out, line, dashes, 2);
+        g.setColour (palette (juce::Colours::white).withAlpha (alpha));
+        g.fillPath (out);
+    }
+
     KickLockProcessor& proc;
     const gk::Palette& palette;
-    std::vector<float> sub, kick;
+    std::vector<float> sub, kick, bass;
     int write = 0;
-    std::int64_t endTime = 0, lastKick = -1;
-    std::array<std::int64_t, shownKicks> pending {};
-    int pendingCount = 0;
-    float gain = 0.0f;
-    std::array<juce::Path, shownKicks> subPaths;
-    juce::Path kickPath, overview;
+    std::int64_t endTime = 0;
+    std::array<std::int64_t, 4> kicks { -1, -1, -1, -1 };
+    juce::Path curvePath;
+    std::vector<float> kickEnv, bassEnv;
+    std::vector<Node> edit;
+    int hover = -1, dragging = -1;
+    float lastY = 0.0f;
 };
 
 //==============================================================================
@@ -716,7 +889,7 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
     // the right column: ducking shape, release, the lock's settings, depth
     shape = std::make_unique<gk::ChoiceSelector> (p.getShapeParameter(), "SHAPE", orange, pal);
     release = std::make_unique<gk::ChoiceSelector> (p.getReleaseParameter(), "RELEASE", orange, pal);
-    shape->setDisplayNames ({ "Expo", "Linear", "S-curve", "Bounce" });
+    shape->setDisplayNames ({ "Expo", "Linear", "S-curve", "Bounce", "Custom" });
     addToCanvas (*shape, { 590, 274, 78, 38 });
     addToCanvas (*release, { 672, 274, 78, 38 });
     struct K { juce::RangedAudioParameter& param; const char* caption; juce::Colour colour; juce::Rectangle<int> at; };

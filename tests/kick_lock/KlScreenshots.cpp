@@ -29,6 +29,7 @@ struct Case
     float level = 1.0f, scale = 1.0f;
     double kickOffset = 0.0;
     int kicks = 1; // the mascot's step (its pose in the dance)
+    bool customCurve = false;
 };
 
 juce::Image shoot (const Case& c, int& statusOut)
@@ -39,6 +40,12 @@ juce::Image shoot (const Case& c, int& statusOut)
     proc.setNonRealtime (true);
     setParam (proc.getLockParameter(), c.lock ? 1.0f : 0.0f);
     setParam (proc.getLockModeParameter(), c.transition ? 1.0f : 0.0f);
+    if (c.customCurve)
+    {
+        // a pumping curve drawn by hand: a fast dip, a hold, a late swell
+        proc.setCustomCurve ({ { 0.0f, 0.0f, 0.0f }, { 0.3f, 0.15f, -4.0f }, { 0.75f, 0.85f, 3.0f }, { 1.0f, 1.0f, 0.0f } });
+        setParam (proc.getShapeParameter(), (float) kl::KickLockDsp::custom);
+    }
     proc.prepareToPlay (sr, 512);
     auto b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr);
     if (c.noise)
@@ -96,6 +103,7 @@ int main (int argc, char** argv)
     { Case c; c.slug = "no_kick"; c.label = "no sidechain"; c.sidechain = false; cases.push_back (c); }
     { Case c; c.slug = "bypass"; c.label = "bypass"; c.bypass = true; cases.push_back (c); }
     { Case c; c.slug = "transition"; c.label = "MODE Transition"; c.transition = true; c.kicks = 2; cases.push_back (c); }
+    { Case c; c.slug = "custom_curve"; c.label = "custom ducking curve"; c.customCurve = true; cases.push_back (c); }
 
     constexpr int w = 760, h = 480, pad = 12, label = 28, cols = 3;
     juce::Image sheet (juce::Image::RGB, cols * (w + pad) + pad, (int) ((cases.size() + cols - 1) / cols) * (h + pad + label) + pad, true);

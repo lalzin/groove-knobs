@@ -4,30 +4,56 @@ namespace kl
 {
 using namespace gk::dspmath;
 
-KickLockDsp::KickLockDsp() = default;
-
-float KickLockDsp::curve (int s, float x) noexcept
+KickLockDsp::KickLockDsp()
 {
-    if (x <= 0.0f)
-        return 1.0f;
-    if (x >= 1.0f)
-        return 0.0f;
+    for (int sh = 0; sh < 4; ++sh)
+    {
+        const auto nodes = presetCurve (sh);
+        for (int i = 0; i <= curveTableSize; ++i)
+            presetTables[(size_t) sh][(size_t) i] = evalCurve (nodes, (float) i / (float) curveTableSize);
+    }
+    setCustomCurve (presetCurve (exponential));
+}
+
+std::vector<KickLockDsp::CurveNode> KickLockDsp::presetCurve (int s)
+{
     switch (s)
     {
-        case linear: return 1.0f - x;
-        case sCurve: return 1.0f - smoothstep (0.0f, 1.0f, x);
-        case bounce:
-            // two falling arcs: down to 0 at 55 %, a small return (0.3) and down again
-            if (x < 0.55f)
-                return 1.0f - smoothstep (0.0f, 1.0f, x / 0.55f);
-            return 0.3f * std::sin (juce::MathConstants<float>::pi * (x - 0.55f) / 0.45f);
-        default:
-        {
-            // exp(-3x), normalised so it lands on 0 at the end (no step)
-            static const float e3 = std::exp (-3.0f);
-            return (std::exp (-3.0f * x) - e3) / (1.0f - e3);
-        }
+        case linear: return { { 0.0f, 0.0f, 0.0f }, { 1.0f, 1.0f, 0.0f } };
+        case sCurve: return { { 0.0f, 0.0f, 2.2f }, { 0.5f, 0.5f, -2.2f }, { 1.0f, 1.0f, 0.0f } };
+        // up to full at 55 %, a small dip (to 70 %) and back
+        case bounce: return { { 0.0f, 0.0f, 2.2f }, { 0.275f, 0.5f, -2.2f }, { 0.55f, 1.0f, 1.2f }, { 0.775f, 0.7f, -1.2f }, { 1.0f, 1.0f, 0.0f } };
+        // 1 - exp(-3x), normalised: one segment bent by -3 is exactly that
+        case exponential:
+        default: return { { 0.0f, 0.0f, -3.0f }, { 1.0f, 1.0f, 0.0f } };
     }
+}
+
+float KickLockDsp::evalCurve (const std::vector<CurveNode>& n, float x) noexcept
+{
+    if (n.empty())
+        return 1.0f;
+    if (x <= n.front().x)
+        return n.front().y;
+    for (size_t i = 0; i + 1 < n.size(); ++i)
+        if (x <= n[i + 1].x)
+        {
+            const float w = n[i + 1].x - n[i].x;
+            const float t = w > 1.0e-6f ? (x - n[i].x) / w : 1.0f;
+            const float k = n[i].tension;
+            const float f = std::abs (k) < 1.0e-3f ? t : (std::exp (k * t) - 1.0f) / (std::exp (k) - 1.0f);
+            return n[i].y + (n[i + 1].y - n[i].y) * f;
+        }
+    return n.back().y;
+}
+
+void KickLockDsp::setCustomCurve (const std::vector<CurveNode>& nodes)
+{
+    const int next = (customPublished.load (std::memory_order_acquire) + 1) % 3;
+    auto& table = customTables[(size_t) next];
+    for (int i = 0; i <= curveTableSize; ++i)
+        table[(size_t) i] = juce::jlimit (0.0f, 1.0f, evalCurve (nodes, (float) i / (float) curveTableSize));
+    customPublished.store (next, std::memory_order_release);
 }
 
 double KickLockDsp::releaseBeats (int index) noexcept
@@ -133,6 +159,7 @@ void KickLockDsp::prepare (double sr, int, int nch)
     trackGainCoeff = (float) (1.0 - std::exp (-1.0 / (0.02 * sr)));
     mono.assign ((size_t) size, 0.0f);
     envRing.assign ((size_t) size, 0.0f);
+    kickRing.assign ((size_t) size, 0.0f);
     decimation = juce::jmax (1, (int) std::round (sr / 3000.0));
     dec.assign (512, 0.0f);
     fadeLength = juce::jmax (1, (int) std::round (crossfadeSeconds * sr));
@@ -142,6 +169,7 @@ void KickLockDsp::prepare (double sr, int, int nch)
     rmsCoeff = (float) (1.0 - std::exp (-1.0 / (0.05 * sr)));
     telemetry.scopeSize = (int) (2.0 * sr) / KickTelemetry::scopeDecimation;
     telemetry.scopeSub = std::make_unique<std::atomic<float>[]> ((size_t) telemetry.scopeSize);
+    telemetry.scopeBass = std::make_unique<std::atomic<float>[]> ((size_t) telemetry.scopeSize);
     telemetry.scopeKick = std::make_unique<std::atomic<float>[]> ((size_t) telemetry.scopeSize);
     reset();
 }
@@ -172,6 +200,7 @@ void KickLockDsp::reset()
     setTrackHz (55.0);
     std::fill (mono.begin(), mono.end(), 0.0f);
     std::fill (envRing.begin(), envRing.end(), 0.0f);
+    std::fill (kickRing.begin(), kickRing.end(), 0.0f);
     std::fill (dec.begin(), dec.end(), 0.0f);
     clock = 0;
     scEnv = slowEnv = 0.0f;
@@ -193,10 +222,10 @@ void KickLockDsp::reset()
     lastPhase = lastConfidence = 0.0;
     subRms = midRms = sideRms = lrRms = 0.0f;
     scopeCounter = 0;
-    scopeKickPeak = 0.0f;
     for (int i = 0; i < telemetry.scopeSize; ++i)
     {
         telemetry.scopeSub[(size_t) i].store (0.0f, std::memory_order_relaxed);
+        telemetry.scopeBass[(size_t) i].store (0.0f, std::memory_order_relaxed);
         telemetry.scopeKick[(size_t) i].store (0.0f, std::memory_order_relaxed);
     }
 }
@@ -213,7 +242,7 @@ void KickLockDsp::setKnobs (const float* v, int n)
 
 void KickLockDsp::setChoices (const int* idx, int n)
 {
-    shape = n > shapeChoice ? juce::jlimit (0, 3, idx[shapeChoice]) : exponential;
+    shape = n > shapeChoice ? juce::jlimit (0, (int) custom, idx[shapeChoice]) : exponential;
     release = n > releaseChoice ? juce::jlimit (0, 4, idx[releaseChoice]) : 2;
     lockMode = n > modeChoice ? juce::jlimit (0, 1, idx[modeChoice]) : continuous;
 }
@@ -366,8 +395,10 @@ double KickLockDsp::returnFor (std::int64_t when) const noexcept
 
 void KickLockDsp::onKick (std::int64_t when)
 {
-    telemetry.kickEvents.fetch_add (1, std::memory_order_relaxed);
+    const int count = telemetry.kickEvents.load (std::memory_order_relaxed) + 1;
+    telemetry.recentKicks[(size_t) (count % 4)].store (when, std::memory_order_relaxed);
     telemetry.lastKickSample.store (when, std::memory_order_relaxed);
+    telemetry.kickEvents.store (count, std::memory_order_release);
 
     // A note starting at the kick (the sub rising sharply between just before
     // and just after it): what was measured before belongs to the previous
@@ -455,6 +486,7 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
     }
 
     const double releaseSamples = juce::jmax (1.0, releaseBeats (release) * 60.0 / bpm * sampleRate);
+    const auto& table = shape == custom ? customTables[(size_t) customPublished.load (std::memory_order_acquire)] : presetTables[(size_t) shape];
     const double attack = attackSeconds * sampleRate;
     const float threshold = dbToGain (thresholdDb);
     const auto noKickSamples = (std::int64_t) (noKickSeconds * sampleRate);
@@ -559,9 +591,13 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         }
 
         // --- the kick ------------------------------------------------------
-        float k = 0.0f;
+        float k = 0.0f, kickMono = 0.0f;
         for (int c = 0; c < scChannels; ++c)
+        {
             k = juce::jmax (k, std::abs (sc[(size_t) c][i]));
+            kickMono += sc[(size_t) c][i] / (float) scChannels;
+        }
+        kickRing[(size_t) (clock & mask)] = kickMono;
         scEnv += (k - scEnv) * (k > scEnv ? scAttack : scRelease);
         envRing[(size_t) (clock & mask)] = scEnv;
         kickPeak = juce::jmax (kickPeak, scEnv);
@@ -644,8 +680,13 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
                 float c = 0.0f;
                 if (d < 0.0 && -d < attack)
                     c = smoothstep (0.0f, 1.0f, (float) (1.0 + d / attack)); // down to the kick
-                else if (d >= 0.0 && d < releaseSamples)
-                    c = curve (shape, (float) (d / releaseSamples));
+                else if (d >= 0.0)
+                {
+                    // the curve's gain over the release, its last value held after
+                    const float pos = (float) juce::jmin (1.0, d / releaseSamples) * (float) curveTableSize;
+                    const int i0 = juce::jmin ((int) pos, curveTableSize - 1);
+                    c = 1.0f - (table[(size_t) i0] + (pos - (float) i0) * (table[(size_t) i0 + 1] - table[(size_t) i0]));
+                }
                 g = juce::jmin (g, 1.0f - depth * c);
             }
         gainMin = juce::jmin (gainMin, g);
@@ -682,16 +723,15 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         }
 
         // oscilloscope (1 in 8): the sub as heard, the kick envelope
-        scopeKickPeak = juce::jmax (scopeKickPeak, envRing[(size_t) (t & mask)]); // the kick as heard (L later), like the sub
         if (++scopeCounter >= KickTelemetry::scopeDecimation && telemetry.scopeSize > 0)
         {
             scopeCounter = 0;
             const int w = telemetry.scopeWrite.load (std::memory_order_relaxed);
             telemetry.scopeSub[(size_t) w].store (scopeSub, std::memory_order_relaxed);
-            telemetry.scopeKick[(size_t) w].store (scopeKickPeak, std::memory_order_relaxed);
+            telemetry.scopeBass[(size_t) w].store (nch == 2 ? 0.5f * (outs[0] + outs[1]) : outs[0], std::memory_order_relaxed);
+            telemetry.scopeKick[(size_t) w].store (kickRing[(size_t) (t & mask)], std::memory_order_relaxed); // the kick as heard (L later)
             telemetry.scopeTime.store (t, std::memory_order_relaxed);
             telemetry.scopeWrite.store ((w + 1) % telemetry.scopeSize, std::memory_order_release);
-            scopeKickPeak = 0.0f;
         }
         ++clock;
     }

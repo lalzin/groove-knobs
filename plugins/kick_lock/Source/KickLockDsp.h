@@ -17,9 +17,11 @@ struct KickTelemetry
     std::atomic<float> f0Hz { 0.0f }, shiftMs { 0.0f }, duckGain { 1.0f };
     std::atomic<int> kickEvents { 0 }, status { (int) Status::noKick };
     std::atomic<std::int64_t> lastKickSample { -1 }, outputClock { 0 };
-    // oscilloscope: 2 s of the corrected sub and of the kick envelope (1 in 8)
+    std::array<std::atomic<std::int64_t>, 4> recentKicks { { -1, -1, -1, -1 } }; // the last kicks (slot = count % 4)
+    // oscilloscope: 2 s of the corrected sub, the output and the kick (1 in 8)
     int scopeSize = 0;
-    std::unique_ptr<std::atomic<float>[]> scopeSub, scopeKick;
+    // scopeSub: the fundamental as heard; scopeBass: the output (mono); scopeKick: the kick (L later, as heard)
+    std::unique_ptr<std::atomic<float>[]> scopeSub, scopeKick, scopeBass;
     std::atomic<int> scopeWrite { 0 };
     std::atomic<std::int64_t> scopeTime { 0 }; // output time of the last scope sample written
 };
@@ -46,7 +48,18 @@ public:
     static constexpr int targetKnob = 0, offsetKnob = 1, subCutKnob = 2, depthKnob = 3, waveStartKnob = 4, thresholdKnob = 5;
     static constexpr int shapeChoice = 0, releaseChoice = 1, modeChoice = 2;
     enum LockMode { continuous, transition };
-    enum Shape { exponential, linear, sCurve, bounce };
+    enum Shape { exponential, linear, sCurve, bounce, custom };
+
+    /** The ducking curve (LFOTool style): points of gain over the release
+        (x 0..1, gain 0..1), each segment bent by its `tension` (0 = straight,
+        < 0 rises fast then slows, > 0 the opposite). The last gain holds after
+        the release, until the next kick. */
+    struct CurveNode { float x = 0.0f, y = 0.0f, tension = 0.0f; };
+    static constexpr int maxCurveNodes = 32, curveTableSize = 512;
+    static std::vector<CurveNode> presetCurve (int shape);
+    static float evalCurve (const std::vector<CurveNode>& nodes, float x) noexcept;
+    /** The custom curve (SHAPE = Custom), from the message thread (triple-buffered table). */
+    void setCustomCurve (const std::vector<CurveNode>& nodes);
 
     static constexpr double firSeconds = 0.008, advanceSeconds = 0.008, crossfadeSeconds = 0.005, attackSeconds = 0.004,
                             deadTimeSeconds = 0.030, noKickSeconds = 2.0, maxDelaySeconds = 0.080, kernelFadeSeconds = 0.020,
@@ -59,8 +72,6 @@ public:
 
     KickLockDsp();
 
-    /** Ducking curve, x = time since the kick / release (0..1): 1 at the kick, 0 at the end. */
-    static float curve (int shape, float x) noexcept;
     /** Release length in beats for the RELEASE choice. */
     static double releaseBeats (int index) noexcept;
     /** Wraps degrees to [-180, 180). */
@@ -137,6 +148,11 @@ private:
     void setTrackHz (double hz) noexcept;
     std::vector<float> mono;                      // mono sub, for the analysis
     std::vector<float> envRing;                   // the kick envelope (to find each kick's start)
+    std::vector<float> kickRing;                  // the kick itself (mono), for the scope
+    using CurveTable = std::array<float, curveTableSize + 1>;
+    std::array<CurveTable, 4> presetTables {};
+    std::array<CurveTable, 3> customTables {};
+    std::atomic<int> customPublished { 0 };
 
     // sidechain (this chunk)
     std::array<const float*, 2> sc {};
@@ -171,6 +187,5 @@ private:
 
     KickTelemetry telemetry;
     int scopeCounter = 0;
-    float scopeKickPeak = 0.0f;
 };
 } // namespace kl
