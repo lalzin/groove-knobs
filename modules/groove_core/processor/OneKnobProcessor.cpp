@@ -400,7 +400,7 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
     {
         amountSmoother.snap (amountTarget);
         bypassSmoother.snap (bypassTarget);
-        crossfadeWeight = config.isInstrument ? 1.0f : macro::transparencyWeight (std::abs (macroFor (amountTarget)), config.transparencyZone);
+        crossfadeWeight = config.isInstrument || config.alwaysWet ? 1.0f : macro::transparencyWeight (std::abs (macroFor (amountTarget)), config.transparencyZone);
         makeupSmoother.invalidate();
         engine->reset();
         wetRunning = false;
@@ -512,7 +512,7 @@ void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start
         // Dry/wet weight of the transparency zone, slew-limited: even a very
         // fast knob move crossfades over >= crossfadeMinSeconds (the dry and
         // wet paths differ slightly in phase, a 1 ms crossfade would click).
-        const float target = config.isInstrument ? 1.0f : macro::transparencyWeight (std::abs (a), config.transparencyZone);
+        const float target = config.isInstrument || config.alwaysWet ? 1.0f : macro::transparencyWeight (std::abs (a), config.transparencyZone);
         if (std::abs (target - crossfadeWeight) <= crossfadeMaxStep)
             crossfadeWeight = target;
         else

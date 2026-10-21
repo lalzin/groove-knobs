@@ -422,6 +422,7 @@ void KickLockDsp::scheduleLink (std::int64_t onset)
 
 void KickLockDsp::pollLink (const gk::BlockTiming& timing)
 {
+    telemetry.hostPlaying.store (timing.isPlaying, std::memory_order_relaxed);
     const bool wanted = trigger == triggerLink || trigger == triggerAuto;
     if (! wanted || ! timing.isPlaying || timing.beatsPerSample <= 0.0)
     {
@@ -436,6 +437,7 @@ void KickLockDsp::pollLink (const gk::BlockTiming& timing)
     const int slot = link.poll (linkChannel, [&] (double ppq, float)
     {
         const auto onset = clock + (std::int64_t) std::llround ((ppq - start) / bps);
+        telemetry.linkKicks.fetch_add (1, std::memory_order_relaxed);
         if (clock - onset > budget)
             ++lateKicks;
         if (clock - onset < (std::int64_t) (0.3 * sampleRate)) // a very late one is no use
@@ -724,7 +726,7 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
                 --onset;
             // the ducking knows it now; its phase is measured once the sub is
             // known there (8 ms later)
-            if (trigger != triggerBeat)
+            if (trigger == triggerSidechain)
             {
                 lastSidechainKick = onset;
                 telemetry.triggerSource.store (1, std::memory_order_relaxed);
@@ -737,8 +739,7 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             {
                 const auto onset = linkPending[(size_t) n];
                 linkPending[(size_t) n] = linkPending[(size_t) --linkPendingCount];
-                const bool sidechainLeads = trigger == triggerAuto && scChannels > 0 && clock - lastSidechainKick <= noKickSamples;
-                if (! sidechainLeads && std::abs (onset - lastLinkKick) > (std::int64_t) (0.03 * sampleRate))
+                if (std::abs (onset - lastLinkKick) > (std::int64_t) (0.03 * sampleRate))
                 {
                     lastLinkKick = onset;
                     telemetry.triggerSource.store (3, std::memory_order_relaxed);
@@ -757,7 +758,7 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             // came in during an intro and after a break, "the link drops")
             const bool linked = telemetry.linkSlot.load (std::memory_order_relaxed) >= 0;
             const bool useBeats = trigger == triggerBeat
-                                  || (trigger == triggerAuto && ! linked && (scChannels == 0 || clock - lastSidechainKick > noKickSamples));
+                                  || (trigger == triggerAuto && ! linked);
             if (! timing.isPlaying)
                 beatValid = false;
             else if (! beatValid || b < lastBeatFloor - 0.001 || b > lastBeatFloor + 2.0)
@@ -884,7 +885,15 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             const int w = telemetry.scopeWrite.load (std::memory_order_relaxed);
             telemetry.scopeSub[(size_t) w].store (scopeSub, std::memory_order_relaxed);
             telemetry.scopeBass[(size_t) w].store (nch == 2 ? 0.5f * (outs[0] + outs[1]) : outs[0], std::memory_order_relaxed);
-            telemetry.scopeKick[(size_t) w].store (kickRing[(size_t) (t & mask)], std::memory_order_relaxed); // the kick as heard (L later)
+            // the kick as heard (L later): Kick Lock Send's own wave when it leads, else the sidechain's
+            float kv = kickRing[(size_t) (t & mask)];
+            if (trigger != triggerSidechain && trigger != triggerBeat && timing.isPlaying && telemetry.linkSlot.load (std::memory_order_relaxed) >= 0)
+            {
+                float lv = 0.0f;
+                if (link.waveAt (timing.beatsAt (i) - (double) latency * timing.beatsPerSample, lv))
+                    kv = lv;
+            }
+            telemetry.scopeKick[(size_t) w].store (kv, std::memory_order_relaxed);
             telemetry.scopeTime.store (t, std::memory_order_relaxed);
             telemetry.scopeWrite.store ((w + 1) % telemetry.scopeSize, std::memory_order_release);
         }

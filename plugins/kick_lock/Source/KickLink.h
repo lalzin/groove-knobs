@@ -29,7 +29,8 @@ namespace kl
 struct KickLinkMemory
 {
     static constexpr std::uint32_t magic = 0x4b4c4e4b; // "KLNK"
-    static constexpr int version = 2, slots = 16, ringSize = 128, nameSize = 64, channels = 11; // channels 0..10
+    static constexpr int version = 3, slots = 16, ringSize = 128, nameSize = 64, channels = 11, // channels 0..10
+                         waveSize = 16384, waveDecimation = 8;                        // the kick's wave, 1 in 8 (~2.7 s at 48 kHz)
 
     struct Event
     {
@@ -48,6 +49,11 @@ struct KickLinkMemory
         std::atomic<std::int32_t> channel;       // LINK 0..10: only the Kick Locks on it listen
         char name[nameSize];
         Event events[ringSize];
+        // the kick as it leaves Send (1 in 8), for Kick Lock's scope: the
+        // position (quarter notes) of the last one written, and the step
+        std::atomic<std::uint32_t> waveCount;
+        std::atomic<double> waveEndPpq, waveStepPpq;
+        float wave[waveSize];
     };
 
     std::atomic<std::uint32_t> header;
@@ -55,7 +61,7 @@ struct KickLinkMemory
     Slot slot[slots];
 };
 
-static_assert (std::atomic<std::uint64_t>::is_always_lock_free && std::atomic<std::int64_t>::is_always_lock_free,
+static_assert (std::atomic<std::uint64_t>::is_always_lock_free && std::atomic<std::int64_t>::is_always_lock_free && std::atomic<double>::is_always_lock_free,
                "the shared block needs address-free atomics");
 
 /** Maps the shared block (created by whichever plug-in comes first). */
@@ -65,7 +71,7 @@ public:
     /** Tests use their own block (so a running Live is never disturbed). */
     static juce::String& blockName()
     {
-        static juce::String name ("lalzin_kicklock_v2"); // v2: channels (a v1 plug-in still loaded keeps its own block)
+        static juce::String name ("lalzin_kicklock_v3"); // v3: channels + the kick's wave (an older plug-in still loaded keeps its own block)
         return name;
     }
 
@@ -214,6 +220,20 @@ public:
         sl.count.store (n + 1, std::memory_order_release);
     }
 
+    /** Audio thread: one sample of the kick (already decimated) at `ppq`, `step` quarter notes after the previous one. */
+    void pushWave (float v, double ppq, double step) noexcept
+    {
+        auto* m = link.get();
+        if (m == nullptr || slotIndex < 0)
+            return;
+        auto& sl = m->slot[slotIndex];
+        const auto n = sl.waveCount.load (std::memory_order_relaxed);
+        sl.wave[n % KickLinkMemory::waveSize] = v;
+        sl.waveEndPpq.store (ppq, std::memory_order_relaxed);
+        sl.waveStepPpq.store (step, std::memory_order_relaxed);
+        sl.waveCount.store (n + 1, std::memory_order_release);
+    }
+
     /** Message thread: the track's name (shown by Kick Lock). */
     void setName (const juce::String& name)
     {
@@ -317,6 +337,26 @@ public:
         std::memcpy (buf, m->slot[f].name, sizeof (buf));
         buf[sizeof (buf) - 1] = 0;
         return juce::String::fromUTF8 (buf);
+    }
+
+    /** Audio thread: the followed Send's kick at a position (quarter notes); false if not there (yet). */
+    bool waveAt (double ppq, float& value) const noexcept
+    {
+        auto* m = const_cast<KickLink&> (link).get();
+        const int f = followed;
+        if (m == nullptr || f < 0)
+            return false;
+        const auto& sl = m->slot[f];
+        const auto n = sl.waveCount.load (std::memory_order_acquire);
+        const double end = sl.waveEndPpq.load (std::memory_order_relaxed), step = sl.waveStepPpq.load (std::memory_order_relaxed);
+        if (n == 0 || step <= 0.0)
+            return false;
+        const double back = (end - ppq) / step;
+        if (back < -0.5 || back > (double) juce::jmin<std::uint32_t> (n, KickLinkMemory::waveSize - 2))
+            return false;
+        const auto k = (std::uint32_t) std::llround (juce::jmax (0.0, back));
+        value = sl.wave[(n - 1 - k) % KickLinkMemory::waveSize];
+        return true;
     }
 
     /** UI: live Sends on the channel (more than 1: a conflict, only the first is followed). */

@@ -12,7 +12,10 @@ namespace
     juce::String fr (const char* utf8) { return juce::String::fromUTF8 (utf8); }
 
     /** French decimal comma: "3,2". */
-    juce::String num (double v, int decimals) { return juce::String (v, decimals).replaceCharacter ('.', ','); }
+    juce::String num (double v, int decimals)
+    {
+        return decimals <= 0 ? juce::String (juce::roundToInt (v)) : juce::String (v, decimals).replaceCharacter ('.', ',');
+    }
 
     juce::Colour statusColour (int st)
     {
@@ -287,6 +290,11 @@ public:
         g.fillRoundedRectangle (b, 10.0f);
         g.setColour (palette (palette.outline));
         g.drawRoundedRectangle (b.reduced (0.5f), 10.0f, 1.5f);
+        if (explainKnob >= 0)
+        {
+            paintExplanation (g, b);
+            return;
+        }
         g.setColour (palette (cream).withAlpha (0.5f));
         g.setFont (gk::GrooveFonts::font (10.5f).withExtraKerningFactor (0.12f));
         const bool beats = proc.getDsp().getTelemetry().triggerSource.load (std::memory_order_relaxed) == 2;
@@ -361,11 +369,36 @@ public:
         {
             g.setColour (palette (cream).withAlpha (0.85f));
             g.setFont (gk::GrooveFonts::font (15.0f));
-            g.drawText ("PRESS PLAY", m.withTrimmedBottom (m.getHeight() * 0.5f), juce::Justification::centredBottom);
+            // why there is nothing to show
+            auto& tl = proc.getDsp().getTelemetry();
+            const auto linkNo = proc.getLinkChannelParameter().getCurrentChoiceName();
+            const int trig = proc.getTriggerParameter().getIndex();
+            const bool playing = tl.hostPlaying.load (std::memory_order_relaxed), linked = tl.linkSlot.load (std::memory_order_relaxed) >= 0;
+            juce::String title, hint;
+            if (! playing)
+            {
+                title = "PRESS PLAY";
+                hint = linked ? "Kick Lock Send found on LINK " + linkNo : "no Kick Lock Send on LINK " + linkNo + ": the tempo will lead";
+            }
+            else if (trig == KickLockDsp::triggerSidechain)
+            {
+                title = "NO KICK ON THE SIDECHAIN";
+                hint = "or TRIGGER Auto / Link, with Kick Lock Send on the kick's track";
+            }
+            else if (linked)
+            {
+                title = "WAITING FOR KICKS";
+                hint = "Kick Lock Send on LINK " + linkNo + " sends nothing: is its kick playing, SENS high enough?";
+            }
+            else
+            {
+                title = "NO KICK LOCK SEND ON LINK " + linkNo;
+                hint = "put Kick Lock Send on the kick's track, LINK " + linkNo;
+            }
+            g.drawFittedText (title, m.withTrimmedBottom (m.getHeight() * 0.5f).toNearestInt(), juce::Justification::centredBottom, 1, 0.7f);
             g.setColour (palette (cream).withAlpha (0.6f));
             g.setFont (gk::GrooveFonts::font (11.5f));
-            g.drawFittedText (fr ("follows the tempo \xc2\xb7 for the kick: Kick Lock Send on the kick's track"),
-                              m.withTrimmedTop (m.getHeight() * 0.55f).withHeight (18.0f).toNearestInt(), juce::Justification::centred, 1, 0.8f);
+            g.drawFittedText (hint, m.withTrimmedTop (m.getHeight() * 0.55f).withHeight (18.0f).toNearestInt(), juce::Justification::centred, 1, 0.8f);
         }
         dashed (g, kickX, m.getY(), m.getBottom(), 0.75f);
 
@@ -419,6 +452,213 @@ public:
         g.drawText ("100 %", juce::Rectangle<float> (m.getX() + 2.0f, gainY (m, 1.0f) + 1.0f, 40.0f, 10.0f), juce::Justification::topLeft);
         g.drawText (beats ? "BEAT" : "KICK", juce::Rectangle<float> (40.0f, 10.0f).withCentre ({ kickX, m.getBottom() + 6.0f }), juce::Justification::centred);
 
+    }
+
+    //==========================================================================
+    /** TARGET (0), OFFSET (1), SUB CUT (2), WAVE START (3): the screen explains it for a moment. */
+    enum Explained { explainTarget, explainOffset, explainSubCut, explainWaveStart };
+    void explain (int which, double dt)
+    {
+        if (which >= 0)
+        {
+            explainKnob = which;
+            explainLeft = 1.5;
+        }
+        else if (explainKnob >= 0 && (explainLeft -= dt) <= 0.0)
+            explainKnob = -1;
+        explainTime += dt;
+        if (explainKnob >= 0)
+            repaint();
+    }
+    bool isExplaining() const noexcept { return explainKnob >= 0; }
+
+    void paintExplanation (juce::Graphics& g, juce::Rectangle<float> b)
+    {
+        auto area = b.reduced (12.0f, 6.0f);
+        auto plain = [] (juce::RangedAudioParameter& p) { return p.convertFrom0to1 (p.getValue()); };
+        const float target = plain (proc.getTargetPhaseParameter()), offset = plain (proc.getOffsetParameter());
+        const float cut = plain (proc.getSubCutoffParameter()), start = plain (proc.getWaveStartParameter());
+        const float f0 = proc.getDsp().getTelemetry().f0Hz.load (std::memory_order_relaxed);
+        const float hz = f0 > 1.0f ? f0 : 55.0f;
+        const float pulse = 0.5f + 0.5f * (float) std::sin (explainTime * 5.0);
+        static const char* titles[] { "TARGET  \xc2\xb7  where the sub's cycle sits when the kick hits",
+                                      "OFFSET  \xc2\xb7  the sub moved later / earlier than the kick",
+                                      "SUB CUT  \xc2\xb7  the highest note whose sub is locked",
+                                      "WAVE START  \xc2\xb7  the sub's cycle turned, on top of the lock" };
+        g.setColour (palette (cream).withAlpha (0.85f));
+        g.setFont (gk::GrooveFonts::font (11.5f).withExtraKerningFactor (0.04f));
+        g.drawText (fr (titles[explainKnob]), area.withHeight (16.0f), juce::Justification::centredLeft);
+        auto m = area.withTrimmedTop (22.0f).withTrimmedBottom (18.0f);
+        const float mid = m.getCentreY(), amp = m.getHeight() * 0.36f;
+        const float kickX = m.getX() + m.getWidth() * 0.36f;
+        const float cycle = m.getWidth() * 0.3f; // one cycle of the sub on screen
+        auto sine = [&] (float phaseAtKickDeg, float shiftPx, juce::Colour c, float width, bool dashedLine)
+        {
+            juce::Path p;
+            for (int i = 0; i <= 200; ++i)
+            {
+                const float x = m.getX() + m.getWidth() * (float) i / 200.0f;
+                const float ph = juce::MathConstants<float>::twoPi * (x - kickX - shiftPx) / cycle + juce::degreesToRadians (phaseAtKickDeg);
+                const float y = mid - amp * std::sin (ph);
+                if (i == 0)
+                    p.startNewSubPath (x, y);
+                else
+                    p.lineTo (x, y);
+            }
+            if (dashedLine)
+            {
+                juce::Path d;
+                const float dashes[] { 5.0f, 4.0f };
+                juce::PathStrokeType (width).createDashedStroke (d, p, dashes, 2);
+                g.setColour (c);
+                g.fillPath (d);
+            }
+            else
+            {
+                g.setColour (c);
+                g.strokePath (p, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            }
+        };
+        auto kickMark = [&]
+        {
+            // the kick: its line, and a small burst that flashes like a hit
+            dashed (g, kickX, m.getY(), m.getBottom(), 0.8f);
+            g.setColour (palette (orange).withAlpha (0.35f + 0.65f * pulse));
+            g.fillEllipse (juce::Rectangle<float> (10.0f, 10.0f).withCentre ({ kickX, m.getBottom() + 6.0f }));
+            g.setColour (palette (cream).withAlpha (0.6f));
+            g.setFont (gk::GrooveFonts::font (9.5f));
+            g.drawText ("KICK", juce::Rectangle<float> (40.0f, 12.0f).withCentre ({ kickX + 22.0f, m.getBottom() + 6.0f }), juce::Justification::centred);
+        };
+        auto dial = [&] (juce::Point<float> c, float deg, const juce::String& label)
+        {
+            const float r = 20.0f;
+            g.setColour (palette (juce::Colours::white).withAlpha (0.15f));
+            g.drawEllipse (juce::Rectangle<float> (2 * r, 2 * r).withCentre (c), 2.0f);
+            // 0° = the rising zero crossing: at 9 o'clock... drawn as a phasor, 0° pointing right, turning anticlockwise
+            const float a = juce::degreesToRadians (deg);
+            const juce::Point<float> tip (c.x + r * std::cos (a), c.y - r * std::sin (a));
+            g.setColour (palette (lime));
+            g.drawLine (juce::Line<float> (c, tip), 2.5f);
+            g.fillEllipse (juce::Rectangle<float> (7.0f, 7.0f).withCentre (tip));
+            g.setColour (palette (cream));
+            g.setFont (gk::GrooveFonts::font (13.0f));
+            g.drawText (label, juce::Rectangle<float> (80.0f, 16.0f).withCentre ({ c.x, c.y + r + 12.0f }), juce::Justification::centred);
+        };
+        auto dotOnWave = [&] (float x, float phaseDeg)
+        {
+            const float y = mid - amp * std::sin (juce::degreesToRadians (phaseDeg));
+            g.setColour (palette (cream).withAlpha (0.4f + 0.6f * pulse));
+            g.fillEllipse (juce::Rectangle<float> (11.0f, 11.0f).withCentre ({ x, y }));
+        };
+        g.setColour (palette (juce::Colours::white).withAlpha (0.08f));
+        g.drawHorizontalLine (juce::roundToInt (mid), m.getX(), m.getRight());
+        g.setFont (gk::GrooveFonts::font (10.5f));
+        const auto note = area.removeFromBottom (14.0f);
+        switch (explainKnob)
+        {
+            case explainTarget:
+            {
+                sine (0.0f, 0.0f, palette (cream).withAlpha (0.25f), 1.2f, true); // 0°: rising through zero on the kick
+                sine (target, 0.0f, palette (lime), 2.4f, false);
+                kickMark();
+                dotOnWave (kickX, target);
+                dial ({ m.getRight() - 34.0f, m.getY() + 26.0f }, target, juce::String (juce::roundToInt (target)) + fr ("\xc2\xb0"));
+                g.setColour (palette (cream).withAlpha (0.6f));
+                g.drawText (fr ("dashed: 0\xc2\xb0, the sub rising through zero on the kick (the usual)"), note, juce::Justification::centredLeft);
+                break;
+            }
+            case explainOffset:
+            {
+                const float pxPerMs = cycle * hz / 1000.0f;
+                const float shift = juce::jlimit (-m.getWidth() * 0.3f, m.getWidth() * 0.3f, offset * pxPerMs);
+                sine (target, 0.0f, palette (cream).withAlpha (0.25f), 1.2f, true); // locked, no offset
+                sine (target, shift, palette (lime), 2.4f, false);
+                kickMark();
+                // the arrow from where it was to where it goes
+                const float y = m.getY() + 8.0f;
+                if (std::abs (shift) > 3.0f)
+                {
+                    juce::Path arrow;
+                    arrow.addArrow (juce::Line<float> (kickX, y, kickX + shift, y), 2.0f, 9.0f, 9.0f);
+                    g.setColour (palette (orange));
+                    g.fillPath (arrow);
+                }
+                g.setColour (palette (cream));
+                g.setFont (gk::GrooveFonts::font (13.0f));
+                g.drawText ((offset >= 0.05f ? "+" : "") + num (offset, 1) + " ms " + (offset > 0.05f ? "(later)" : offset < -0.05f ? "(earlier)" : ""),
+                            juce::Rectangle<float> (150.0f, 16.0f).withCentre ({ kickX + shift * 0.5f, y + 14.0f }), juce::Justification::centred);
+                g.setColour (palette (cream).withAlpha (0.6f));
+                g.setFont (gk::GrooveFonts::font (10.5f));
+                g.drawText (fr ("dashed: where the lock puts the sub \xc2\xb7 lime: moved by OFFSET (") + num (hz, 0) + " Hz)", note, juce::Justification::centredLeft);
+                break;
+            }
+            case explainSubCut:
+            {
+                // a frequency axis 20..500 Hz (log): what is locked, the cut, the note now
+                auto xOf = [&] (float f) { return m.getX() + m.getWidth() * std::log (f / 20.0f) / std::log (500.0f / 20.0f); };
+                const float base = m.getBottom() - 14.0f, top = m.getY() + 10.0f;
+                juce::Path resp;
+                for (int i = 0; i <= 160; ++i)
+                {
+                    const float f = 20.0f * std::pow (25.0f, (float) i / 160.0f);
+                    const float level = f <= cut ? 1.0f : juce::jmax (0.0f, 1.0f - (f - cut) / 180.0f);
+                    const float x = xOf (f), y = base - (base - top) * level;
+                    if (i == 0)
+                        resp.startNewSubPath (x, y);
+                    else
+                        resp.lineTo (x, y);
+                }
+                juce::Path fill (resp);
+                fill.lineTo (xOf (500.0f), base);
+                fill.lineTo (xOf (20.0f), base);
+                fill.closeSubPath();
+                g.setColour (palette (lime).withAlpha (0.18f));
+                g.fillPath (fill);
+                g.setColour (palette (lime));
+                g.strokePath (resp, juce::PathStrokeType (2.2f));
+                g.setColour (palette (juce::Colours::white).withAlpha (0.25f));
+                g.drawHorizontalLine (juce::roundToInt (base), m.getX(), m.getRight());
+                g.setFont (gk::GrooveFonts::font (9.5f));
+                for (float f : { 20.0f, 50.0f, 100.0f, 200.0f, 500.0f })
+                {
+                    g.setColour (palette (cream).withAlpha (0.5f));
+                    g.drawText (juce::String (juce::roundToInt (f)), juce::Rectangle<float> (30.0f, 12.0f).withCentre ({ juce::jlimit (m.getX() + 10.0f, m.getRight() - 10.0f, xOf (f)), base + 8.0f }),
+                                juce::Justification::centred);
+                }
+                dashed (g, xOf (cut), top, base, 0.8f);
+                g.setColour (palette (cream));
+                g.setFont (gk::GrooveFonts::font (13.0f));
+                g.drawText ("SUB CUT " + juce::String (juce::roundToInt (cut)) + " Hz", juce::Rectangle<float> (130.0f, 16.0f).withCentre ({ xOf (cut), top - 2.0f }), juce::Justification::centred);
+                if (f0 > 1.0f)
+                {
+                    const bool locked = f0 <= cut * 1.05f;
+                    const float x = xOf (juce::jlimit (20.0f, 500.0f, f0));
+                    g.setColour (palette (locked ? juce::Colour (0xff3ddc84) : juce::Colour (0xffff4d4d)).withAlpha (0.5f + 0.5f * pulse));
+                    g.fillEllipse (juce::Rectangle<float> (12.0f, 12.0f).withCentre ({ x, base - (base - top) * 0.5f }));
+                    g.setFont (gk::GrooveFonts::font (11.0f));
+                    g.drawText ("your note " + num (f0, 0) + " Hz: " + (locked ? "locked" : "above: not locked"),
+                                juce::Rectangle<float> (170.0f, 14.0f).withCentre ({ juce::jlimit (m.getX() + 85.0f, m.getRight() - 85.0f, x), base - (base - top) * 0.5f - 16.0f }),
+                                juce::Justification::centred);
+                }
+                g.setColour (palette (cream).withAlpha (0.6f));
+                g.setFont (gk::GrooveFonts::font (10.5f));
+                g.drawText ("only the fundamental under the cut is turned, the rest is never touched", note, juce::Justification::centredLeft);
+                break;
+            }
+            case explainWaveStart:
+            default:
+            {
+                // the cycle turned by WAVE START, on top of the lock: the dashed one without it
+                sine (target, 0.0f, palette (cream).withAlpha (0.25f), 1.2f, true);
+                sine (target - start, 0.0f, palette (lime), 2.4f, false);
+                kickMark();
+                dotOnWave (kickX, target - start);
+                dial ({ m.getRight() - 34.0f, m.getY() + 26.0f }, -start, juce::String (juce::roundToInt (start)) + fr ("\xc2\xb0"));
+                g.setColour (palette (cream).withAlpha (0.6f));
+                g.drawText (fr ("dashed: without it \xc2\xb7 works with LOCK off too: a colour, not a fix"), note, juce::Justification::centredLeft);
+                break;
+            }
+        }
     }
 
     //==========================================================================
@@ -601,6 +841,8 @@ private:
     std::int64_t endTime = 0;
     std::array<std::int64_t, 4> kicks { -1, -1, -1, -1 };
     juce::Path curvePath, wavePath;
+    int explainKnob = -1;
+    double explainLeft = 0.0, explainTime = 0.0;
     std::vector<Node> edit;
     int hover = -1, dragging = -1;
     float lastY = 0.0f;
@@ -725,7 +967,7 @@ public:
           << "mono sum " << fr ("\xe2\x88\x92") << num (tel.monoSumLossDb.load (std::memory_order_relaxed), 1) << " dB" << dot
           << "f0 " << (f0 > 1.0f ? num (f0, 1) + " Hz" : juce::String ("--")) << dot
           << (tel.linkSlot.load (std::memory_order_relaxed) >= 0
-              ? "link " + proc.getLinkChannelParameter().getCurrentChoiceName() + ": " + proc.getDsp().linkName()
+              ? "link " + proc.getLinkChannelParameter().getCurrentChoiceName() + ": " + proc.getDsp().linkName() + " (" + juce::String (tel.linkKicks.load (std::memory_order_relaxed)) + " kicks)"
                     + (proc.getDsp().linkSendersOnChannel() > 1 ? " (" + juce::String (proc.getDsp().linkSendersOnChannel()) + " Sends on it!)" : juce::String())
                     + (proc.getDsp().linkLateKicks() > 0 ? " (late kicks: " + juce::String (proc.getDsp().linkLateKicks()) + ")" : juce::String()) + dot
               : juce::String())
@@ -885,8 +1127,8 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
     addToCanvas (*mode, { 492, 332, 80, 38 });
 
     trigger = std::make_unique<gk::ChoiceSelector> (p.getTriggerParameter(), "TRIGGER", orange, pal);
-    trigger->setTooltip ("Auto: the kick on the sidechain, else Kick Lock Send's (put it on the kick's track), else the host's beats. "
-                        "Sidechain: the sidechain only. Beat: the tempo only. Link: Kick Lock Send only.");
+    trigger->setTooltip ("Auto: the kicks of Kick Lock Send on the same LINK number (put it on the kick's track), else the host's beats. "
+                        "Link: Kick Lock Send only. Beat: the tempo only. Sidechain: the host's sidechain routing only.");
     addToCanvas (*trigger, { 210, 280, 84, 38 });
     linkSel = std::make_unique<gk::ChoiceSelector> (p.getLinkChannelParameter(), "LINK", lime, pal);
     linkSel->setTooltip ("The Kick Lock Send this one listens to: the same LINK number on the kick's track (0 to 10).");
@@ -917,6 +1159,12 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
 
 KickLockEditor::~KickLockEditor() = default;
 
+void KickLockEditor::setPreviewExplanation (int which)
+{
+    scope->explain (which, 0.0);
+    scope->repaint();
+}
+
 void KickLockEditor::setPreviewStatus (int st, int kicks)
 {
     previewStatus = st;
@@ -933,6 +1181,19 @@ void KickLockEditor::editorTick (double dt)
     status->update (previewStatus);
     gauge->update (previewStatus, snap);
     wave->update (snap ? 0.0 : dt, previewStatus, snap);
+    // TARGET, OFFSET, SUB CUT, WAVE START (knobs 0..3): touched, hovered or
+    // automated, the scope explains what it does (Alan: "trop obscur")
+    {
+        int which = -1;
+        for (int k = 0; k < 4 && k < (int) knobs.size(); ++k)
+        {
+            const float v = knobs[(size_t) k]->getParameter().getValue();
+            if (knobs[(size_t) k]->isMouseOverOrDragging() || (lastKnobValues[(size_t) k] >= 0.0f && std::abs (v - lastKnobValues[(size_t) k]) > 1.0e-5f))
+                which = k;
+            lastKnobValues[(size_t) k] = v;
+        }
+        scope->explain (which, snap ? 0.0 : dt);
+    }
     scope->update();
     if (snap || ++frameCount % 4 == 0) // the numbers: 15 a second is plenty to read
         metrics->update();

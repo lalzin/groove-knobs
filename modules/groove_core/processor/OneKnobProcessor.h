@@ -128,6 +128,10 @@ struct OneKnobConfig
         the dry path, no fade-in — a host's reset at play no longer leaves the
         first beat untouched (Kick Lock). */
     bool wetValidAtOnce = false;
+    /** The engine's output whatever the main knob (no dry crossfade at 0 /
+        the centre): its own small knobs act even when the big one rests; the
+        engine is then exactly transparent itself at rest (Kick Lock Send). */
+    bool alwaysWet = false;
     double crossfadeMinSeconds = 0.010;   // fastest allowed full dry <-> wet transition
     double tailSeconds = 0.2;
     int editorBaseWidth = 420, editorBaseHeight = 520;

@@ -19,6 +19,8 @@ struct KickTelemetry
     std::atomic<int> kickEvents { 0 }, status { (int) Status::noKick };
     std::atomic<int> triggerSource { 0 }; // what triggered the last event: 0 nothing, 1 the sidechain's kick, 2 the host's beat, 3 the link
     std::atomic<int> linkSlot { -1 };     // the Kick Lock Send followed (-1: none)
+    std::atomic<int> linkKicks { 0 };     // kicks received from it (diagnosis)
+    std::atomic<bool> hostPlaying { false };
     std::atomic<std::int64_t> lastKickSample { -1 }, outputClock { 0 };
     std::array<std::atomic<std::int64_t>, 4> recentKicks { { -1, -1, -1, -1 } }; // the last kicks (slot = count % 4)
     // oscilloscope: 2 s of the corrected sub, the output and the kick (1 in 8)
@@ -50,9 +52,10 @@ public:
     static constexpr int lockSwitch = 0;
     static constexpr int targetKnob = 0, offsetKnob = 1, subCutKnob = 2, depthKnob = 3, waveStartKnob = 4, thresholdKnob = 5;
     static constexpr int shapeChoice = 0, releaseChoice = 1, modeChoice = 2, triggerChoice = 3, linkChoice = 4;
-    /** TRIGGER: Auto = the sidechain's kicks, else Kick Lock Send's (the link), else the host's beats
-        (each takes over after 2 s without the one before); Sidechain; Beat; Link. */
-    enum Trigger { triggerAuto, triggerSidechain, triggerBeat, triggerLink };
+    /** TRIGGER: Auto = Kick Lock Send's kicks (the link) when a Send is on its LINK number, else the
+        host's beats; Link (only); Beat (only); Sidechain (the host's sidechain routing, only when chosen:
+        Alan's Live did not route it, and anything on it must not hijack the link). */
+    enum Trigger { triggerAuto, triggerLink, triggerBeat, triggerSidechain };
     enum LockMode { continuous, transition };
     enum Shape { exponential, linear, sCurve, bounce, custom };
 

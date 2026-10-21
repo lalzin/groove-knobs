@@ -31,6 +31,7 @@ struct Case
     double kickOffset = 0.0;
     int kicks = 1; // the mascot's step (its pose in the dance)
     bool customCurve = false, stopped = false;
+    int explain = -1; // the scope explaining TARGET / OFFSET / SUB CUT / WAVE START
 };
 
 juce::Image shoot (const Case& c, int& statusOut)
@@ -41,6 +42,8 @@ juce::Image shoot (const Case& c, int& statusOut)
     proc.setNonRealtime (true);
     setParam (proc.getLockParameter(), c.lock ? 1.0f : 0.0f);
     setParam (proc.getLockModeParameter(), c.transition ? 1.0f : 0.0f);
+    if (c.sidechain) // the kick fed through the sidechain bus here (in a song: Kick Lock Send)
+        setParam (proc.getTriggerParameter(), (float) kl::KickLockDsp::triggerSidechain);
     if (c.customCurve)
     {
         // a pumping curve drawn by hand: a fast dip, a hold, a late swell
@@ -73,6 +76,13 @@ juce::Image shoot (const Case& c, int& statusOut)
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     auto* editor = dynamic_cast<kl::KickLockEditor*> (ed.get());
     editor->setPreviewStatus (statusOut, c.kicks);
+    if (c.explain >= 0)
+    {
+        setParam (proc.getTargetPhaseParameter(), 90.0f);
+        setParam (proc.getOffsetParameter(), 4.0f);
+        setParam (proc.getWaveStartParameter(), 60.0f);
+        editor->setPreviewExplanation (c.explain);
+    }
     return editor->createComponentSnapshot (editor->getLocalBounds(), true, juce::jmax (1.0f, c.scale / 2.0f));
 }
 
@@ -105,6 +115,10 @@ int main (int argc, char** argv)
     { Case c; c.slug = "stopped"; c.label = "no sidechain, host stopped"; c.sidechain = false; c.stopped = true; cases.push_back (c); }
     { Case c; c.slug = "bypass"; c.label = "bypass"; c.bypass = true; cases.push_back (c); }
     { Case c; c.slug = "transition"; c.label = "MODE Transition"; c.transition = true; c.kicks = 2; cases.push_back (c); }
+    { Case c; c.slug = "explain_target"; c.label = "TARGET 90 deg explained"; c.explain = 0; cases.push_back (c); }
+    { Case c; c.slug = "explain_offset"; c.label = "OFFSET +4 ms explained"; c.explain = 1; cases.push_back (c); }
+    { Case c; c.slug = "explain_subcut"; c.label = "SUB CUT explained"; c.explain = 2; cases.push_back (c); }
+    { Case c; c.slug = "explain_wavestart"; c.label = "WAVE START 60 deg explained"; c.explain = 3; cases.push_back (c); }
     { Case c; c.slug = "custom_curve"; c.label = "custom ducking curve"; c.customCurve = true; cases.push_back (c); }
 
     constexpr int w = 760, h = 480, pad = 12, label = 28, cols = 3;

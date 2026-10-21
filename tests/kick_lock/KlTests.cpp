@@ -32,6 +32,9 @@ std::unique_ptr<KickLockProcessor> makeKl (double sr, float mix, bool lock, floa
     setParam (p->getMixParameter(), mix);
     setParam (p->getLockParameter(), lock ? 1.0f : 0.0f);
     setParam (p->getDepthParameter(), depth);
+    // most tests feed the kick through the sidechain bus: TRIGGER Sidechain
+    // (Auto follows Kick Lock Send, else the tempo; tested on their own)
+    setParam (p->getTriggerParameter(), (float) KickLockDsp::triggerSidechain);
     p->prepareToPlay (sr, block);
     return p;
 }
@@ -671,19 +674,24 @@ TEST_CASE ("KL 21. No kick, the host playing: ducking and lock on the beats (TRI
         CHECK (p->getDsp().getTelemetry().kickEvents.load() == 1);
         CHECK (p->getDsp().getTelemetry().lastKickSample.load() == 0);
     }
-    // Auto with a kick on the sidechain (off the beat by 0.1 s): the kicks lead, not the beats
+    // a kick on the sidechain (off the beat by 0.1 s): Sidechain follows it;
+    // Auto does not (the host's sidechain only when chosen): the beats lead
+    for (int trig : { (int) KickLockDsp::triggerSidechain, (int) KickLockDsp::triggerAuto })
     {
         auto p = makeKl (sr, 1.0f, false, 1.0f);
+        setParam (p->getTriggerParameter(), (float) trig);
+        p->prepareToPlay (sr, 512);
         const auto k = kicks (seconds, sr, bpm, 0.1);
         const auto out = run (*p, b, &k, { 512 }, bpm);
         const int L = p->getLatencySamples();
-        for (double t : kickTimes (seconds, bpm, 0.1))
+        const double offset = trig == (int) KickLockDsp::triggerSidechain ? 0.1 : 0.0;
+        for (double t : kickTimes (seconds, bpm, offset))
             if (t > 1.0 && t < seconds - 0.3)
             {
-                INFO ("kick at " << t << " s");
+                INFO ("trigger " << trig << ", expected at " << t << " s");
                 CHECK (std::abs (lowestNear (out, L, t) - t) < 0.012);
             }
-        CHECK (p->getDsp().getTelemetry().triggerSource.load() == 1);
+        CHECK (p->getDsp().getTelemetry().triggerSource.load() == (trig == (int) KickLockDsp::triggerSidechain ? 1 : 2));
     }
 }
 
@@ -770,6 +778,8 @@ TEST_CASE ("KL 22. Link: Kick Lock Send drives Kick Lock, on time or a buffer la
         send.setNonRealtime (true);
         send.prepareToPlay (sr, 512);
         auto p = makeKl (sr, 1.0f, true, 1.0f);
+        setParam (p->getTriggerParameter(), (float) KickLockDsp::triggerAuto);
+        p->prepareToPlay (sr, 512);
         gk::OfflinePlayHead ph;
         ph.bpm = bpm;
         ph.sampleRate = sr;
@@ -917,8 +927,8 @@ TEST_CASE ("KL 27. LINK channels: each Kick Lock follows its own Send; two Sends
         sp->setNonRealtime (true);
         sp->prepareToPlay (sr, 512);
     }
-    setParam (*dynamic_cast<juce::RangedAudioParameter*> (sendA.getParameters()[1]), 1.0f); // LINK 1 (the choice after SENSITIVITY)
-    setParam (*dynamic_cast<juce::RangedAudioParameter*> (sendB.getParameters()[1]), 2.0f); // LINK 2
+    setParam (sendA.getLinkChannelParameter(), 1.0f); // LINK 1
+    setParam (sendB.getLinkChannelParameter(), 2.0f); // LINK 2
     auto lockA = makeKl (sr, 1.0f, true), lockB = makeKl (sr, 1.0f, true);
     setParam (lockA->getLinkChannelParameter(), 1.0f);
     setParam (lockB->getLinkChannelParameter(), 2.0f);
@@ -967,7 +977,7 @@ TEST_CASE ("KL 27. LINK channels: each Kick Lock follows its own Send; two Sends
     CHECK (onGrid (trigB, 30.0 / bpm) == (int) trigB.size());  // only Send 2's
     CHECK (lockA->getDsp().linkSendersOnChannel() == 1);
     // Send 2 moved to LINK 1 as well: a conflict, seen on both sides
-    setParam (*dynamic_cast<juce::RangedAudioParameter*> (sendB.getParameters()[1]), 1.0f);
+    setParam (sendB.getLinkChannelParameter(), 1.0f);
     for (int pos = b.getNumSamples(); pos < b.getNumSamples() + 48000; pos += 512)
     {
         ph.samplePosition = pos;
@@ -1003,6 +1013,107 @@ TEST_CASE ("KL 28. A host's reset at play: the kick on the very first sample is 
         atFirst = juce::jmax (atFirst, std::abs (out.getSample (0, i)));
     INFO ("bass level at the first kick: " << atFirst);
     CHECK (atFirst < 0.05f);
+}
+
+TEST_CASE ("KL 29. Kick Lock Send's shaper: untouched at rest, PUNCH and SUSTAIN shape the kick", "[kl][send]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 2.0;
+    const auto k = kicks (seconds, sr, bpm, 0.1);
+    auto render = [&] (float punch, float sustain)
+    {
+        kls::KickSendProcessor send;
+        send.setNonRealtime (true);
+        setParam (send.getPunchParameter(), 0.5f + 0.5f * punch); // the knob: 0 .. 1, its centre at rest
+        setParam (send.getSustainParameter(), sustain);
+        send.prepareToPlay (sr, 512);
+        auto out = run (send, k, nullptr, { 512 }, bpm);
+        return std::make_pair (std::move (out), send.getLatencySamples());
+    };
+    // at rest: the kick, delayed, bit for bit
+    {
+        const auto [out, L] = render (0.0f, 0.0f);
+        bool exact = true;
+        int first = -1;
+        for (int i = L + (int) (0.01 * sr); i < out.getNumSamples(); ++i)
+            if (! juce::exactlyEqual (out.getSample (0, i), k.getSample (0, i - L)))
+            {
+                if (first < 0)
+                    first = i;
+                exact = false;
+            }
+        INFO ("first difference at " << first << ": " << (first >= 0 ? out.getSample (0, first) : 0.0f) << " vs " << (first >= 0 ? k.getSample (0, first - L) : 0.0f));
+        CHECK (exact);
+    }
+    // the attack (first 8 ms of each kick) and the tail (120..250 ms) against the original
+    auto energy = [&] (const Buffer& x, int L, double from, double to)
+    {
+        double e = 0.0;
+        for (double t : kickTimes (seconds, bpm, 0.1))
+            if (t + to < seconds)
+                for (int i = (int) ((t + from) * sr); i < (int) ((t + to) * sr); ++i)
+                    e += (double) x.getSample (0, i + L) * x.getSample (0, i + L);
+        return e;
+    };
+    const auto attackRef = energy (k, 0, 0.0, 0.008), tailRef = energy (k, 0, 0.12, 0.25);
+    auto db = [] (double a, double b) { return 10.0 * std::log10 (a / b); };
+    {
+        const auto [up, L] = render (1.0f, 0.0f);
+        const auto [down, L2] = render (-1.0f, 0.0f);
+        INFO ("PUNCH +1: attack " << db (energy (up, L, 0.0, 0.008), attackRef) << " dB; -1: " << db (energy (down, L2, 0.0, 0.008), attackRef) << " dB");
+        CHECK (db (energy (up, L, 0.0, 0.008), attackRef) > 3.0);
+        CHECK (db (energy (down, L2, 0.0, 0.008), attackRef) < -3.0);
+    }
+    {
+        const auto [longer, L] = render (0.0f, 1.0f);
+        const auto [shorter, L2] = render (0.0f, -1.0f);
+        INFO ("SUSTAIN +1: tail " << db (energy (longer, L, 0.12, 0.25), tailRef) << " dB; -1: " << db (energy (shorter, L2, 0.12, 0.25), tailRef) << " dB");
+        CHECK (db (energy (longer, L, 0.12, 0.25), tailRef) > 3.0);
+        CHECK (db (energy (shorter, L2, 0.12, 0.25), tailRef) < -3.0);
+    }
+}
+
+TEST_CASE ("KL 30. Link in Auto over 10 s: kicks to the end, Send's kick in Kick Lock's scope", "[kl][link]")
+{
+    kl::KickLink::removeBlock();
+    const double sr = 48000.0, bpm = 124.0, seconds = 10.0;
+    const auto b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr);
+    const auto kickTrack = kicks (seconds, sr, bpm, 0.0);
+    kls::KickSendProcessor send;
+    send.setNonRealtime (true);
+    send.prepareToPlay (sr, 512);
+    auto p = makeKl (sr, 1.0f, true, 1.0f);
+    setParam (p->getTriggerParameter(), (float) KickLockDsp::triggerAuto);
+    p->prepareToPlay (sr, 512);
+    gk::OfflinePlayHead ph;
+    ph.bpm = bpm;
+    ph.sampleRate = sr;
+    ph.playing = true;
+    send.setPlayHead (&ph);
+    p->setPlayHead (&ph);
+    Buffer kickIo (kickTrack), bassIo (b);
+    juce::MidiBuffer midi;
+    float scopeKickPeak = 0.0f;
+    for (int pos = 0; pos + 512 <= b.getNumSamples(); pos += 512)
+    {
+        ph.samplePosition = pos;
+        Buffer kv (kickIo.getArrayOfWritePointers(), 2, pos, 512), bv (bassIo.getArrayOfWritePointers(), 2, pos, 512);
+        send.processBlock (kv, midi);
+        p->processBlock (bv, midi);
+    }
+    auto& tel = p->getDsp().getTelemetry();
+    for (int i = 0; i < tel.scopeSize; ++i)
+        scopeKickPeak = juce::jmax (scopeKickPeak, std::abs (tel.scopeKick[(size_t) i].load()));
+    send.setPlayHead (nullptr);
+    p->setPlayHead (nullptr);
+    const int expected = (int) kickTimes (seconds - 0.05, bpm, 0.0).size();
+    INFO ("kicks followed " << tel.kickEvents.load() << " of " << expected << ", received " << tel.linkKicks.load() << ", status " << tel.status.load()
+          << ", last at " << tel.lastKickSample.load() / sr << " s; the kick in the scope peaks at " << scopeKickPeak);
+    CHECK (tel.kickEvents.load() >= expected - 1);
+    CHECK (tel.lastKickSample.load() / sr > seconds - 0.6);
+    CHECK (tel.triggerSource.load() == 3);
+    CHECK ((Status) tel.status.load() != Status::noKick);
+    CHECK (scopeKickPeak > 0.3f); // Send's kick (0.8 peak), not a flat line
+    kl::KickLink::removeBlock();
 }
 
 TEST_CASE ("KL 17. CPU: stereo bass + stereo sidechain, LOCK on, 48 kHz", "[kl][cpu]")

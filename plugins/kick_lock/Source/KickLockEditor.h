@@ -27,6 +27,8 @@ public:
 
     /** Screenshots: the mascot and the status show this status (-1 = live). */
     void setPreviewStatus (int status, int kicks);
+    /** Screenshots: the scope explains TARGET (0), OFFSET (1), SUB CUT (2) or WAVE START (3). */
+    void setPreviewExplanation (int which);
 
 protected:
     void editorTick (double dt) override;
@@ -51,5 +53,6 @@ private:
     std::vector<std::unique_ptr<gk::SmallKnob>> knobs;
     std::unique_ptr<juce::Component> panelsHolder;
     int previewStatus = -1, frameCount = 0;
+    std::array<float, 4> lastKnobValues { -1.0f, -1.0f, -1.0f, -1.0f };
 };
 } // namespace kl
