@@ -215,6 +215,7 @@ void KickLockDsp::reset()
     lastSidechainKick = -1000000;
     lastLinkKick = -1000000;
     linkPendingCount = 0;
+    stretchCount = linkWaitingCount = 0;
     lateKicks = 0;
     noteFast = notePeak = 0.0f;
     std::fill (noteRing.begin(), noteRing.end(), 0.0f);
@@ -671,28 +672,86 @@ void KickLockDsp::scheduleLink (std::int64_t onset)
     linkPending[(size_t) linkPendingCount++] = onset;
 }
 
-void KickLockDsp::pollLink (const gk::BlockTiming& timing)
+bool KickLockDsp::placeLinkKick (double ppq, std::int64_t& onset) const noexcept
+{
+    // the newest stretch of the song holding this position, near now (an
+    // older loop pass holds it too, seconds ago: not that one); a stretch
+    // left by a jump still reaches 0.3 s past its end (the kick's track not
+    // yet jumped when its kick was found)
+    const auto near = (std::int64_t) (0.3 * sampleRate);
+    const int n = juce::jmin (stretchCount, (int) stretches.size());
+    for (int k = 0; k < n; ++k)
+    {
+        const auto& st = stretches[(size_t) ((stretchCount - 1 - k) % (int) stretches.size())];
+        const double before = 0.01 * sampleRate * st.bps, after = (k == 0 ? 0.01 : 0.3) * sampleRate * st.bps;
+        const double end = st.ppq0 + (double) st.length * st.bps;
+        if (ppq < st.ppq0 - before || ppq > end + after)
+            continue;
+        const auto at = st.clock0 + (std::int64_t) std::llround ((ppq - st.ppq0) / st.bps);
+        if (clock - at < near && at - clock < near)
+        {
+            onset = at;
+            return true;
+        }
+    }
+    return false;
+}
+
+void KickLockDsp::pollLink (const gk::BlockTiming& timing, int numSamples)
 {
     telemetry.hostPlaying.store (timing.isPlaying, std::memory_order_relaxed);
     const bool wanted = trigger == triggerLink || trigger == triggerAuto;
     if (! wanted || ! timing.isPlaying || timing.beatsPerSample <= 0.0)
     {
         telemetry.linkSlot.store (wanted ? link.poll (linkChannel, [] (double, float) {}) : -1, std::memory_order_relaxed);
+        stretchCount = linkWaitingCount = 0;
         return;
     }
     const double start = timing.beatsAtStart, bps = timing.beatsPerSample;
+    // this block on the song: the same stretch as the last one if it follows
+    // it (same tempo, no jump), else a new one
+    if (stretchCount > 0)
+    {
+        auto& last = stretches[(size_t) ((stretchCount - 1) % (int) stretches.size())];
+        if (last.clock0 + last.length == clock && juce::exactlyEqual (last.bps, bps)
+            && std::abs (last.ppq0 + (double) last.length * last.bps - start) < 0.5 * bps)
+            last.length += numSamples;
+        else
+            stretches[(size_t) (stretchCount++ % (int) stretches.size())] = { clock, numSamples, start, bps };
+    }
+    else
+        stretches[(size_t) (stretchCount++ % (int) stretches.size())] = { clock, numSamples, start, bps };
     // a kick can come up to (latency - the crossfade) after its own time and
     // still be followed exactly (its cycle measured, the crossfade over before
     // it is heard); later (should not happen), it still ducks, late
     const auto budget = (std::int64_t) (latency - fadeLength - (int) std::round (0.0015 * sampleRate));
-    const int slot = link.poll (linkChannel, [&] (double ppq, float)
+    auto take = [&] (std::int64_t onset)
     {
-        const auto onset = clock + (std::int64_t) std::llround ((ppq - start) / bps);
-        telemetry.linkKicks.fetch_add (1, std::memory_order_relaxed);
         if (clock - onset > budget)
             ++lateKicks;
-        if (clock - onset < (std::int64_t) (0.3 * sampleRate)) // a very late one is no use
-            scheduleLink (onset);
+        scheduleLink (onset);
+    };
+    // kicks not placed yet (the kick's track jumped back before this one): again
+    for (int n = 0; n < linkWaitingCount;)
+    {
+        std::int64_t onset = 0;
+        if (placeLinkKick (linkWaiting[(size_t) n].ppq, onset))
+            take (onset);
+        else if (clock < linkWaiting[(size_t) n].until)
+        {
+            ++n;
+            continue;
+        }
+        linkWaiting[(size_t) n] = linkWaiting[(size_t) --linkWaitingCount];
+    }
+    const int slot = link.poll (linkChannel, [&] (double ppq, float)
+    {
+        telemetry.linkKicks.fetch_add (1, std::memory_order_relaxed);
+        std::int64_t onset = 0;
+        if (placeLinkKick (ppq, onset))
+            take (onset);
+        else if (linkWaitingCount < (int) linkWaiting.size())
+            linkWaiting[(size_t) linkWaitingCount++] = { ppq, clock + (std::int64_t) (0.3 * sampleRate) };
     });
     telemetry.linkSlot.store (slot, std::memory_order_relaxed);
 }
@@ -871,7 +930,7 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
     const float threshold = dbToGain (thresholdDb);
     const auto noKickSamples = (std::int64_t) (noKickSeconds * sampleRate);
     float kickPeak = 0.0f, gainMin = 1.0f;
-    pollLink (timing);
+    pollLink (timing, numSamples);
 
     for (int i = 0; i < numSamples; ++i)
     {

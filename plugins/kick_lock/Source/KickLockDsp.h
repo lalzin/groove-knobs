@@ -182,7 +182,18 @@ private:
     std::int64_t noteDeadUntil = -1, lastNoteStart = -1000000;
     int noteOnsets = 0;
     int linkSlack = 0, lateKicks = 0;
-    void pollLink (const gk::BlockTiming& timing);
+    void pollLink (const gk::BlockTiming& timing, int numSamples);
+    // where the song's positions fell on this plug-in's own clock lately: a
+    // loop restart (or a locate) jumps them back; a kick of the link is placed
+    // by the stretch it belongs to (the kick's track may jump a block before
+    // or after this one, its kick come in a block later)
+    struct Stretch { std::int64_t clock0 = 0, length = 0; double ppq0 = 0.0, bps = 0.0; };
+    std::array<Stretch, 32> stretches {};
+    int stretchCount = 0;
+    struct WaitingKick { double ppq = 0.0; std::int64_t until = 0; };
+    std::array<WaitingKick, 16> linkWaiting {};
+    int linkWaitingCount = 0;
+    bool placeLinkKick (double ppq, std::int64_t& onset) const noexcept;
     void scheduleLink (std::int64_t onset);
 
 public:

@@ -1305,6 +1305,107 @@ TEST_CASE ("KL 33. A sub melody: each note locked, wherever it starts against th
     }
 }
 
+namespace
+{
+/** A host looping `loopBeats` (the position jumps back to 0); `shift`: this
+    track wraps that many samples early (late if < 0) — the same timeline, a
+    host compensating its tracks' delays may not jump them at the same block. */
+struct LoopPlayHead final : public juce::AudioPlayHead
+{
+    double bpm = 124.0, sampleRate = 48000.0, loopBeats = 8.0;
+    juce::int64 samplePosition = 0, shift = 0;
+    juce::Optional<PositionInfo> getPosition() const override
+    {
+        PositionInfo info;
+        info.setBpm (bpm);
+        info.setIsPlaying (true);
+        const double beats = (double) samplePosition / sampleRate * bpm / 60.0, early = (double) shift / sampleRate * bpm / 60.0;
+        info.setPpqPosition (beats - loopBeats * std::floor ((beats + early) / loopBeats + 1.0e-9));
+        info.setTimeInSamples (samplePosition);
+        info.setIsLooping (true);
+        info.setLoopPoints (juce::AudioPlayHead::LoopPoints { 0.0, loopBeats });
+        info.setTimeSignature (juce::AudioPlayHead::TimeSignature { 4, 4 });
+        return info;
+    }
+};
+} // namespace
+
+TEST_CASE ("KL 34. Link in a host loop: every kick followed after each loop restart", "[kl][link]")
+{
+    // Alan: in an Ableton loop, after the restart "the plug-in forgets the
+    // link". A 2-bar loop with a kick on each beat; both orders of the
+    // tracks; the kick's track wrapping a block before / after the bass's
+    const double sr = 48000.0, bpm = 124.0, seconds = 12.0, hz = 55.0;
+    const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr);
+    const auto kickTrack = kicks (seconds, sr, bpm, 0.0);
+    const auto times = kickTimes (seconds, bpm, 0.0);
+    for (int order : { 0, 1 })
+        for (int shiftBlocks : { 0, 1, -1 })
+        {
+            kl::KickLink::removeBlock();
+            const int block = 512;
+            kls::KickSendProcessor send;
+            send.setNonRealtime (true);
+            send.prepareToPlay (sr, block);
+            auto p = makeKl (sr, 1.0f, true, 0.0f, block);
+            setParam (p->getTriggerParameter(), (float) KickLockDsp::triggerAuto);
+            p->prepareToPlay (sr, block);
+            LoopPlayHead kickHead, bassHead;
+            kickHead.bpm = bassHead.bpm = bpm;
+            kickHead.sampleRate = bassHead.sampleRate = sr;
+            kickHead.shift = shiftBlocks * block;
+            send.setPlayHead (&kickHead);
+            p->setPlayHead (&bassHead);
+            Buffer kickIo (kickTrack), bassIo (b);
+            juce::MidiBuffer midi;
+            std::vector<std::int64_t> triggers;
+            int seenEvents = 0;
+            for (int pos = 0; pos < b.getNumSamples(); pos += block)
+            {
+                const int len = juce::jmin (block, b.getNumSamples() - pos);
+                kickHead.samplePosition = bassHead.samplePosition = pos;
+                Buffer kv (kickIo.getArrayOfWritePointers(), 2, pos, len), bv (bassIo.getArrayOfWritePointers(), 2, pos, len);
+                if (order == 0)
+                {
+                    send.processBlock (kv, midi);
+                    p->processBlock (bv, midi);
+                }
+                else
+                {
+                    p->processBlock (bv, midi);
+                    send.processBlock (kv, midi);
+                }
+                auto& tel = p->getDsp().getTelemetry();
+                const int events = tel.kickEvents.load();
+                for (int n = juce::jmax (seenEvents + 1, events - 3); n <= events; ++n)
+                    triggers.push_back (tel.recentKicks[(size_t) (n % 4)].load());
+                seenEvents = events;
+            }
+            send.setPlayHead (nullptr);
+            p->setPlayHead (nullptr);
+            INFO ("order " << order << ", the kick's track wraps " << shiftBlocks << " block(s) early");
+            int missing = 0, extra = 0;
+            for (double t : times)
+                if (t > 0.3 && t < seconds - 0.3)
+                {
+                    bool found = false;
+                    for (auto tr : triggers)
+                        found = found || std::abs ((double) tr / sr - t) < 0.002;
+                    missing += found ? 0 : 1;
+                }
+            for (auto tr : triggers)
+            {
+                bool near = false;
+                for (double t : times)
+                    near = near || std::abs ((double) tr / sr - t) < 0.002;
+                extra += near ? 0 : 1;
+            }
+            INFO (missing << " kicks missed, " << extra << " triggers off the kicks, of " << times.size());
+            CHECK (missing == 0);
+            CHECK (extra == 0);
+        }
+}
+
 TEST_CASE ("KL 17. CPU: stereo bass + stereo sidechain, LOCK on, 48 kHz", "[kl][cpu]")
 {
     const double sr = 48000.0, bpm = 124.0, seconds = 8.0;
