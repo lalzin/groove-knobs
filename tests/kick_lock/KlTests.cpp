@@ -1403,6 +1403,10 @@ TEST_CASE ("KL 34. Link in a host loop: every kick followed after each loop rest
             INFO (missing << " kicks missed, " << extra << " triggers off the kicks, of " << times.size());
             CHECK (missing == 0);
             CHECK (extra == 0);
+            // and locked on every kick, the ones after a restart too
+            const auto e = errorsAtKicks (bassIo, p->getLatencySamples(), hz, sr, times, 0.7, seconds - 0.2);
+            INFO ("phase at the kicks, worst " << maxAbs (e) << " deg");
+            CHECK (maxAbs (e) < 5.0);
         }
 }
 
