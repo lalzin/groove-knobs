@@ -6,14 +6,14 @@ namespace gk
 class OneKnobEditor::Canvas final : public juce::Component
 {
 public:
-    Canvas (const Palette& p, const juce::String& titleText, const juce::String& suite, const juce::String& company) : palette (p)
+    Canvas (const Palette& p, const juce::String& titleText, const juce::String& suite, const juce::String& company, int width) : palette (p)
     {
         // "made by" credit, top left (balances the On/Off button)
         madeByPath = GrooveFonts::textPath ("made by", 10.5f, 40.0f, 22.0f, 0.08f);
         companyPath = GrooveFonts::textPath (company.toUpperCase(), 15.0f, 40.0f, 38.0f, 0.12f);
         setOpaque (true);
-        titlePath = GrooveFonts::textPath (titleText.toUpperCase(), 40.0f, (float) baseWidth * 0.5f, 56.0f, 0.02f);
-        suitePath = GrooveFonts::textPath (suite.toUpperCase(), 13.0f, (float) baseWidth * 0.5f, 19.0f, 0.3f);
+        titlePath = GrooveFonts::textPath (titleText.toUpperCase(), 40.0f, (float) width * 0.5f, 56.0f, 0.02f);
+        suitePath = GrooveFonts::textPath (suite.toUpperCase(), 13.0f, (float) width * 0.5f, 19.0f, 0.3f);
     }
 
     /** Draw the (static) background from an image rendered once at the
@@ -207,6 +207,8 @@ private:
 OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, const MascotFactory& makeMascot)
     : AudioProcessorEditor (p),
       proc (p),
+      canvasWidth (juce::jmax (100, p.getConfig().editorWidth)),
+      canvasHeight (juce::jmax (100, p.getConfig().editorHeight)),
       palette (std::move (pal)),
       lookAndFeel (palette),
       title (std::move (t)),
@@ -215,7 +217,7 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
 {
     setLookAndFeel (&lookAndFeel);
 
-    canvas = std::make_unique<Canvas> (palette, title, proc.getConfig().suiteName, proc.getConfig().companyName);
+    canvas = std::make_unique<Canvas> (palette, title, proc.getConfig().suiteName, proc.getConfig().companyName, canvasWidth);
     addAndMakeVisible (*canvas);
 
     const auto& cfg = proc.getConfig();
@@ -292,12 +294,12 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
     }
 
     // Layout on the base canvas (see spec §8.1)
-    canvas->setBounds (0, 0, baseWidth, baseHeight);
+    canvas->setBounds (0, 0, canvasWidth, canvasHeight);
     mascot->setBounds (60, 60, 300, 170);
     // 262 = 230 (ring diameter) + room for the glow and the excitement dashes
     knob->setBounds (juce::Rectangle<int> (262, 262).withCentre ({ 210, 345 }));
     if (presetBar != nullptr)
-        presetBar->setBounds (0, 470, baseWidth, 50);
+        presetBar->setBounds (0, 470, canvasWidth, 50);
     presetTags->setBounds (juce::Rectangle<int> (200, 22).withCentre ({ 210, 448 })); // in the ring's opening
     if (toggleChips != nullptr)
         toggleChips->setBounds (juce::Rectangle<int> (200, 26).withCentre ({ 210, 448 }));
@@ -319,7 +321,7 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
         if (toggleChips != nullptr)
             toggleChips->setBounds (8, 372, 70, 80);
     }
-    power->setBounds (baseWidth - 44, 12, 32, 32);
+    power->setBounds (canvasWidth - 44, 12, 32, 32);
 
     const double frameRate = 60.0;
     uiAmount.prepare (frameRate, 0.12);
@@ -329,12 +331,12 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
     // Read the saved size first: setting the limits triggers resized().
     const float scale = juce::jlimit (minScale, maxScale, proc.editorScale.load());
     setResizable (true, true);
-    setResizeLimits (juce::roundToInt (baseWidth * minScale), juce::roundToInt (baseHeight * minScale), juce::roundToInt (baseWidth * maxScale),
-                     juce::roundToInt (baseHeight * maxScale));
+    setResizeLimits (juce::roundToInt ((float) canvasWidth * minScale), juce::roundToInt ((float) canvasHeight * minScale),
+                     juce::roundToInt ((float) canvasWidth * maxScale), juce::roundToInt ((float) canvasHeight * maxScale));
     if (auto* c = getConstrainer())
-        c->setFixedAspectRatio ((double) baseWidth / (double) baseHeight);
+        c->setFixedAspectRatio ((double) canvasWidth / (double) canvasHeight);
 
-    setSize (juce::roundToInt (baseWidth * scale), juce::roundToInt (baseHeight * scale));
+    setSize (juce::roundToInt ((float) canvasWidth * scale), juce::roundToInt ((float) canvasHeight * scale));
 }
 
 OneKnobEditor::~OneKnobEditor()
@@ -344,7 +346,7 @@ OneKnobEditor::~OneKnobEditor()
 
 void OneKnobEditor::resized()
 {
-    const float scale = juce::jlimit (minScale, maxScale, (float) getWidth() / (float) baseWidth);
+    const float scale = juce::jlimit (minScale, maxScale, (float) getWidth() / (float) canvasWidth);
     canvas->setTransform (juce::AffineTransform::scale (scale));
     proc.editorScale.store (scale);
 }
@@ -437,5 +439,15 @@ void OneKnobEditor::setBackgroundCached (bool cached)
 {
     canvas->cacheBackground = cached;
     canvas->repaint();
+}
+} // namespace gk
+
+namespace gk
+{
+void OneKnobEditor::placeMascotAndKnob (juce::Rectangle<int> mascotBounds, juce::Rectangle<int> knobBounds)
+{
+    mascot->setBounds (mascotBounds);
+    knob->setBounds (knobBounds);
+    presetTags->setVisible (false);
 }
 } // namespace gk

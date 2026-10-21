@@ -10,18 +10,26 @@ juce_add_binary_data(KickLockPresets
     SOURCES     Presets/default.json)
 set_target_properties(KickLockPresets PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-# Phaze's poses: vector placeholders until the sprite sheets arrive (ASSETS_TODO.md)
+# Phaze's poses (scripts/make_phaze_frames.sh)
+file(GLOB KL_PHAZE_FRAMES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/Assets/phaze_*.png)
+juce_add_binary_data(KickLockArt
+    HEADER_NAME KickLockArt.h
+    NAMESPACE   KLArt
+    SOURCES     ${KL_PHAZE_FRAMES})
+set_target_properties(KickLockArt PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(KickLockCode INTERFACE)
 target_sources(KickLockCode INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/KickLockDsp.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/KickLockProcessor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/KickLockEditor.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/KickLockEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/PhazeMascot.cpp)
 target_include_directories(KickLockCode INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
 target_link_libraries(KickLockCode INTERFACE
     groove::groove_core
     GrooveCoreAssets
     KickLockPresets
+    KickLockArt
     juce::juce_audio_utils
     juce::juce_dsp)
 target_compile_definitions(KickLockCode INTERFACE

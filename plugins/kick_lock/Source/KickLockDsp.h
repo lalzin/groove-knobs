@@ -21,6 +21,7 @@ struct KickTelemetry
     int scopeSize = 0;
     std::unique_ptr<std::atomic<float>[]> scopeSub, scopeKick;
     std::atomic<int> scopeWrite { 0 };
+    std::atomic<std::int64_t> scopeTime { 0 }; // output time of the last scope sample written
 };
 
 /** Kick Lock.

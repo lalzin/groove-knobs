@@ -9,7 +9,7 @@ namespace gk
 class OneKnobEditor : public juce::AudioProcessorEditor
 {
 public:
-    static constexpr int baseWidth = 420, baseHeight = 520;
+    static constexpr int baseWidth = 420, baseHeight = 520; // the default canvas (OneKnobConfig::editorWidth / Height)
     static constexpr float minScale = 0.75f, maxScale = 2.0f;
 
     using MascotFactory = std::function<std::unique_ptr<MascotComponent> (AudioFeatures&, const Palette&)>;
@@ -39,6 +39,12 @@ public:
     Palette& getPalette() noexcept { return palette; }
 
 protected:
+    /** Wide layouts: moves the mascot and the big knob (base coordinates) and
+        hides the preset tags under the knob. */
+    void placeMascotAndKnob (juce::Rectangle<int> mascotBounds, juce::Rectangle<int> knobBounds);
+    int getBaseWidth() const noexcept { return canvasWidth; }
+    int getBaseHeight() const noexcept { return canvasHeight; }
+
     /** Called every frame (and on snapshots) after the generic animation, for
         plugin-specific UI updates. */
     virtual void editorTick (double dt) { juce::ignoreUnused (dt); }
@@ -51,6 +57,7 @@ private:
     void updateFromParameters (double dt, bool snap);
 
     OneKnobProcessor& proc;
+    const int canvasWidth, canvasHeight;
     Palette palette;
     GrooveLookAndFeel lookAndFeel;
     juce::String title;

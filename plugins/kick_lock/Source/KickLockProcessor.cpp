@@ -35,11 +35,14 @@ namespace
                       { "depth", "Depth", "DEPTH", 1.0f },
                       { "waveStart", "Wave start", "WAVE START", 0.0f, 0.0f, 360.0f, 1.0f, juce::String::fromUTF8 ("\xc2\xb0") },
                       { "kickThreshold", "Kick threshold", "THRESHOLD", -18.0f, -40.0f, 0.0f, 1.0f, "dBFS" } };
-        cfg.choices = { { "shape", "Shape", "SHAPE", { "Exponentielle", juce::String::fromUTF8 ("Lin\xc3\xa9" "aire"), "En S", "Rebond" }, 0 },
-                        { "release", "Release", "RELEASE", { "1/16", juce::String::fromUTF8 ("1/8 point\xc3\xa9"), "1/8", "1/4", "1/2" }, 2 },
-                        // Continu: the correction held from kick to kick; Transition: only
+        cfg.choices = { { "shape", "Shape", "SHAPE", { "Exponential", "Linear", "S-curve", "Bounce" }, 0 },
+                        { "release", "Release", "RELEASE", { "1/16", "1/8 dotted", "1/8", "1/4", "1/2" }, 2 },
+                        // Hold: the correction held from kick to kick; Transition: only
                         // around each kick, then back to the original bass
-                        { "lockMode", "Lock mode", "MODE", { "Continu", "Transition" }, 0 } };
+                        { "lockMode", "Lock mode", "MODE", { "Hold", "Transition" }, 0 } };
+        cfg.editorBuildsControls = false; // KickLockEditor: its own 760 x 480 layout
+        cfg.editorWidth = 760;
+        cfg.editorHeight = 480;
         cfg.engineAlwaysRuns = true; // the kick detector and the phase tracker never stop
         cfg.tailSeconds = 0.1;
         return cfg;

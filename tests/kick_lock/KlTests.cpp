@@ -453,7 +453,7 @@ TEST_CASE ("KL 15. State round trip, the defaults, the reset button", "[kl][stat
     CHECK (plain (c.getMixParameter()) == Catch::Approx (0.6f));
     CHECK_FALSE (c.getLockParameter().get());
     CHECK (c.getReleaseParameter().getCurrentChoiceName() == "1/8");
-    CHECK (c.getLockModeParameter().getCurrentChoiceName() == "Continu");
+    CHECK (c.getLockModeParameter().getCurrentChoiceName() == "Hold");
     CHECK (plain (c.getSubCutoffParameter()) == Catch::Approx (120.0f));
     CHECK (plain (c.getThresholdParameter()) == Catch::Approx (-18.0f));
     // the reset button

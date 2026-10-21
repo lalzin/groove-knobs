@@ -290,6 +290,35 @@ void keepMainBand (juce::Image& img, bool columns)
 
 /** Keying mode: green screen (default) or a flat colour sampled from the corners. */
 bool keyFlatBackground = false;
+bool despill = false; // --despill: background-hued pixels left on the outlines lose their tint
+
+/** --despill: the drawings' anti-aliasing against the background leaves
+    pixels of the background's hue along the outlines (a coloured fringe).
+    Any visible pixel within ~25° of the background's hue loses the tint
+    (the dominant channel brought down to the others): the outline stays
+    dark, the fringe goes; the character's own colours (other hues) stay. */
+void despillTowards (juce::Image& img, juce::Colour bg)
+{
+    juce::Image::BitmapData d (img, juce::Image::BitmapData::readWrite);
+    const float bgHue = bg.getHue();
+    for (int y = 0; y < img.getHeight(); ++y)
+        for (int x = 0; x < img.getWidth(); ++x)
+        {
+            const auto c = d.getPixelColour (x, y);
+            if (c.getAlpha() == 0 || c.getSaturation() < 0.25f)
+                continue;
+            float diff = std::abs (c.getHue() - bgHue);
+            diff = juce::jmin (diff, 1.0f - diff);
+            if (diff > 0.07f)
+                continue;
+            const int r = c.getRed(), g = c.getGreen(), b = c.getBlue();
+            const int lo = juce::jmax (juce::jmin (r, g, b), (r + g + b - juce::jmax (r, g, b)) / 2);
+            auto clampTo = [lo] (int v) { return (juce::uint8) juce::jmin (v, lo); };
+            // half-transparent edge pixels are mostly background: fade them too
+            const float a = c.getFloatAlpha() < 0.9f ? c.getFloatAlpha() * 0.5f : c.getFloatAlpha();
+            d.setPixelColour (x, y, juce::Colour (clampTo (r), clampTo (g), clampTo (b), a));
+        }
+}
 
 /** Grid of a sheet whose rows / columns are not evenly spaced: splits at the
     least dense row / column (character pixels only) near each expected
@@ -429,6 +458,8 @@ Frame cutFrame (const juce::Image& sheet, int cols, int rows, int index)
     {
         const auto cell = sheet.getClippedImage (juce::Rectangle<int> { x0, y0, x1 - x0, y1 - y0 }.reduced (cellInset));
         f.image = keyFlatBackground ? keyColour (cell, sampleBackground (sheet)) : keyGreen (cell);
+        if (despill)
+            despillTowards (f.image, keyFlatBackground ? sampleBackground (sheet) : juce::Colour (0xff00ff00));
         keepMainBand (f.image);
     }
     f.box = opaqueBounds (f.image);
@@ -458,6 +489,7 @@ int main (int argc, char** argv)
     const int cols = argInt (args, "--cols", 4), rows = argInt (args, "--rows", 3);
     const int targetHeight = argInt (args, "--height", 560);
     keyFlatBackground = args.contains ("--key-flat");
+    despill = args.contains ("--despill");
     autoCells = args.contains ("--auto-cells");
     cellInset = argInt (args, "--inset", 0);
     eraseGrid = args.contains ("--erase-grid");
@@ -477,7 +509,7 @@ int main (int argc, char** argv)
         outDir = cwd.getChildFile (args[0]);
         for (int i = 1; i < args.size(); ++i)
         {
-            if (args[i] == "--key-flat" || args[i] == "--auto-cells" || args[i] == "--scale-to-first" || args[i] == "--erase-grid")
+            if (args[i] == "--key-flat" || args[i] == "--despill" || args[i] == "--auto-cells" || args[i] == "--scale-to-first" || args[i] == "--erase-grid")
                 continue;
             if (args[i].startsWith ("--"))
             {

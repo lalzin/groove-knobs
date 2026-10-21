@@ -16,3 +16,11 @@ catch_discover_tests(kl_tests
     DISCOVERY_MODE PRE_TEST
     PROPERTIES TIMEOUT 1800)
 
+
+# Editor screenshots: build/tests/kick_lock/kl_screenshots_artefacts/Release/kl_screenshots
+juce_add_console_app(kl_screenshots PRODUCT_NAME "kl_screenshots")
+target_sources(kl_screenshots PRIVATE KlScreenshots.cpp)
+target_include_directories(kl_screenshots PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../common)
+target_link_libraries(kl_screenshots PRIVATE KickLockCode juce::juce_recommended_config_flags)
+target_compile_definitions(kl_screenshots PRIVATE JUCE_STANDALONE_APPLICATION=1)
+gk_enable_warnings(kl_screenshots)

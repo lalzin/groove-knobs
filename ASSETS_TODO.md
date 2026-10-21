@@ -66,3 +66,30 @@ Nice to have (same style, green background, 4 × 4 grid, ≥ 2048 px for a sharp
 | 2 | Turned towards the crowd, mic held out to it (2–4 poses) | RÉPONSE: today she stands arm out while the crowd answers |
 | 2 | Eyebrows: surprised / focused on the calm pose (2 poses) | The spec's eyebrows; not possible on the sprites today |
 | 3 | Higher-resolution sheets | ~310 px per character today (slightly soft at 200 %) |
+
+
+# ASSETS_TODO — Kick Lock (Phaze)
+
+Phaze works today with Alan's three sheets in `plugins/kick_lock/Assets/source/`
+(`phaze_sheet_happy.png`, `phaze_sheet_calm.png`, `phaze_sheet_moods.png`, 21 poses cut by
+`scripts/make_phaze_frames.sh`; roles in `PhazeMascot.h`). Nothing is blocking. Mapping:
+asleep = no kick / bypass (one frame, as asked), puzzled "?" = Décalé, worried = Instable and
+Somme en perte, foot tap = OK (one step per kick, a cheer from the happy sheet every 4th kick),
+calm = Sub faible (a jump from the calm sheet on each kick). The spec's scarf-wave is drawn in
+code under its feet (the sub, its phase at the kick), since the drawings have no scarf.
+
+Same style for any new image (lime drum body, cream face, rubber-hose limbs, white gloves,
+navy sneakers), **flat background of one colour** that the character does not use (the bright
+green is fine: the key is the sampled background colour, not "green"), character centred,
+feet on the same baseline, ≥ 30 px between characters.
+
+| Priority | File | Content | Size / format |
+|---|---|---|---|
+| 1 | `phaze_unstable.png` | **Instable** of its own (the spec: surprised, spiral eyes), 4 frames. Today Instable and Somme en perte share the worried row. | 4 × 1, ≥ 1980 px wide, PNG |
+| 2 | `phaze_mono_loss.png` | **Somme en perte**: holding two waves / ribbons pulling apart, worried, 4 frames. Today: the worried row, and the wave under its feet splits in two. | 4 × 1, PNG |
+| 3 | `phaze_duck.png` | A **crouch** on the kick (squashed, knees bent), 2 frames, for deep ducking. Today the pose is squashed by code. | 2 × 1, PNG |
+| 4 | `phaze_sheet_moods_hd.png` | The moods sheet at a higher resolution: its cells give ~300 px per character, a little soft at 200 % on Retina (the two other sheets are fine). | 4 × 4, ≥ 2400 × 2400 px |
+
+The cut-outs keep a thin dark-green fringe along the outlines (the drawings' own anti-aliasing
+against the green): invisible at 100 %, slightly visible at 200 %. A transparent PNG export
+would remove it.

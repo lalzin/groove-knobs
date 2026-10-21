@@ -103,7 +103,7 @@ int main (int argc, char** argv)
         proc.prepareToPlay (sr, 512);
         const auto out = kickbass::run (proc, bassLoop, &kick, { 512 }, bpm);
         const int L = proc.getLatencySamples();
-        const char* title[] { "LOCK off", "LOCK on, MODE Continu", "LOCK on, MODE Transition" };
+        const char* title[] { "LOCK off", "LOCK on, MODE Hold", "LOCK on, MODE Transition" };
         std::cout << "\n" << title[mode] << " — phase of the fundamental at each kick of each note (deg, target 0):\n";
         for (const auto& n : notes)
         {

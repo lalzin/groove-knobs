@@ -682,14 +682,15 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         }
 
         // oscilloscope (1 in 8): the sub as heard, the kick envelope
-        scopeKickPeak = juce::jmax (scopeKickPeak, scEnv);
+        scopeKickPeak = juce::jmax (scopeKickPeak, envRing[(size_t) (t & mask)]); // the kick as heard (L later), like the sub
         if (++scopeCounter >= KickTelemetry::scopeDecimation && telemetry.scopeSize > 0)
         {
             scopeCounter = 0;
             const int w = telemetry.scopeWrite.load (std::memory_order_relaxed);
             telemetry.scopeSub[(size_t) w].store (scopeSub, std::memory_order_relaxed);
             telemetry.scopeKick[(size_t) w].store (scopeKickPeak, std::memory_order_relaxed);
-            telemetry.scopeWrite.store ((w + 1) % telemetry.scopeSize, std::memory_order_relaxed);
+            telemetry.scopeTime.store (t, std::memory_order_relaxed);
+            telemetry.scopeWrite.store ((w + 1) % telemetry.scopeSize, std::memory_order_release);
             scopeKickPeak = 0.0f;
         }
         ++clock;

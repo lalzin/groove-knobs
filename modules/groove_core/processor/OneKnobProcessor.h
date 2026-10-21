@@ -96,6 +96,10 @@ struct OneKnobConfig
     /** false: the editor does not create or place the switch chips, small
         knobs and choice selectors (the plugin's editor lays them out itself). */
     bool editorBuildsControls = true;
+    /** The editor's base canvas (OneKnobEditor scales it 75..200 %, fixed
+        ratio): 420 x 520 for the one-knob layout; wider plugins lay out their
+        own controls on a larger one. */
+    int editorWidth = 420, editorHeight = 520;
 
     /** A sidechain input (second input bus, "Sidechain", mono or stereo, may be
         disabled): its samples reach the engine with each chunk
