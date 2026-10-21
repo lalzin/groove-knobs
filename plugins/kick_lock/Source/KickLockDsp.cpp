@@ -206,6 +206,8 @@ void KickLockDsp::reset()
     scEnv = slowEnv = 0.0f;
     armed = true;
     lastKick = -1000000;
+    lastSidechainKick = -1000000;
+    beatValid = false;
     deadUntil = -1;
     kickCount = 0;
     decCounter = 0;
@@ -245,6 +247,7 @@ void KickLockDsp::setChoices (const int* idx, int n)
     shape = n > shapeChoice ? juce::jlimit (0, (int) custom, idx[shapeChoice]) : exponential;
     release = n > releaseChoice ? juce::jlimit (0, 4, idx[releaseChoice]) : 2;
     lockMode = n > modeChoice ? juce::jlimit (0, 1, idx[modeChoice]) : continuous;
+    trigger = n > triggerChoice ? juce::jlimit (0, 2, idx[triggerChoice]) : triggerAuto;
 }
 
 void KickLockDsp::setSidechain (const float* const* channels, int n, int)
@@ -391,6 +394,17 @@ double KickLockDsp::returnFor (std::int64_t when) const noexcept
     const double interval = prevKick >= 0 && when - prevKick < (std::int64_t) (2.0 * sampleRate) && when > prevKick
                                 ? (double) (when - prevKick) : 60.0 / bpm * sampleRate;
     return juce::jlimit (0.06 * sampleRate, 0.4 * sampleRate, interval - releaseSamplesNow() - 0.03 * sampleRate);
+}
+
+void KickLockDsp::addTrigger (std::int64_t onset)
+{
+    // the ducking knows it now; its phase is measured once the sub is known
+    // there (8 ms later)
+    kicks[(size_t) (kickCount % (int) kicks.size())] = onset;
+    ++kickCount;
+    lastKick = onset;
+    if (pendingCount < (int) pendingKicks.size())
+        pendingKicks[(size_t) pendingCount++] = onset;
 }
 
 void KickLockDsp::onKick (std::int64_t when)
@@ -624,11 +638,37 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
                 --onset;
             // the ducking knows it now; its phase is measured once the sub is
             // known there (8 ms later)
-            kicks[(size_t) (kickCount % (int) kicks.size())] = onset;
-            ++kickCount;
-            lastKick = onset;
-            if (pendingCount < (int) pendingKicks.size())
-                pendingKicks[(size_t) pendingCount++] = onset;
+            if (trigger != triggerBeat)
+            {
+                lastSidechainKick = onset;
+                telemetry.triggerSource.store (1, std::memory_order_relaxed);
+                addTrigger (onset);
+            }
+        }
+        // no kick (nothing on the sidechain for 2 s, or Beat): the host's
+        // quarter notes while it plays, like a tempo-synced ducker
+        {
+            const double b = timing.beatsAt (i);
+            const bool useBeats = trigger == triggerBeat
+                                  || (trigger == triggerAuto && (scChannels == 0 || clock - lastSidechainKick > noKickSamples));
+            if (! timing.isPlaying)
+                beatValid = false;
+            else if (! beatValid || b < lastBeatFloor - 0.001 || b > lastBeatFloor + 2.0)
+            {
+                lastBeatFloor = std::floor (b); // (re)synced: no trigger for a jump
+                beatValid = true;
+            }
+            else if (std::floor (b) > lastBeatFloor)
+            {
+                lastBeatFloor = std::floor (b);
+                // (no dead time: a kick on the sidechain right after it must
+                // still be seen, it takes over)
+                if (useBeats)
+                {
+                    telemetry.triggerSource.store (2, std::memory_order_relaxed);
+                    addTrigger (clock);
+                }
+            }
         }
         if (pendingCount > 0 && aligned >= pendingKicks[0] + (std::int64_t) (noteLookSeconds * sampleRate))
         {
@@ -748,8 +788,8 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
     telemetry.outputClock.store (clock - latency, std::memory_order_relaxed);
     Status st = Status::ok;
     const float err = std::abs (telemetry.phaseErrorDeg.load (std::memory_order_relaxed));
-    if (scChannels == 0 || clock - lastKick > noKickSamples)
-        st = Status::noKick;
+    if (clock - lastKick > noKickSamples)
+        st = Status::noKick; // no trigger at all: no kick, and no beat (the host is stopped)
     else if (lossDb > 3.0f)
         st = Status::monoLoss;
     else if (subDb < -50.0f)

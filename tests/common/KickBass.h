@@ -80,7 +80,7 @@ inline std::vector<double> kickTimes (double seconds, double bpm, double offsetS
     in blocks; returns the main output. */
 template <typename Processor>
 Buffer run (Processor& p, const Buffer& main, const Buffer* side, std::vector<int> blockSizes = { 512 }, double bpm = 124.0,
-            std::function<void (int)> before = {})
+            std::function<void (int)> before = {}, bool playing = true)
 {
     const int n = main.getNumSamples();
     const int mainCh = main.getNumChannels(), sideCh = side != nullptr ? side->getNumChannels() : 0;
@@ -92,7 +92,7 @@ Buffer run (Processor& p, const Buffer& main, const Buffer* side, std::vector<in
     gk::OfflinePlayHead ph;
     ph.bpm = bpm;
     ph.sampleRate = p.getSampleRate();
-    ph.playing = true;
+    ph.playing = playing;
     p.setPlayHead (&ph);
     juce::MidiBuffer midi;
     size_t k = 0;

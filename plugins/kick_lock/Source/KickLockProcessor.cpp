@@ -39,7 +39,10 @@ namespace
                         { "release", "Release", "RELEASE", { "1/16", "1/8 dotted", "1/8", "1/4", "1/2" }, 2 },
                         // Hold: the correction held from kick to kick; Transition: only
                         // around each kick, then back to the original bass
-                        { "lockMode", "Lock mode", "MODE", { "Hold", "Transition" }, 0 } };
+                        { "lockMode", "Lock mode", "MODE", { "Hold", "Transition" }, 0 },
+                        // what triggers the ducking and the lock: the sidechain's kick, else
+                        // (no kick for 2 s, or no sidechain at all) the host's beats
+                        { "trigger", "Trigger", "TRIGGER", { "Auto", "Sidechain", "Beat" }, 0 } };
         cfg.editorBuildsControls = false; // KickLockEditor: its own 760 x 480 layout
         cfg.editorWidth = 760;
         cfg.editorHeight = 480;

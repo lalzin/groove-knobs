@@ -29,7 +29,7 @@ struct Case
     float level = 1.0f, scale = 1.0f;
     double kickOffset = 0.0;
     int kicks = 1; // the mascot's step (its pose in the dance)
-    bool customCurve = false;
+    bool customCurve = false, stopped = false;
 };
 
 juce::Image shoot (const Case& c, int& statusOut)
@@ -64,7 +64,7 @@ juce::Image shoot (const Case& c, int& statusOut)
     if (c.invertRight)
         b.applyGain (1, 0, b.getNumSamples(), -1.0f);
     const auto k = kicks (seconds, sr, bpm, 0.1 + c.kickOffset);
-    run (proc, b, c.sidechain ? &k : nullptr, { 512 }, bpm);
+    run (proc, b, c.sidechain ? &k : nullptr, { 512 }, bpm, {}, ! c.stopped);
     statusOut = proc.getDsp().getTelemetry().status.load();
     if (c.bypass)
         proc.getBypassParameterObject().setValueNotifyingHost (1.0f);
@@ -100,7 +100,8 @@ int main (int argc, char** argv)
     { Case c; c.slug = "unstable"; c.label = "noise sub"; c.noise = true; cases.push_back (c); }
     { Case c; c.slug = "weak_sub"; c.label = "quiet bass"; c.level = 0.0008f; cases.push_back (c); }
     { Case c; c.slug = "mono_loss"; c.label = "right channel inverted"; c.invertRight = true; cases.push_back (c); }
-    { Case c; c.slug = "no_kick"; c.label = "no sidechain"; c.sidechain = false; cases.push_back (c); }
+    { Case c; c.slug = "no_kick"; c.label = "no sidechain: the tempo"; c.sidechain = false; cases.push_back (c); }
+    { Case c; c.slug = "stopped"; c.label = "no sidechain, host stopped"; c.sidechain = false; c.stopped = true; cases.push_back (c); }
     { Case c; c.slug = "bypass"; c.label = "bypass"; c.bypass = true; cases.push_back (c); }
     { Case c; c.slug = "transition"; c.label = "MODE Transition"; c.transition = true; c.kicks = 2; cases.push_back (c); }
     { Case c; c.slug = "custom_curve"; c.label = "custom ducking curve"; c.customCurve = true; cases.push_back (c); }

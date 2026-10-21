@@ -47,7 +47,7 @@ private:
     std::unique_ptr<MetricsBar> metrics;
     std::unique_ptr<LockButton> lockButton;
     std::unique_ptr<juce::ButtonParameterAttachment> lockAttachment;
-    std::unique_ptr<gk::ChoiceSelector> shape, release, mode;
+    std::unique_ptr<gk::ChoiceSelector> shape, release, mode, trigger;
     std::vector<std::unique_ptr<gk::SmallKnob>> knobs;
     std::unique_ptr<juce::Component> panelsHolder;
     int previewStatus = -1, frameCount = 0;

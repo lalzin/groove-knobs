@@ -25,6 +25,7 @@ public:
     juce::AudioParameterChoice& getShapeParameter() noexcept { return getChoiceParameter (KickLockDsp::shapeChoice); }
     juce::AudioParameterChoice& getReleaseParameter() noexcept { return getChoiceParameter (KickLockDsp::releaseChoice); }
     juce::AudioParameterChoice& getLockModeParameter() noexcept { return getChoiceParameter (KickLockDsp::modeChoice); }
+    juce::AudioParameterChoice& getTriggerParameter() noexcept { return getChoiceParameter (KickLockDsp::triggerChoice); }
 
     /** Every parameter back to its default, and the custom curve (the Reset button). */
     void resetAllToDefaults();

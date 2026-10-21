@@ -16,6 +16,7 @@ struct KickTelemetry
     std::atomic<float> subLevelDb { -120.0f }, kickLevelDb { -120.0f }, monoSumLossDb { 0.0f };
     std::atomic<float> f0Hz { 0.0f }, shiftMs { 0.0f }, duckGain { 1.0f };
     std::atomic<int> kickEvents { 0 }, status { (int) Status::noKick };
+    std::atomic<int> triggerSource { 0 }; // what triggered the last event: 0 nothing, 1 the sidechain's kick, 2 the host's beat
     std::atomic<std::int64_t> lastKickSample { -1 }, outputClock { 0 };
     std::array<std::atomic<std::int64_t>, 4> recentKicks { { -1, -1, -1, -1 } }; // the last kicks (slot = count % 4)
     // oscilloscope: 2 s of the corrected sub, the output and the kick (1 in 8)
@@ -46,7 +47,9 @@ class KickLockDsp final : public gk::OneKnobEngine
 public:
     static constexpr int lockSwitch = 0;
     static constexpr int targetKnob = 0, offsetKnob = 1, subCutKnob = 2, depthKnob = 3, waveStartKnob = 4, thresholdKnob = 5;
-    static constexpr int shapeChoice = 0, releaseChoice = 1, modeChoice = 2;
+    static constexpr int shapeChoice = 0, releaseChoice = 1, modeChoice = 2, triggerChoice = 3;
+    /** TRIGGER: Auto = the sidechain's kicks, else (nothing for 2 s, or no sidechain) the host's beats; Sidechain; Beat. */
+    enum Trigger { triggerAuto, triggerSidechain, triggerBeat };
     enum LockMode { continuous, transition };
     enum Shape { exponential, linear, sCurve, bounce, custom };
 
@@ -119,7 +122,11 @@ private:
     // parameters
     bool lock = false;
     float targetPhase = 0.0f, offsetMs = 0.0f, subCutoff = 120.0f, depth = 1.0f, waveStart = 0.0f, thresholdDb = -18.0f;
-    int shape = exponential, release = 2, lockMode = continuous;
+    int shape = exponential, release = 2, lockMode = continuous, trigger = triggerAuto;
+    std::int64_t lastSidechainKick = -1000000; // the last kick on the sidechain (Auto: the beats take over 2 s after)
+    double lastBeatFloor = 0.0;
+    bool beatValid = false;
+    void addTrigger (std::int64_t onset);
     double bpm = 120.0;
 
     // signal paths: the FIR (two kernels, crossfaded when SUB CUT moves)

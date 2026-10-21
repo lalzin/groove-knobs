@@ -43,6 +43,8 @@ namespace
         }
     }
 
+    juce::String sourceSuffix (int source) { return source == 2 ? fr (" \xc2\xb7 BEAT") : juce::String(); }
+
     /** ... and the sentence in its tooltip. */
     juce::String statusSentence (int st, bool lock)
     {
@@ -54,7 +56,8 @@ namespace
             case Status::weakSub: return "The sub is too quiet to measure its phase";
             case Status::monoLoss: return "Mono sum: cancellation detected (the sides are out of phase)";
             case Status::noKick:
-            default: return "No kick on the sidechain: in Live, open the Sidechain section on the left of the device (the small triangle) and pick the kick track in Audio From";
+            default: return "Nothing to follow: press play (with TRIGGER Auto or Beat it follows the tempo), or send a kick to the sidechain: "
+                            "in Live, the Sidechain section on the left of the device (the small triangle), Audio From = the kick track (VST3)";
         }
     }
 } // namespace
@@ -101,13 +104,16 @@ public:
         const int st = preview >= 0 ? preview : proc.getDsp().getTelemetry().status.load (std::memory_order_relaxed);
         const bool lock = proc.getLockParameter().get();
         const bool bypassed = proc.getBypassParameterObject().get();
-        const int key = bypassed ? 100 : st;
-        if (key != shown || lock != shownLock)
+        const int key = (bypassed ? 100 : st) + 1000 * proc.getDsp().getTelemetry().triggerSource.load (std::memory_order_relaxed);
+        if (key != shownKey || lock != shownLock)
         {
-            shown = key;
+            shownKey = key;
+            shown = bypassed ? 100 : st;
             shownLock = lock;
-            text = bypassed ? juce::String ("BYPASS") : statusWord (st, lock);
-            setTooltip (bypassed ? juce::String ("Bypassed") : statusSentence (st, lock));
+            const int source = proc.getDsp().getTelemetry().triggerSource.load (std::memory_order_relaxed);
+            text = bypassed ? juce::String ("BYPASS") : statusWord (st, lock) + (st != (int) Status::noKick ? sourceSuffix (source) : juce::String());
+            setTooltip (bypassed ? juce::String ("Bypassed")
+                                 : statusSentence (st, lock) + (source == 2 && st != (int) Status::noKick ? " (on the host's beats: no kick on the sidechain)" : ""));
             repaint();
         }
     }
@@ -133,7 +139,7 @@ public:
 private:
     KickLockProcessor& proc;
     const gk::Palette& palette;
-    int shown = -1;
+    int shown = -1, shownKey = -1;
     bool shownLock = false;
     juce::String text;
 };
@@ -281,7 +287,8 @@ public:
         g.drawRoundedRectangle (b.reduced (0.5f), 10.0f, 1.5f);
         g.setColour (palette (cream).withAlpha (0.5f));
         g.setFont (gk::GrooveFonts::font (10.5f).withExtraKerningFactor (0.12f));
-        g.drawText ("SIDECHAIN", b.reduced (12.0f, 4.0f).withHeight (14.0f), juce::Justification::centredLeft);
+        const bool beats = proc.getDsp().getTelemetry().triggerSource.load (std::memory_order_relaxed) == 2;
+        g.drawText (beats ? "TEMPO" : "SIDECHAIN", b.reduced (12.0f, 4.0f).withHeight (14.0f), juce::Justification::centredLeft);
         g.drawText (beatsLabel(), b.reduced (12.0f, 4.0f).withHeight (14.0f).withTrimmedLeft (80.0f), juce::Justification::centredLeft);
 
         const auto m = mainArea();
@@ -338,7 +345,7 @@ public:
                 }
             }
             const float half = m.getHeight() * 0.46f / peak, mid = m.getCentreY();
-            for (int pass = 0; pass < 2; ++pass) // the bass filled, then the kick's outline over it
+            for (int pass = 0; pass < (beats ? 1 : 2); ++pass) // the bass filled, then the kick's outline over it (none on the beats)
             {
                 const auto& env = pass == 0 ? bassEnv : kickEnv;
                 juce::Path shapePath;
@@ -368,10 +375,10 @@ public:
         {
             g.setColour (palette (cream).withAlpha (0.85f));
             g.setFont (gk::GrooveFonts::font (15.0f));
-            g.drawText ("NO KICK ON THE SIDECHAIN", m.withTrimmedBottom (m.getHeight() * 0.5f), juce::Justification::centredBottom);
+            g.drawText ("PRESS PLAY, OR SEND A KICK", m.withTrimmedBottom (m.getHeight() * 0.5f), juce::Justification::centredBottom);
             g.setColour (palette (cream).withAlpha (0.6f));
             g.setFont (gk::GrooveFonts::font (11.5f));
-            g.drawFittedText (fr ("Live: the Sidechain section, left of this device \xe2\x96\xb8 Audio From \xe2\x96\xb8 your kick track"),
+            g.drawFittedText (fr ("follows the tempo \xc2\xb7 kick: Sidechain (left of the device, VST3) \xe2\x96\xb8 Audio From \xe2\x96\xb8 kick"),
                               m.withTrimmedTop (m.getHeight() * 0.55f).withHeight (18.0f).toNearestInt(), juce::Justification::centred, 1, 0.8f);
         }
         dashed (g, kickX, m.getY(), m.getBottom(), 0.75f);
@@ -424,7 +431,7 @@ public:
         g.setColour (palette (cream).withAlpha (0.4f));
         g.setFont (gk::GrooveFonts::font (9.0f));
         g.drawText ("100 %", juce::Rectangle<float> (m.getX() + 2.0f, gainY (m, 1.0f) + 1.0f, 40.0f, 10.0f), juce::Justification::topLeft);
-        g.drawText ("KICK", juce::Rectangle<float> (40.0f, 10.0f).withCentre ({ kickX, m.getBottom() + 6.0f }), juce::Justification::centred);
+        g.drawText (beats ? "BEAT" : "KICK", juce::Rectangle<float> (40.0f, 10.0f).withCentre ({ kickX, m.getBottom() + 6.0f }), juce::Justification::centred);
 
     }
 
@@ -886,6 +893,10 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
     mode->setTooltip ("Hold: the correction holds from one kick to the next. Transition: only around the kick, then back to the original bass.");
     addToCanvas (*mode, { 492, 332, 80, 38 });
 
+    trigger = std::make_unique<gk::ChoiceSelector> (p.getTriggerParameter(), "TRIGGER", orange, pal);
+    trigger->setTooltip ("Auto: the kick on the sidechain, else the host's beats. Sidechain: the kick only. Beat: the tempo only (no sidechain needed).");
+    addToCanvas (*trigger, { 212, 290, 84, 38 });
+
     // the right column: ducking shape, release, the lock's settings, depth
     shape = std::make_unique<gk::ChoiceSelector> (p.getShapeParameter(), "SHAPE", orange, pal);
     release = std::make_unique<gk::ChoiceSelector> (p.getReleaseParameter(), "RELEASE", orange, pal);
@@ -899,7 +910,7 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
         { p.getSubCutoffParameter(), "SUB CUT", limeDeep.brighter (0.3f), { 596, 160, 64, 68 } },
         { p.getWaveStartParameter(), "WAVE START", limeDeep.brighter (0.3f), { 680, 160, 64, 68 } },
         { p.getDepthParameter(), "DEPTH", orange, { 638, 340, 64, 68 } },
-        { p.getThresholdParameter(), "THRESHOLD", orange, { 222, 316, 64, 68 } },
+        { p.getThresholdParameter(), "THRESHOLD", orange, { 222, 350, 64, 68 } },
     };
     for (const auto& k : ks)
     {

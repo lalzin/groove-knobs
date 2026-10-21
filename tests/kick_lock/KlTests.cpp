@@ -243,24 +243,35 @@ TEST_CASE ("KL 7. Ducking: the gain is lowest at the kick (+-1 ms) and comes bac
     }
 }
 
-TEST_CASE ("KL 8. No sidechain: the output is the bass, status 'no kick'", "[kl][sidechain]")
+TEST_CASE ("KL 8. No kick (TRIGGER Sidechain, or Auto with the host stopped): the output is the bass, status 'no kick'", "[kl][sidechain]")
 {
     const double sr = 48000.0, seconds = 3.0;
-    auto p = makeKl (sr, 0.6f, false);
-    const int L = p->getLatencySamples();
     const auto b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr);
-    const auto out = run (*p, b, nullptr);
-    // (after the generic 3 ms fade-in of the engine's input at start-up)
-    double err = 0.0;
-    for (int i = L + (int) (0.05 * sr); i < out.getNumSamples(); ++i)
-        err = juce::jmax (err, (double) std::abs (out.getSample (0, i) - b.getSample (0, i - L)));
-    INFO ("max difference " << err);
-    CHECK (err < 1.0e-5);
-    CHECK ((Status) p->getDsp().getTelemetry().status.load() == Status::noKick);
-    // a connected sidechain that stays silent: the same after 2 s
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        auto p = makeKl (sr, 0.6f, false);
+        const bool playing = pass == 0;
+        if (playing)
+        {
+            setParam (p->getTriggerParameter(), (float) KickLockDsp::triggerSidechain);
+            p->prepareToPlay (sr, 512);
+        }
+        const int L = p->getLatencySamples();
+        const auto out = run (*p, b, nullptr, { 512 }, 124.0, {}, playing);
+        // (after the generic 3 ms fade-in of the engine's input at start-up)
+        double err = 0.0;
+        for (int i = L + (int) (0.05 * sr); i < out.getNumSamples(); ++i)
+            err = juce::jmax (err, (double) std::abs (out.getSample (0, i) - b.getSample (0, i - L)));
+        INFO ((playing ? "Sidechain, playing" : "Auto, stopped") << ": max difference " << err);
+        CHECK (err < 1.0e-5);
+        CHECK ((Status) p->getDsp().getTelemetry().status.load() == Status::noKick);
+    }
+    // a connected sidechain that stays silent (TRIGGER Sidechain): the same after 2 s
     Buffer silent (2, b.getNumSamples());
     silent.clear();
     auto q = makeKl (sr, 0.6f, true);
+    setParam (q->getTriggerParameter(), (float) KickLockDsp::triggerSidechain);
+    q->prepareToPlay (sr, 512);
     run (*q, b, &silent);
     CHECK ((Status) q->getDsp().getTelemetry().status.load() == Status::noKick);
 }
@@ -590,6 +601,70 @@ TEST_CASE ("KL 20. Custom curve (LFOTool style): the gain follows the points, sa
     b.resetAllToDefaults();
     CHECK (b.getCustomCurve().size() == 2);
     CHECK (b.getShapeParameter().getIndex() == KickLockDsp::exponential);
+}
+
+TEST_CASE ("KL 21. No kick, the host playing: ducking and lock on the beats (TRIGGER Auto / Beat); a kick takes over", "[kl][trigger]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 4.0, hz = 55.0;
+    const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr);
+    const auto beats = kickTimes (seconds, bpm, 0.0);
+    // the ducking's lowest point on each beat (beat 0, at the very start, is not a transition)
+    auto lowestNear = [&] (const Buffer& out, int L, double t)
+    {
+        int at = 0;
+        float lo = 1.0e9f;
+        for (int i = (int) ((t - 0.02) * sr); i < (int) ((t + 0.03) * sr); ++i)
+        {
+            // the envelope: the bass is a 55 Hz wave, its own peaks over a cycle
+            float pk = 0.0f;
+            for (int j = 0; j < (int) (sr / hz); j += 8)
+                pk = juce::jmax (pk, std::abs (out.getSample (0, i + L + j - (int) (sr / hz / 2))));
+            if (pk < lo)
+            {
+                lo = pk;
+                at = i;
+            }
+        }
+        return at / sr;
+    };
+    for (int trig : { (int) KickLockDsp::triggerAuto, (int) KickLockDsp::triggerBeat })
+    {
+        auto p = makeKl (sr, 1.0f, true, 1.0f);
+        setParam (p->getTriggerParameter(), (float) trig);
+        p->prepareToPlay (sr, 512);
+        const auto out = run (*p, b, nullptr, { 512 }, bpm);
+        const int L = p->getLatencySamples();
+        for (size_t n = 2; n + 1 < beats.size(); ++n)
+        {
+            const double at = lowestNear (out, L, beats[n]);
+            INFO ("trigger " << trig << ", beat " << n << " at " << beats[n] << " s: ducking lowest at " << at << " s");
+            CHECK (std::abs (at - beats[n]) < 0.012);
+        }
+        // and the lock on them (depth 0: the phase of the bass itself)
+        auto q = makeKl (sr, 1.0f, true, 0.0f);
+        setParam (q->getTriggerParameter(), (float) trig);
+        q->prepareToPlay (sr, 512);
+        const auto o2 = run (*q, b, nullptr, { 512 }, bpm);
+        const auto e = errorsAtKicks (o2, q->getLatencySamples(), hz, sr, beats, 1.0, seconds - 0.2);
+        INFO ("phase at the beats: worst " << maxAbs (e) << " deg");
+        CHECK (maxAbs (e) < 5.0);
+        CHECK ((Status) q->getDsp().getTelemetry().status.load() != Status::noKick);
+        CHECK (q->getDsp().getTelemetry().triggerSource.load() == 2);
+    }
+    // Auto with a kick on the sidechain (off the beat by 0.1 s): the kicks lead, not the beats
+    {
+        auto p = makeKl (sr, 1.0f, false, 1.0f);
+        const auto k = kicks (seconds, sr, bpm, 0.1);
+        const auto out = run (*p, b, &k, { 512 }, bpm);
+        const int L = p->getLatencySamples();
+        for (double t : kickTimes (seconds, bpm, 0.1))
+            if (t > 1.0 && t < seconds - 0.3)
+            {
+                INFO ("kick at " << t << " s");
+                CHECK (std::abs (lowestNear (out, L, t) - t) < 0.012);
+            }
+        CHECK (p->getDsp().getTelemetry().triggerSource.load() == 1);
+    }
 }
 
 TEST_CASE ("KL 17. CPU: stereo bass + stereo sidechain, LOCK on, 48 kHz", "[kl][cpu]")
