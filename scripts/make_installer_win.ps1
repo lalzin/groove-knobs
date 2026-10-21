@@ -12,10 +12,22 @@ $Root = Split-Path -Parent $PSScriptRoot
 $Ids = Get-Content (Join-Path $Root "cmake\GrooveIds.cmake") -Raw
 $Build = Join-Path $Root "build-win"
 
+# On GitHub Actions, a failure is also shown as an annotation (readable
+# without signing in, unlike the log): its first error lines
+function Report($Lines, $Pattern, $What) {
+  $hits = $Lines | ForEach-Object { "$_" } | Select-String -Pattern $Pattern -Context 0,2 | Select-Object -First 25 |
+    ForEach-Object { (@($_.Line) + $_.Context.PostContext) -join " | " }
+  if ($env:GITHUB_ACTIONS) { Write-Host ("::error title=$What::" + (($hits -join "%0A") -replace "::", ": :")) }
+  throw "$What failed"
+}
+
 if (-not $SkipBuild) {
   cmake -S $Root -B $Build -G "Visual Studio 17 2022" -A x64 -DGK_COPY_PLUGINS=OFF
-  cmake --build $Build --config Release --parallel
-  ctest --test-dir $Build -C Release --output-on-failure
+  if ($LASTEXITCODE -ne 0) { throw "CMake configure failed" }
+  cmake --build $Build --config Release --parallel 2>&1 | Tee-Object -Variable BuildOut
+  if ($LASTEXITCODE -ne 0) { Report $BuildOut "error|fatal" "Build" }
+  ctest --test-dir $Build -C Release --output-on-failure 2>&1 | Tee-Object -Variable TestOut
+  if ($LASTEXITCODE -ne 0) { Report $TestOut "FAILED|Failed|failed|with expansion|error|Exception" "Tests" }
 }
 
 function Sign($file) {
