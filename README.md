@@ -234,7 +234,7 @@ TRIGGER : **Auto** (le Send de son LINK, sinon le tempo), **Link**, **Beat** (le
 
 ## Latence
 
-16 ms (l'analyse du sub, la mesure au kick, le fondu avant qu'il soit entendu). Avec Kick Lock Send et un buffer audio de plus de 512 échantillons à 48 kHz, un peu plus (~28 ms à 1024) pour attendre les kicks de l'autre piste : Kick Lock ne devine jamais un kick. Kick Lock Send annonce la même latence ; l'hôte compense les deux.
+~32 ms (le cycle de basse qui suit chaque kick est mesuré avant d'être entendu : la même note donne la même correction, quel que soit le moment où elle démarre ; plus le fondu). Avec Kick Lock Send et un buffer audio de plus de 1024 échantillons à 48 kHz, un peu plus (~50 ms à 2048) pour attendre les kicks de l'autre piste : Kick Lock ne devine jamais un kick. Kick Lock Send annonce la même latence ; l'hôte compense les deux.
 
 Tests : `kl_tests` (30 cas : phase, convergence, ducking, lien, détection, niveau...), `kl_render`, `kl_screenshots` (`--web` pour les visuels du site), pluginval 10 et auval (`aufx KkLk Lalz`, `aufx KkLs Lalz`).
 

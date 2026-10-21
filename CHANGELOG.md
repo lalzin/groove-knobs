@@ -1,5 +1,8 @@
 # Changelog
 
+## [Unreleased] — Kick Lock : le même verrouillage à chaque fois
+- **LOCK identique pour une note identique** (Alan : « parfois le recalage est parfait, mais pour la même note ... un résultat différent ») : la phase est mesurée sur le cycle de la basse qui suit le kick (Kick Lock l'entend en avance), plus sur les cycles d'avant. Même note, même attaque : la même correction à chaque kick, à moins de 3° près, que la note démarre 120 ms avant le kick, dessus ou juste après. Latence 16 → ~32 ms (Live la compense).
+
 ## 0.1.3 — 2026-10-21 (six plugins)
 - **Kick Lock** (nouveau) : sur la basse, le ducking de sidechain (courbe éditable façon LFOTool sur l'oscilloscope, préréglages Exponential / Linear / S-curve / Bounce, RELEASE au tempo, DEPTH) et **LOCK** : la phase de la fondamentale de la basse est tournée pour repartir en phase avec chaque kick (erreur < 2° mesurée de 40 à 110 Hz), sans toucher au reste de la basse ; MODE Hold / Transition ; TARGET, OFFSET, SUB CUT, WAVE START expliqués à l'écran. TRIGGER Auto / Link / Beat / Sidechain. Latence 16 ms (plus avec un gros buffer et Kick Lock Send).
 - **Kick Lock Send** (nouveau, livré avec Kick Lock) : sur la piste du kick, il envoie ses kicks à Kick Lock sans aucun routage (LINK 0 à 10, plusieurs Kick Lock par Send) et sa forme d'onde pour l'oscilloscope ; transient shaper PUNCH / SUSTAIN, SENS.

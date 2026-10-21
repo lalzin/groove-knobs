@@ -86,15 +86,24 @@ public:
         would duck where a kick was removed at the end of a bar). */
     static int linkSlackFor (double sampleRate, int maxBlock) noexcept
     {
-        const int budget = (int) std::round (0.011 * sampleRate);
+        const int budget = baseLatencyFor (sampleRate) - (int) std::round ((crossfadeSeconds + 0.0015) * sampleRate);
         return maxBlock > budget ? maxBlock - budget + 32 : 0;
+    }
+    /** Each kick's phase is measured on the cycle that follows it (what is
+        heard with the kick, wherever the note started): one period of the
+        lowest note measured (40 Hz), then the 5 ms crossfade, before the kick
+        is heard. */
+    static constexpr double measureFloorHz = 40.0;
+    static int baseLatencyFor (double sampleRate) noexcept
+    {
+        const int legacy = (int) std::round (firSeconds * sampleRate) + (int) std::round (advanceSeconds * sampleRate);
+        return juce::jmax (legacy, (int) std::round (sampleRate / measureFloorHz + (crossfadeSeconds + 0.0015) * sampleRate));
     }
     /** The latency for a rate and a host buffer (Kick Lock Send reports the same). */
     static int latencyFor (double sampleRate, int maxBlock) noexcept
     {
-        return (int) std::round (firSeconds * sampleRate) + (int) std::round (advanceSeconds * sampleRate) + linkSlackFor (sampleRate, maxBlock);
+        return baseLatencyFor (sampleRate) + linkSlackFor (sampleRate, maxBlock);
     }
-
     KickLockDsp();
 
     /** Release length in beats for the RELEASE choice. */
@@ -129,7 +138,14 @@ public:
 private:
     void onKick (std::int64_t when);
     void updatePitch() noexcept;
-    bool measurePhase (std::int64_t at, double periodSamples, double& phaseDeg, double& confidence) const noexcept;
+    /** The phase (degrees, 0 = rising zero crossing) and amplitude of the
+        fundamental at `at`, from the `length` samples of the bass that follow
+        it (projection on f0: the harmonics cancel over a whole period). */
+    void measureForward (std::int64_t at, double periodSamples, int length, double& phaseDeg, double& amplitude) const noexcept;
+    int measureLength() const noexcept;
+    /** The period (samples) of the note between `from` and `to`, from the bass
+        itself (YIN, decimated by 4); 0 if none clear. */
+    double periodBetween (std::int64_t from, std::int64_t to) const noexcept;
     float monoSubAt (std::int64_t t) const noexcept { return mono[(size_t) (t & mask)]; }
     double targetPsiFor (double phaseDeg, double periodSamples) const noexcept;
     void rampTo (double psi, std::int64_t holdUntil, double returnSamples, int fadeSamples = -1) noexcept;
@@ -158,10 +174,10 @@ private:
     // a bass note starting (seen L ahead of the output): the rotation back to
     // 0 before it is heard, so its attack is never rotated (a click in the
     // highs: Alan)
-    float noteFast = 0.0f, noteFastAtt = 0.0f, noteFastRel = 0.0f;
+    float noteFast = 0.0f, noteFastAtt = 0.0f, noteFastRel = 0.0f, notePeak = 0.0f, notePeakDecay = 0.99999f;
     std::array<float, 4096> noteRing {};
     int noteLag = 480;
-    std::int64_t noteDeadUntil = -1;
+    std::int64_t noteDeadUntil = -1, lastNoteStart = -1000000;
     int noteOnsets = 0;
     int linkSlack = 0, lateKicks = 0;
     void pollLink (const gk::BlockTiming& timing);
@@ -176,7 +192,7 @@ public:
     int linkSendersOnChannel() const noexcept { return link.getSendersOnChannel(); }
     /** Tests / diagnosis: at the last kick measured, the phase coherence over
         8 cycles (before the caps), YIN's aperiodicity, the pitch spread (0.03 = 3 %). */
-    double lastCoherence = 0.0, lastAperiodicity = 0.0, lastPitchSpread = 0.0;
+    double lastCoherence = 0.0, lastAperiodicity = 0.0, lastPitchSpread = 0.0, lastTm = 0.0, lastNoteAgeMs = 0.0;
     /** Tests: bass note starts seen (each brings the rotation back to 0 before it is heard). */
     int noteStartsSeen() const noexcept { return noteOnsets; }
 
@@ -229,7 +245,7 @@ private:
     int decimation = 16, decCounter = 0, yinHop = 0;
     std::vector<float> dec;
     std::int64_t decWrite = 0;
-    double periodSamples = 0.0; // at the full rate, 0 = unknown
+    double periodSamples = 0.0, cleanPeriod = 0.0; // at the full rate, 0 = unknown; the last one from a steadily held note
     std::array<double, 10> recentPeriods {}; // the last ~100 ms of YIN estimates
     int recentCount = 0;
     float yinAperiodicity = 1.0f;
