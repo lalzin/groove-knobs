@@ -5,6 +5,7 @@
 #include "KickLockProcessor.h"
 #include "GkTestUtils.h"
 #include "KickBass.h"
+#include "KickSendProcessor.h"
 #include <catch2/catch_approx.hpp>
 #include <numeric>
 
@@ -651,6 +652,17 @@ TEST_CASE ("KL 21. No kick, the host playing: ducking and lock on the beats (TRI
         CHECK ((Status) q->getDsp().getTelemetry().status.load() != Status::noKick);
         CHECK (q->getDsp().getTelemetry().triggerSource.load() == 2);
     }
+    // play from the top: the first beat (the downbeat, where play starts) triggers at once
+    {
+        auto p = makeKl (sr, 1.0f, true, 1.0f);
+        setParam (p->getTriggerParameter(), (float) KickLockDsp::triggerBeat);
+        p->prepareToPlay (sr, 512);
+        Buffer shortBass (2, (int) (0.2 * sr));
+        shortBass.clear();
+        run (*p, shortBass, nullptr, { 512 }, bpm);
+        CHECK (p->getDsp().getTelemetry().kickEvents.load() == 1);
+        CHECK (p->getDsp().getTelemetry().lastKickSample.load() == 0);
+    }
     // Auto with a kick on the sidechain (off the beat by 0.1 s): the kicks lead, not the beats
     {
         auto p = makeKl (sr, 1.0f, false, 1.0f);
@@ -665,6 +677,73 @@ TEST_CASE ("KL 21. No kick, the host playing: ducking and lock on the beats (TRI
             }
         CHECK (p->getDsp().getTelemetry().triggerSource.load() == 1);
     }
+}
+
+TEST_CASE ("KL 22. Link: Kick Lock Send on the kick's track drives Kick Lock, on time or a block late", "[kl][link]")
+{
+    // a block of shared memory of its own (a running Live is never disturbed)
+    kl::KickLink::blockName() = "gk_kl_test_" + juce::String (juce::Random::getSystemRandom().nextInt (1 << 30));
+    kl::KickLink::removeBlock();
+    const double sr = 48000.0, bpm = 124.0, seconds = 6.0, hz = 55.0;
+    const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr);
+    const auto kickTrack = kicks (seconds, sr, bpm, 0.0);
+    const auto times = kickTimes (seconds, bpm, 0.0);
+    for (int order : { 0, 1 }) // 0: the kick's track first (on time); 1: the bass first, 1024-sample blocks (a block late)
+    {
+        kls::KickSendProcessor send;
+        send.setNonRealtime (true);
+        send.prepareToPlay (sr, 1024);
+        auto p = makeKl (sr, 1.0f, true, 0.0f, 1024); // depth 0: the phase of the bass itself
+        setParam (p->getTriggerParameter(), (float) KickLockDsp::triggerLink);
+        p->prepareToPlay (sr, 1024);
+        REQUIRE (send.getLatencySamples() == p->getLatencySamples()); // the host keeps both tracks in step
+        gk::OfflinePlayHead ph;
+        ph.bpm = bpm;
+        ph.sampleRate = sr;
+        ph.playing = true;
+        send.setPlayHead (&ph);
+        p->setPlayHead (&ph);
+        Buffer kickIo (kickTrack), bassIo (b);
+        juce::MidiBuffer midi;
+        const int block = order == 0 ? 512 : 1024;
+        for (int pos = 0; pos < b.getNumSamples(); pos += block)
+        {
+            const int len = juce::jmin (block, b.getNumSamples() - pos);
+            ph.samplePosition = pos;
+            Buffer kv (kickIo.getArrayOfWritePointers(), 2, pos, len), bv (bassIo.getArrayOfWritePointers(), 2, pos, len);
+            if (order == 0)
+            {
+                send.processBlock (kv, midi);
+                p->processBlock (bv, midi);
+            }
+            else
+            {
+                p->processBlock (bv, midi);
+                send.processBlock (kv, midi);
+            }
+        }
+        send.setPlayHead (nullptr);
+        p->setPlayHead (nullptr);
+        const auto e = errorsAtKicks (bassIo, p->getLatencySamples(), hz, sr, times, order == 0 ? 0.7 : 2.5, seconds - 0.2);
+        INFO ((order == 0 ? "on time" : "a block late (predicted)") << ": phase at the kicks, worst " << maxAbs (e) << " deg over " << e.size()
+              << " kicks; predicting " << p->getDsp().linkPredicting());
+        {
+            const auto last = p->getDsp().getTelemetry().lastKickSample.load();
+            double nearest = 1.0e9;
+            for (double t : times)
+                if (std::abs (t * sr - (double) last) < std::abs (nearest - (double) last))
+                    nearest = t * sr;
+            INFO ("last link kick at sample " << last << ", the kick is at " << nearest << "; Send detected " << send.getDsp().getTelemetry().kicks.load()
+                  << " kicks for " << times.size());
+            CHECK (std::abs ((double) last - nearest) < 0.002 * sr);
+        }
+        CHECK (! e.empty());
+        CHECK (maxAbs (e) < 5.0);
+        CHECK (p->getDsp().getTelemetry().triggerSource.load() == 3);
+        CHECK (p->getDsp().linkPredicting() == (order == 1));
+        CHECK (p->getDsp().linkName().isNotEmpty());
+    }
+    kl::KickLink::removeBlock();
 }
 
 TEST_CASE ("KL 17. CPU: stereo bass + stereo sidechain, LOCK on, 48 kHz", "[kl][cpu]")
@@ -759,4 +838,40 @@ TEST_CASE ("diag: output envelope around a kick", "[.kldiag4]")
         line << ms << ":" << juce::String (pk, 2) << " ";
     }
     WARN (line);
+}
+
+TEST_CASE ("KL 23. One detection per kick, whatever the threshold (Kick Lock and Kick Lock Send)", "[kl][kick]")
+{
+    // (the re-arming used to fire again at the end of the dead time when the
+    // threshold was low: the slow envelope had not risen yet at the kick's start)
+    const double sr = 48000.0, bpm = 124.0, seconds = 3.0;
+    const auto b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr);
+    const auto k = kicks (seconds, sr, bpm, 0.1);
+    const auto n = (int) kickTimes (seconds, bpm, 0.1).size();
+    for (float db : { -40.0f, -30.0f, -24.0f, -18.0f, -9.0f })
+    {
+        auto p = makeKl (sr, 1.0f, false);
+        setParam (p->getTriggerParameter(), (float) KickLockDsp::triggerSidechain);
+        setParam (p->getThresholdParameter(), db);
+        p->prepareToPlay (sr, 512);
+        run (*p, b, &k, { 512 }, bpm);
+        INFO ("Kick Lock, threshold " << db << " dB");
+        CHECK (p->getDsp().getTelemetry().kickEvents.load() == n);
+    }
+    for (float sens : { 0.0f, 0.5f, 0.9f })
+    {
+        kls::KickSendDsp d;
+        d.prepare (sr, 512, 2);
+        Buffer io (k);
+        std::vector<float> amount (512, sens);
+        gk::BlockTiming t;
+        for (int pos = 0; pos < io.getNumSamples(); pos += 512)
+        {
+            const int len = juce::jmin (512, io.getNumSamples() - pos);
+            Buffer v (io.getArrayOfWritePointers(), 2, pos, len);
+            d.processWet (v, len, amount.data(), t);
+        }
+        INFO ("Kick Lock Send, sensitivity " << sens);
+        CHECK (d.getTelemetry().kicks.load() == n);
+    }
 }

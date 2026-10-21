@@ -65,9 +65,19 @@ rm -rf "$WORK"; mkdir -p "$WORK"/{vst3,au,app,res} "$DIST"
 cp -R "$ART/VST3/$PRODUCT.vst3" "$WORK/vst3/"
 cp -R "$ART/AU/$PRODUCT.component" "$WORK/au/"
 cp -R "$ART/Standalone/$PRODUCT.app" "$WORK/app/"
+BUNDLES=("$WORK/vst3/$PRODUCT.vst3" "$WORK/au/$PRODUCT.component" "$WORK/app/$PRODUCT.app")
+# Kick Lock ships with Kick Lock Send (on the kick's track, sends its kicks to Kick Lock)
+if [[ "$P" == KL ]]; then
+  SEND="$(get KLS_PRODUCT_NAME)"
+  SART="$ROOT/build-release/plugins/kick_lock_send/KickLockSend_artefacts/Release"
+  cp -R "$SART/VST3/$SEND.vst3" "$WORK/vst3/"
+  cp -R "$SART/AU/$SEND.component" "$WORK/au/"
+  BUNDLES+=("$WORK/vst3/$SEND.vst3" "$WORK/au/$SEND.component")
+fi
 
-for b in "$WORK/vst3/$PRODUCT.vst3" "$WORK/au/$PRODUCT.component" "$WORK/app/$PRODUCT.app"; do
-  lipo -info "$b/Contents/MacOS/$PRODUCT" | grep -q "x86_64 arm64\|arm64 x86_64" || { echo "not universal: $b"; exit 1; }
+for b in "${BUNDLES[@]}"; do
+  exe="$b/Contents/MacOS/$(basename "${b%.*}")"
+  lipo -info "$exe" | grep -q "x86_64 arm64\|arm64 x86_64" || { echo "not universal: $b"; exit 1; }
   if [[ -n "${DEV_ID_APP:-}" ]]; then
     ent=()
     [[ "$b" == *.app ]] && ent=(--entitlements "$ROOT/installer/mac/standalone.entitlements")
@@ -86,7 +96,7 @@ if [[ -n "${DEV_ID_APP:-}" && -n "${NOTARY_PROFILE:-}" ]] && xcrun notarytool hi
     grep -q "status: Accepted" "$WORK/notary-$z.log" || { echo "notarisation of the $z bundle failed: xcrun notarytool log <id> --keychain-profile $NOTARY_PROFILE"; exit 1; }
     rm -f "$WORK/bundles-$z.zip"
   done
-  for b in "$WORK/vst3/$PRODUCT.vst3" "$WORK/au/$PRODUCT.component" "$WORK/app/$PRODUCT.app"; do
+  for b in "${BUNDLES[@]}"; do
     xcrun stapler staple "$b"
   done
   spctl --assess --type execute -vv "$WORK/app/$PRODUCT.app" 2>&1 | head -3

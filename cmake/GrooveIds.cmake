@@ -53,3 +53,9 @@ set(KL_PLUGIN_CODE         "KkLk")
 set(KL_AU_TYPE             "aufx")          # kAudioUnitType_Effect
 set(KL_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.kicklock")
 set(KL_VERSION             "0.1.0")
+
+set(KLS_PRODUCT_NAME       "Kick Lock Send")
+set(KLS_PLUGIN_CODE        "KkLs")
+set(KLS_AU_TYPE            "aufx")          # kAudioUnitType_Effect
+set(KLS_BUNDLE_ID          "${GK_BUNDLE_ID_PREFIX}.kicklocksend")
+set(KLS_VERSION            "${KL_VERSION}")  # ships with Kick Lock

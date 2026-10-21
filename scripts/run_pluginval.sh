@@ -15,6 +15,7 @@ case "$PLUGIN" in
   "Pew Pew")       ART="$BUILD/plugins/pew_pew/PewPew_artefacts/Release" ;;
   "Sing It Back")  ART="$BUILD/plugins/sing_it_back/SingItBack_artefacts/Release" ;;
   "Kick Lock")     ART="$BUILD/plugins/kick_lock/KickLock_artefacts/Release" ;;
+  "Kick Lock Send") ART="$BUILD/plugins/kick_lock_send/KickLockSend_artefacts/Release" ;;
   *) echo "unknown plugin: $PLUGIN"; exit 2 ;;
 esac
 

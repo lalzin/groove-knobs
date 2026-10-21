@@ -6,6 +6,7 @@ target_sources(kl_tests PRIVATE
 target_include_directories(kl_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../common)
 target_link_libraries(kl_tests PRIVATE
     KickLockCode
+    KickLockSendCode
     Catch2::Catch2
     juce::juce_recommended_config_flags)
 target_compile_definitions(kl_tests PRIVATE JUCE_STANDALONE_APPLICATION=1)
@@ -21,6 +22,6 @@ catch_discover_tests(kl_tests
 juce_add_console_app(kl_screenshots PRODUCT_NAME "kl_screenshots")
 target_sources(kl_screenshots PRIVATE KlScreenshots.cpp)
 target_include_directories(kl_screenshots PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../common)
-target_link_libraries(kl_screenshots PRIVATE KickLockCode juce::juce_recommended_config_flags)
+target_link_libraries(kl_screenshots PRIVATE KickLockCode KickLockSendCode juce::juce_recommended_config_flags)
 target_compile_definitions(kl_screenshots PRIVATE JUCE_STANDALONE_APPLICATION=1)
 gk_enable_warnings(kl_screenshots)

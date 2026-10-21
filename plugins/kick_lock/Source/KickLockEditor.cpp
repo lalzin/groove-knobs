@@ -43,7 +43,7 @@ namespace
         }
     }
 
-    juce::String sourceSuffix (int source) { return source == 2 ? fr (" \xc2\xb7 BEAT") : juce::String(); }
+    juce::String sourceSuffix (int source) { return source == 2 ? fr (" \xc2\xb7 BEAT") : source == 3 ? fr (" \xc2\xb7 LINK") : juce::String(); }
 
     /** ... and the sentence in its tooltip. */
     juce::String statusSentence (int st, bool lock)
@@ -56,8 +56,8 @@ namespace
             case Status::weakSub: return "The sub is too quiet to measure its phase";
             case Status::monoLoss: return "Mono sum: cancellation detected (the sides are out of phase)";
             case Status::noKick:
-            default: return "Nothing to follow: press play (with TRIGGER Auto or Beat it follows the tempo), or send a kick to the sidechain: "
-                            "in Live, the Sidechain section on the left of the device (the small triangle), Audio From = the kick track (VST3)";
+            default: return "Nothing to follow: press play (TRIGGER Auto or Beat follow the tempo); for the kick itself, put Kick Lock Send "
+                            "on the kick's track (or route it to the sidechain)";
         }
     }
 } // namespace
@@ -113,7 +113,10 @@ public:
             const int source = proc.getDsp().getTelemetry().triggerSource.load (std::memory_order_relaxed);
             text = bypassed ? juce::String ("BYPASS") : statusWord (st, lock) + (st != (int) Status::noKick ? sourceSuffix (source) : juce::String());
             setTooltip (bypassed ? juce::String ("Bypassed")
-                                 : statusSentence (st, lock) + (source == 2 && st != (int) Status::noKick ? " (on the host's beats: no kick on the sidechain)" : ""));
+                                 : statusSentence (st, lock) + (st == (int) Status::noKick ? juce::String()
+                                                               : source == 2 ? juce::String (" (on the host's beats: no kick on the sidechain)")
+                                                               : source == 3 ? " (the kicks of " + proc.getDsp().linkName() + ", through Kick Lock Send)"
+                                                                             : juce::String()));
             repaint();
         }
     }
@@ -250,8 +253,7 @@ public:
         kick.assign (sub.size(), 0.0f);
         bass.assign (sub.size(), 0.0f);
         curvePath.preallocateSpace (4096);
-        kickEnv.reserve (1024);
-        bassEnv.reserve (1024);
+        wavePath.preallocateSpace (16384);
         setTooltip ("Drag the points of the ducking curve, double-click to add or remove one, drag a segment's ring to bend it, "
                     "right-click for the presets.");
     }
@@ -288,7 +290,8 @@ public:
         g.setColour (palette (cream).withAlpha (0.5f));
         g.setFont (gk::GrooveFonts::font (10.5f).withExtraKerningFactor (0.12f));
         const bool beats = proc.getDsp().getTelemetry().triggerSource.load (std::memory_order_relaxed) == 2;
-        g.drawText (beats ? "TEMPO" : "SIDECHAIN", b.reduced (12.0f, 4.0f).withHeight (14.0f), juce::Justification::centredLeft);
+        const int source = proc.getDsp().getTelemetry().triggerSource.load (std::memory_order_relaxed);
+        g.drawText (beats ? "TEMPO" : source == 3 ? "LINK" : "SIDECHAIN", b.reduced (12.0f, 4.0f).withHeight (14.0f), juce::Justification::centredLeft);
         g.drawText (beatsLabel(), b.reduced (12.0f, 4.0f).withHeight (14.0f).withTrimmedLeft (80.0f), juce::Justification::centredLeft);
 
         const auto m = mainArea();
@@ -321,64 +324,47 @@ public:
         const float kickX = m.getX() + (float) (preBeats / (preBeats + winBeats)) * m.getWidth();
         if (shown >= 0)
         {
-            // the waveforms as envelopes (peak over ~a bass cycle around each
-            // column), mirrored: the bass filled, the kick outlined over it
-            const int cols = juce::jmax (1, (int) m.getWidth());
-            const auto reach = (std::int64_t) (0.009 * sr);
+            // the waveforms themselves (Alan: the wave, not blocks): every
+            // stored sample (1 in 8) on a line, the kick behind, the bass as
+            // heard in front, under the curve
             float peak = 0.05f;
-            for (int pass = 0; pass < 2; ++pass)
+            for (auto t = shown - pre; t < shown - pre + span; t += dec)
             {
-                auto& env = pass == 0 ? kickEnv : bassEnv;
-                env.resize ((size_t) cols);
-                const auto& ring = pass == 0 ? kick : bass;
-                for (int c = 0; c < cols; ++c)
-                {
-                    const auto centre = shown - pre + span * c / cols;
-                    float hi = 0.0f;
-                    for (auto t = centre - reach; t <= centre + reach; t += dec)
-                    {
-                        bool ok = false;
-                        hi = juce::jmax (hi, std::abs (valueAt (ring, t, ok)));
-                    }
-                    env[(size_t) c] = hi;
-                    peak = juce::jmax (peak, hi);
-                }
+                bool ok = false;
+                peak = juce::jmax (peak, std::abs (valueAt (bass, t, ok)), beats ? 0.0f : std::abs (valueAt (kick, t, ok)));
             }
             const float half = m.getHeight() * 0.46f / peak, mid = m.getCentreY();
-            for (int pass = 0; pass < (beats ? 1 : 2); ++pass) // the bass filled, then the kick's outline over it (none on the beats)
+            for (int pass = beats ? 1 : 0; pass < 2; ++pass)
             {
-                const auto& env = pass == 0 ? bassEnv : kickEnv;
-                juce::Path shapePath;
-                shapePath.startNewSubPath (m.getX(), mid);
-                for (int c = 0; c < cols; ++c)
-                    shapePath.lineTo (m.getX() + (float) c, mid - env[(size_t) c] * half);
-                for (int c = cols - 1; c >= 0; --c)
-                    shapePath.lineTo (m.getX() + (float) c, mid + env[(size_t) c] * half);
-                shapePath.closeSubPath();
-                if (pass == 0)
+                const auto& ring = pass == 0 ? kick : bass;
+                wavePath.clear();
+                bool started = false;
+                for (auto t = shown - pre; t < shown - pre + span; t += dec)
                 {
-                    g.setColour (palette (lime).withAlpha (0.6f));
-                    g.fillPath (shapePath);
-                    g.setColour (palette (lime));
-                    g.strokePath (shapePath, juce::PathStrokeType (1.0f));
+                    bool ok = false;
+                    const float v = valueAt (ring, t, ok);
+                    if (! ok)
+                        continue;
+                    const float x = m.getX() + (float) (t - (shown - pre)) / (float) span * m.getWidth();
+                    const float y = mid - juce::jlimit (-1.0f, 1.0f, v * half / (m.getHeight() * 0.5f)) * m.getHeight() * 0.5f;
+                    if (! started)
+                        wavePath.startNewSubPath (x, y);
+                    else
+                        wavePath.lineTo (x, y);
+                    started = true;
                 }
-                else
-                {
-                    g.setColour (palette (orange).withAlpha (0.12f));
-                    g.fillPath (shapePath);
-                    g.setColour (palette (orange));
-                    g.strokePath (shapePath, juce::PathStrokeType (1.6f));
-                }
+                g.setColour (palette (pass == 0 ? orange : lime).withAlpha (pass == 0 ? 0.55f : 0.9f));
+                g.strokePath (wavePath, juce::PathStrokeType (pass == 0 ? 1.0f : 1.2f));
             }
         }
         else
         {
             g.setColour (palette (cream).withAlpha (0.85f));
             g.setFont (gk::GrooveFonts::font (15.0f));
-            g.drawText ("PRESS PLAY, OR SEND A KICK", m.withTrimmedBottom (m.getHeight() * 0.5f), juce::Justification::centredBottom);
+            g.drawText ("PRESS PLAY", m.withTrimmedBottom (m.getHeight() * 0.5f), juce::Justification::centredBottom);
             g.setColour (palette (cream).withAlpha (0.6f));
             g.setFont (gk::GrooveFonts::font (11.5f));
-            g.drawFittedText (fr ("follows the tempo \xc2\xb7 kick: Sidechain (left of the device, VST3) \xe2\x96\xb8 Audio From \xe2\x96\xb8 kick"),
+            g.drawFittedText (fr ("follows the tempo \xc2\xb7 for the kick: Kick Lock Send on the kick's track"),
                               m.withTrimmedTop (m.getHeight() * 0.55f).withHeight (18.0f).toNearestInt(), juce::Justification::centred, 1, 0.8f);
         }
         dashed (g, kickX, m.getY(), m.getBottom(), 0.75f);
@@ -614,8 +600,7 @@ private:
     int write = 0;
     std::int64_t endTime = 0;
     std::array<std::int64_t, 4> kicks { -1, -1, -1, -1 };
-    juce::Path curvePath;
-    std::vector<float> kickEnv, bassEnv;
+    juce::Path curvePath, wavePath;
     std::vector<Node> edit;
     int hover = -1, dragging = -1;
     float lastY = 0.0f;
@@ -894,7 +879,8 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
     addToCanvas (*mode, { 492, 332, 80, 38 });
 
     trigger = std::make_unique<gk::ChoiceSelector> (p.getTriggerParameter(), "TRIGGER", orange, pal);
-    trigger->setTooltip ("Auto: the kick on the sidechain, else the host's beats. Sidechain: the kick only. Beat: the tempo only (no sidechain needed).");
+    trigger->setTooltip ("Auto: the kick on the sidechain, else Kick Lock Send's (put it on the kick's track), else the host's beats. "
+                        "Sidechain: the sidechain only. Beat: the tempo only. Link: Kick Lock Send only.");
     addToCanvas (*trigger, { 212, 290, 84, 38 });
 
     // the right column: ducking shape, release, the lock's settings, depth

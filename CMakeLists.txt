@@ -69,6 +69,7 @@ add_subdirectory(plugins/backwash)
 add_subdirectory(plugins/pew_pew)
 add_subdirectory(plugins/sing_it_back)
 add_subdirectory(plugins/kick_lock)
+add_subdirectory(plugins/kick_lock_send)
 
 if(GK_BUILD_TOOLS)
     add_subdirectory(tools/ff_render)

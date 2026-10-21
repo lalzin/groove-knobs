@@ -9,6 +9,7 @@
 
 #include "KickLockEditor.h"
 #include "KickBass.h"
+#include "KickSendProcessor.h"
 #include <iostream>
 
 namespace
@@ -124,6 +125,17 @@ int main (int argc, char** argv)
     }
     writePng (sheet, outDir.getChildFile ("contact_sheet.png"));
     { Case c; c.slug = "scale_200"; c.scale = 2.0f; int st = -1; writePng (shoot (c, st), outDir.getChildFile ("scale_200.png")); }
+    {
+        // Kick Lock Send, on a kick
+        kls::KickSendProcessor send;
+        send.prepareToPlay (48000.0, 512);
+        const auto k = kickbass::kicks (2.0, 48000.0, 124.0, 0.1);
+        kickbass::run (send, k, nullptr, { 512 }, 124.0);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (send.createEditor());
+        auto* editor = dynamic_cast<gk::OneKnobEditor*> (ed.get());
+        editor->snapForSnapshot();
+        writePng (editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f), outDir.getChildFile ("send.png"));
+    }
     std::cout << "wrote " << outDir.getFullPathName() << "\n";
     return 0;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <groove_core/groove_core.h>
+#include "KickLink.h"
 
 namespace kl
 {
@@ -16,7 +17,8 @@ struct KickTelemetry
     std::atomic<float> subLevelDb { -120.0f }, kickLevelDb { -120.0f }, monoSumLossDb { 0.0f };
     std::atomic<float> f0Hz { 0.0f }, shiftMs { 0.0f }, duckGain { 1.0f };
     std::atomic<int> kickEvents { 0 }, status { (int) Status::noKick };
-    std::atomic<int> triggerSource { 0 }; // what triggered the last event: 0 nothing, 1 the sidechain's kick, 2 the host's beat
+    std::atomic<int> triggerSource { 0 }; // what triggered the last event: 0 nothing, 1 the sidechain's kick, 2 the host's beat, 3 the link
+    std::atomic<int> linkSlot { -1 };     // the Kick Lock Send followed (-1: none)
     std::atomic<std::int64_t> lastKickSample { -1 }, outputClock { 0 };
     std::array<std::atomic<std::int64_t>, 4> recentKicks { { -1, -1, -1, -1 } }; // the last kicks (slot = count % 4)
     // oscilloscope: 2 s of the corrected sub, the output and the kick (1 in 8)
@@ -48,8 +50,9 @@ public:
     static constexpr int lockSwitch = 0;
     static constexpr int targetKnob = 0, offsetKnob = 1, subCutKnob = 2, depthKnob = 3, waveStartKnob = 4, thresholdKnob = 5;
     static constexpr int shapeChoice = 0, releaseChoice = 1, modeChoice = 2, triggerChoice = 3;
-    /** TRIGGER: Auto = the sidechain's kicks, else (nothing for 2 s, or no sidechain) the host's beats; Sidechain; Beat. */
-    enum Trigger { triggerAuto, triggerSidechain, triggerBeat };
+    /** TRIGGER: Auto = the sidechain's kicks, else Kick Lock Send's (the link), else the host's beats
+        (each takes over after 2 s without the one before); Sidechain; Beat; Link. */
+    enum Trigger { triggerAuto, triggerSidechain, triggerBeat, triggerLink };
     enum LockMode { continuous, transition };
     enum Shape { exponential, linear, sCurve, bounce, custom };
 
@@ -127,6 +130,25 @@ private:
     double lastBeatFloor = 0.0;
     bool beatValid = false;
     void addTrigger (std::int64_t onset);
+
+    // the link (Kick Lock Send): its kicks on the song's grid, placed on ours
+    KickLinkReceiver link;
+    std::array<std::int64_t, 32> linkPending {};
+    int linkPendingCount = 0;
+    std::array<double, 32> linkHistory {}; // recent kicks (quarter notes): the previous bar predicts this one
+    int linkHistoryCount = 0;
+    std::int64_t lastLinkKick = -1000000;
+    int lateCount = 0, onTimeCount = 0;
+    bool linkLate = false; // its kicks arrive too late to be followed live: predicted from the bar before
+    void pollLink (int numSamples, const gk::BlockTiming& timing);
+    void scheduleLink (std::int64_t onset);
+
+public:
+    /** Tests: the name of the Kick Lock Send followed (empty = none). */
+    juce::String linkName() const { return link.followedName(); }
+    bool linkPredicting() const noexcept { return linkLate; }
+
+private:
     double bpm = 120.0;
 
     // signal paths: the FIR (two kernels, crossfaded when SUB CUT moves)
