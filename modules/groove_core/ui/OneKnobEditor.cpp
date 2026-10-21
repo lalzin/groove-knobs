@@ -104,9 +104,13 @@ public:
 
     void mouseEnter (const juce::MouseEvent&) override { over = true; repaint(); }
     void mouseExit (const juce::MouseEvent&) override { over = false; repaint(); }
+    std::function<void()> onMenu; // right-click: the update-check menu
+
     void mouseUp (const juce::MouseEvent& e) override
     {
-        if (contains (e.getPosition()))
+        if (e.mods.isPopupMenu() && onMenu)
+            onMenu();
+        else if (contains (e.getPosition()))
             url.launchInDefaultBrowser();
     }
     bool keyPressed (const juce::KeyPress& k) override
@@ -123,6 +127,45 @@ private:
     const Palette& palette;
     juce::URL url;
     bool over = false;
+};
+
+//==============================================================================
+/** "MAJ 0.2.0": a newer version exists; a click opens its download page. */
+class OneKnobEditor::UpdateBadge final : public juce::Button
+{
+public:
+    explicit UpdateBadge (const Palette& p) : juce::Button ("Update"), palette (p)
+    {
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+        setWantsKeyboardFocus (true);
+        onClick = [this] { if (url.isNotEmpty()) juce::URL (url).launchInDefaultBrowser(); };
+    }
+
+    void show (const UpdateCheck::Result& r)
+    {
+        url = r.url;
+        setButtonText ("MAJ " + r.latest);
+        setTitle ("Update available: " + r.latest);
+        setTooltip (juce::String::fromUTF8 ("Nouvelle version ") + r.latest + juce::String::fromUTF8 (" â cliquer pour la tÃ©lÃ©") + "charger");
+        setVisible (true);
+        repaint();
+    }
+
+    void paintButton (juce::Graphics& g, bool over, bool down) override
+    {
+        const auto b = getLocalBounds().toFloat().reduced (1.0f).translated (0.0f, down ? 1.0f : 0.0f);
+        g.setColour (palette (palette.beret).withMultipliedBrightness (over ? 1.15f : 1.0f));
+        g.fillRoundedRectangle (b, b.getHeight() * 0.5f);
+        g.setColour (palette (palette.outline));
+        g.drawRoundedRectangle (b, b.getHeight() * 0.5f, 1.5f);
+        g.setColour (palette (palette.text));
+        g.setFont (GrooveFonts::font (9.5f).withExtraKerningFactor (0.06f));
+        g.drawText (getButtonText(), b, juce::Justification::centred);
+    }
+
+private:
+    const Palette& palette;
+    juce::String url;
 };
 
 //==============================================================================
@@ -222,6 +265,30 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
         creditLink = std::make_unique<CreditLink> (palette, cfg.companyUrl);
         canvas->addAndMakeVisible (*creditLink);
         creditLink->setBounds (2, 10, 76, 40); // over "made by LALZIN"
+    }
+    if (cfg.version.isNotEmpty() && cfg.updateSlug.isNotEmpty())
+    {
+        updateBadge = std::make_unique<UpdateBadge> (palette);
+        canvas->addChildComponent (*updateBadge);
+        updateBadge->setBounds (80, 9, 66, 17); // right of "made by", above the title
+        juce::Component::SafePointer<UpdateBadge> safe (updateBadge.get());
+        updateCheck = std::make_unique<UpdateCheck> (cfg.updateSlug, cfg.version, cfg.updateUrl, [safe] (const UpdateCheck::Result& r)
+                                                     {
+                                                         if (safe != nullptr)
+                                                             safe->show (r);
+                                                     });
+        if (creditLink != nullptr)
+            creditLink->onMenu = [this]
+            {
+                juce::PopupMenu m;
+                m.addSectionHeader (proc.getConfig().productName + " " + proc.getConfig().version);
+                m.addItem (juce::String::fromUTF8 ("VÃ©rifier les mises Ã  jour (une fois par jour)"), true, UpdateCheck::isEnabled(),
+                           [] { UpdateCheck::setEnabled (! UpdateCheck::isEnabled()); });
+                m.addItem (juce::String::fromUTF8 ("VÃ©rifier maintenant"), UpdateCheck::isEnabled(), false,
+                           [this] { if (updateCheck != nullptr) updateCheck->checkNow(); });
+                m.addItem ("lalzin.com", [this] { juce::URL (proc.getConfig().companyUrl).launchInDefaultBrowser(); });
+                m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (creditLink.get()));
+            };
     }
 
     // Layout on the base canvas (see spec §8.1)

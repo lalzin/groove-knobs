@@ -1,0 +1,25 @@
+{
+  "updated": "2026-10-21",
+  "plugins": {
+    "french-filter": {
+      "version": "0.1.2",
+      "url": "https://www.lalzin.com/plugins/french-filter"
+    },
+    "boogie-trio": {
+      "version": "0.1.2",
+      "url": "https://www.lalzin.com/plugins/boogie-trio"
+    },
+    "backwash": {
+      "version": "0.1.2",
+      "url": "https://www.lalzin.com/plugins/backwash"
+    },
+    "pew-pew": {
+      "version": "0.1.2",
+      "url": "https://www.lalzin.com/plugins/pew-pew"
+    },
+    "sing-it-back": {
+      "version": "0.1.2",
+      "url": "https://www.lalzin.com/plugins/sing-it-back"
+    }
+  }
+}

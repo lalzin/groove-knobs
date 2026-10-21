@@ -1,6 +1,16 @@
 # Changelog
 
+## 0.1.2 — 2026-10-20 (les cinq plugins)
+- **Vérification des mises à jour** : une fois par jour, chaque plugin lit `lalzin.com/plugins/versions.json` et affiche un badge « MAJ x.y.z » s'il existe une version plus récente (clic = page de téléchargement ; rien n'est installé automatiquement). Clic droit sur « made by LALZIN » pour la désactiver ou vérifier tout de suite.
+- **macOS** : installateurs signés (Developer ID) et notarisés par Apple, plugins et application notarisés eux aussi.
+- **Numéro de version** partout : noms des installateurs, paquets, plugins (VST3 / AU / application), installateurs Windows ; un tag de release qui ne correspond pas aux versions des plugins est refusé par le build.
+- **Sing It Back** : panneau VOIX (partie, niveau, pan, timbre de chaque voix), foule plus naturelle (voir plus bas).
+- **Pew Pew** : MODE SOLO / MULTI.
+
 ## [Unreleased] — Sing It Back 0.1.0 (nouveau)
+- Panneau **VOIX** façon harmoniseur : partie, niveau, pan et timbre de chacune des 12 voix (48 paramètres automatisables), voyants d'activité, réinitialisation.
+- Plus naturel : contour de hauteur lissé (plus d'escalier « auto-tune »), jitter / shimmer par voix, harmonie qui glisse en ~90 ms, vibrato qui dérive, voix à l'octave basse en retrait ; la hauteur du chanteur est gardée (plus d'auto-tune involontaire), consonnes doublées au lieu de coupées, gestes humains (scoops, vibrato tardif).
+- Plus de grésillement (grains allongés en descendant, plafond de sortie à anticipation, grains jamais tronqués) ; interface allégée (fond en cache, Sugar à 30 i/s) ; knob **VOL** ; foule plus présente à 100 %.
 - Une foule qui chante avec la voix : knob CROWD (SOLO → CROWD, 25 % par défaut), jusqu'à 12 voix dans le ton et la gamme (6 gammes, SNAP, harmonies Auto / octaves / tierces / quintes / quartes), la voix d'origine intacte jusqu'à 40 % puis en retrait (−10 dB à 100 %).
 - Détection YIN, pitch shift TD-PSOLA maison (juste à ±2 cents, formants gardés, latence 21,3 ms à 48 kHz) — Signalsmith Stretch évaluée puis écartée (15 à 25 cents trop haut à cette latence).
 - Anti-robotique : retards, désaccord, vibratos, niveaux, panoramique et envois propres à chaque voix, décrochages (DROPS), porte de voisement ; reverb de la foule seule (Petite / Club / Stade).

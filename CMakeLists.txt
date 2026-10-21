@@ -23,13 +23,10 @@ endif()
 option(GK_BUILD_TESTS "Build the test suite and screenshot generator" ON)
 option(GK_BUILD_TOOLS "Build the offline tools (ff_render)" ON)
 option(GK_WARNINGS_AS_ERRORS "Treat warnings in our code as errors" OFF)
-# Copying into C:\Program Files\Common Files\VST3 needs an elevated shell on
-# Windows, so it is opt-in there (the installer does it instead).
-if(WIN32)
-    option(GK_COPY_PLUGINS "Copy plugins to the system folders after build" OFF)
-else()
-    option(GK_COPY_PLUGINS "Copy plugins to the system folders after build" ON)
-endif()
+# Off by default: a build copying into ~/Library/Audio/Plug-Ins replaced the
+# plug-ins under a running DAW (Live: "plug-in not found" when it scanned a
+# half-copied bundle). Install with the .pkg / .exe; -DGK_COPY_PLUGINS=ON to opt in.
+option(GK_COPY_PLUGINS "Copy plugins to the plug-in folders after build" OFF)
 
 include(cmake/GrooveWarnings.cmake)
 include(cmake/GrooveSigning.cmake)

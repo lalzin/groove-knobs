@@ -62,4 +62,5 @@
 #include "ui/ToggleChips.h"
 #include "ui/ChoiceChips.h"
 #include "ui/MascotComponent.h"
+#include "ui/UpdateCheck.h"
 #include "ui/OneKnobEditor.h"

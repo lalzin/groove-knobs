@@ -229,7 +229,14 @@ void PitchTracker::analyse() noexcept
 }
 
 //==============================================================================
-SingItBackDsp::SingItBackDsp() = default;
+SingItBackDsp::SingItBackDsp()
+{
+    for (int k = 0; k < maxVoices; ++k)
+    {
+        partGain[(size_t) k] = 1.0f;
+        partPan[(size_t) k] = defaultPan (k);
+    }
+}
 
 int SingItBackDsp::latencyFor (double sr) noexcept
 {
@@ -280,6 +287,50 @@ const SingItBackDsp::StyleSpec& SingItBackDsp::styleSpec (int st) noexcept
 double SingItBackDsp::responseBeats (int r, double barBeats) noexcept
 {
     return r == 1 ? 0.5 * barBeats : r == 2 ? barBeats : 0.0;
+}
+
+juce::StringArray SingItBackDsp::partNames()
+{
+    return { "Style", "Unisson", "Tierce +", "Quarte +", "Quinte +", "Octave +", juce::String::fromUTF8 ("Tierce \xe2\x88\x92"),
+             juce::String::fromUTF8 ("Quinte \xe2\x88\x92"), juce::String::fromUTF8 ("Octave \xe2\x88\x92"), "Muette" };
+}
+
+float SingItBackDsp::defaultPan (int k) noexcept
+{
+    // left (even) / right (odd), from near the centre to the sides, the
+    // sides alternating so a small crowd is already wide
+    static const float pans[maxVoices] { -0.35f, 0.4f, -0.8f, 0.75f, -0.15f, 0.2f, -0.95f, 0.9f, -0.55f, 0.6f, -0.05f, 0.1f };
+    return pans[juce::jlimit (0, maxVoices - 1, k)];
+}
+
+Harmony::Role SingItBackDsp::effectiveRole (int k, Harmony::Role styleRole) const noexcept
+{
+    switch (part[(size_t) k])
+    {
+        case partUnison: return Harmony::unison;
+        case partThirdUp: case partFourthUp: case partFifthUp: return Harmony::harmonyUp;
+        case partOctaveUp: return Harmony::octaveUp;
+        case partThirdDown: case partFifthDown: return Harmony::harmonyDown;
+        case partOctaveDown: return Harmony::octaveDown;
+        default: return styleRole;
+    }
+}
+
+double SingItBackDsp::partTarget (double midi, int k, Harmony::Role styleRole) const noexcept
+{
+    const auto at = [&] (int interval, int role) { return Harmony::target (midi, key, scale, snap, interval, role); };
+    switch (part[(size_t) k])
+    {
+        case partUnison: return at (harmony, Harmony::unison);
+        case partThirdUp: return at (Harmony::thirds, Harmony::harmonyUp);
+        case partFourthUp: return at (Harmony::fourths, Harmony::harmonyUp);
+        case partFifthUp: return at (Harmony::fifths, Harmony::harmonyUp);
+        case partOctaveUp: return at (harmony, Harmony::unison) + 12.0;
+        case partThirdDown: return at (Harmony::thirds, Harmony::harmonyDown);
+        case partFifthDown: return at (Harmony::fifths, Harmony::harmonyDown);
+        case partOctaveDown: return at (harmony, Harmony::octaveDown);
+        default: return roleTarget (midi, styleRole);
+    }
 }
 
 double SingItBackDsp::roleTarget (double midi, Harmony::Role role) const noexcept
@@ -361,9 +412,9 @@ SingItBackDsp::VoiceInfo SingItBackDsp::voiceInfo (int i) const
     info.vibratoHz = 4.8 + 1.4 * v.vibHz;
     info.vibratoCents = st.vibrato * (8.0 + 12.0 * v.vibCents) * (0.5 + 0.5 * h);
     info.gain = 0.9 - 0.35 * v.baseGain * h;
-    info.pan = v.pan;
+    info.pan = partPan[(size_t) juce::jlimit (0, maxVoices - 1, i)];
     info.send = v.send;
-    info.role = (int) st.roles[(size_t) juce::jlimit (0, maxVoices - 1, i)];
+    info.role = (int) effectiveRole (juce::jlimit (0, maxVoices - 1, i), st.roles[(size_t) juce::jlimit (0, maxVoices - 1, i)]);
     return info;
 }
 
@@ -453,6 +504,13 @@ void SingItBackDsp::setKnobs (const float* v, int n)
     humanize = n > humanizeKnob ? clamp01 (v[humanizeKnob]) : 0.5f;
     dropouts = n > dropoutsKnob ? clamp01 (v[dropoutsKnob]) : 0.3f;
     room = n > roomKnob ? clamp01 (v[roomKnob]) : 0.4f;
+    for (int k = 0; k < maxVoices; ++k)
+    {
+        const float db = n > levelKnob0 + k ? v[levelKnob0 + k] : 0.0f;
+        partGain[(size_t) k] = db <= -29.9f ? 0.0f : dbToGain (db);
+        partPan[(size_t) k] = n > panKnob0 + k ? juce::jlimit (-1.0f, 1.0f, v[panKnob0 + k]) : defaultPan (k);
+        partSize[(size_t) k] = n > sizeKnob0 + k ? juce::jlimit (-0.3f, 0.3f, v[sizeKnob0 + k]) : 0.0f;
+    }
 }
 
 void SingItBackDsp::setChoices (const int* idx, int n)
@@ -464,6 +522,8 @@ void SingItBackDsp::setChoices (const int* idx, int n)
     roomSize = n > roomSizeChoice ? juce::jlimit (0, 2, idx[roomSizeChoice]) : 1;
     style = n > styleChoice ? juce::jlimit (0, numStyles - 1, idx[styleChoice]) : club;
     response = n > responseChoice ? juce::jlimit (0, 2, idx[responseChoice]) : 0;
+    for (int k = 0; k < maxVoices; ++k)
+        part[(size_t) k] = n > partChoice0 + k ? juce::jlimit (0, numParts - 1, idx[partChoice0 + k]) : partStyle;
 }
 
 void SingItBackDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, const float* amount, const gk::BlockTiming& timing)
@@ -704,6 +764,8 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
         float want = k < voicesMax ? juce::jlimit (0.0f, 1.0f, count - (float) k) : 0.0f;
         if (solo >= 0)
             want = k == solo && crowd > 0.0f ? 1.0f : 0.0f;
+        if (part[(size_t) k] == partMuted)
+            want = 0.0f; // its place in the crowd stays (the next voices do not move up)
         v.audible = want > v.audible ? juce::jmin (want, v.audible + fadeStep) : juce::jmax (want, v.audible - fadeStep);
         const bool active = k < voicesMax && crowd > 0.0f;
         if (! active && v.audible <= 0.0f)
@@ -713,7 +775,8 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
         }
 
         const auto info = voiceInfo (k);
-        v.role = st.roles[(size_t) k];
+        const auto styleRole = st.roles[(size_t) k];
+        v.role = effectiveRole (k, styleRole);
         // its own tuning, slow wander and vibrato (which only comes once the
         // note is held, as singers do); the harmony interval comes with each grain
         // a sung vibrato is not a sine: its rate and depth drift a little
@@ -735,7 +798,7 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
         }
         v.semis += (semis - v.semis) * semiCoeff;
         // its voice size (formants): the style's, a little different for each
-        const double alpha = (double) st.formant * (1.0 + (double) st.formantSpread * v.formantJitter);
+        const double alpha = (double) st.formant * (1.0 + (double) st.formantSpread * v.formantJitter) * (1.0 + (double) partSize[(size_t) k]);
 
         // its own delay, drifting slowly (±2 ms x humanize)
         v.driftPhase += juce::MathConstants<double>::twoPi * v.driftRate * dt;
@@ -776,7 +839,7 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
                 // own pitch: the crowd keeps the singer's slides and vibrato
                 // (no auto-tune), unless the style pulls it in tune
                 const double base = snap ? (double) m->note : (double) m->midi;
-                const double target = roleTarget (base, v.role) - base;
+                const double target = partTarget (base, k, styleRole) - base;
                 const double pull = snap ? (double) st.tune * ((double) m->note - (double) m->midi) : 0.0; // not smoothed: it follows the vibrato
                 if (m->noteId != v.lastNote)
                 {
@@ -851,7 +914,7 @@ void SingItBackDsp::processChunk (std::int64_t chunkStart, float crowdNow)
         // the voices an octave down are the most "machine" of all after the
         // transposition: they stay in the background (-4 dB)
         const float octaveDownGain = v.role == Harmony::octaveDown ? 0.63f : 1.0f;
-        const float g = level * (float) info.gain * v.audible * octaveDownGain * (float) (1.0 + 0.12 * h * (double) st.detune * std::sin (v.ampPhase));
+        const float g = level * (float) info.gain * v.audible * octaveDownGain * partGain[(size_t) k] * (float) (1.0 + 0.12 * h * (double) st.detune * std::sin (v.ampPhase));
         const float panPos = (float) info.pan * w;
         const float send = (float) info.send;
         const float gl = std::cos ((panPos + 1.0f) * 0.25f * juce::MathConstants<float>::pi) * 1.41421356f;

@@ -10,6 +10,8 @@ namespace
     {
         gk::OneKnobConfig cfg;
         cfg.productName = BT_PRODUCT_NAME;
+        cfg.version = BT_VERSION_STRING;
+        cfg.updateSlug = "boogie-trio"; // key in lalzin.com/plugins/versions.json
         cfg.suiteName = GK_SUITE_NAME;
         cfg.companyName = GK_COMPANY_NAME;
         cfg.presets = std::move (presets);

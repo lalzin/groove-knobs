@@ -85,6 +85,26 @@ contre une adresse email, avec un don libre via PayPal.
    se met sur une piste de voix seule (stem / a cappella, pas un mix complet) : régler d'abord
    le ton et la gamme du morceau, puis monter CROWD.
 
+## Mises à jour des plugins
+
+Les plugins vérifient une fois par jour s'il existe une version plus récente en lisant
+**`https://www.lalzin.com/plugins/versions.json`** (simple GET, en-tête `User-Agent:
+GrooveKnobs/<slug>/<version>`, aucune autre donnée). S'il y en a une, ils affichent un badge
+« MAJ x.y.z » qui ouvre la page produit.
+
+- Copie `../groove-knobs/web-assets/versions.json` dans `public/plugins/versions.json`
+  (servi tel quel, `Content-Type: application/json`, `Cache-Control: public, max-age=3600`).
+  Il est généré depuis `plugins.json` par `python3 scripts/make_versions_json.py` (repo
+  groove-knobs) ; format : `{ "plugins": { "<slug>": { "version": "0.1.0", "url": "https://www.lalzin.com/plugins/<slug>" } } }`.
+- Les URLs doivent rester en **https** et pointer vers la page produit (le plugin n'ouvre
+  jamais autre chose qu'une page https ; sinon il ouvre `/plugins/<slug>`).
+- Sur la page produit, afficher la version actuelle et un court « Quoi de neuf » (CHANGELOG).
+- Politique de confidentialité : mentionner cette vérification (adresse IP vue par le
+  serveur, nom et version du plugin), désactivable dans le plugin (clic droit sur
+  « made by LALZIN »).
+- Procédure de mise à jour : mettre les nouveaux installateurs en ligne **d'abord**, puis
+  publier le nouveau `versions.json`.
+
 ## Stockage et données
 
 - **Fichiers d'installation** dans un bucket **Cloudflare R2 privé** (`groove-knobs`), clés

@@ -95,6 +95,11 @@ int runWeb (const juce::File& out)
 
 int main (int argc, char** argv)
 {
+#if JUCE_WINDOWS
+    _putenv_s ("GK_NO_UPDATE_CHECK", "1"); // no network: screenshots and tests never depend on the website
+#else
+    setenv ("GK_NO_UPDATE_CHECK", "1", 1); // no network: screenshots and tests never depend on the website
+#endif
     juce::ScopedJuceInitialiser_GUI juceInit;
     if (argc > 1 && juce::String (argv[1]) == "--web")
         return runWeb (juce::File::getCurrentWorkingDirectory().getChildFile (argc > 2 ? argv[2] : "web-assets"));

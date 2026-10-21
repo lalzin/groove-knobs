@@ -1,6 +1,6 @@
 ﻿; Groove Knobs — Windows installer for one plugin (Inno Setup 6).
 ; Built by scripts/make_installer_win.ps1 -Plugin FF|BT|BW|PP|SIB, or:
-;   iscc /DPlugin=BT /DMyAppVersion=0.1.0 /DBuildDir=<...>\BoogieTrio_artefacts\Release installer\windows\GrooveKnobs.iss
+;   iscc /DPlugin=BT /DMyAppVersion=0.1.2 /DBuildDir=<...>\BoogieTrio_artefacts\Release installer\windows\GrooveKnobs.iss
 
 #ifndef Plugin
   #define Plugin "FF"
@@ -33,7 +33,7 @@
 #endif
 #define MyPublisher "LALZIN"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.0"
+  #define MyAppVersion "0.1.2"
 #endif
 #ifndef BuildDir
   #define BuildDir "..\..\build-win\plugins\" + MyBuildFolder + "\Release"

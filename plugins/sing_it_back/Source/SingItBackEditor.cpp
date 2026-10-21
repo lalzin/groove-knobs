@@ -316,6 +316,277 @@ private:
 };
 
 //==============================================================================
+/** "VOIX": opens / closes the voice panel. */
+class SingItBackEditor::PanelButton final : public juce::Button
+{
+public:
+    PanelButton (const juce::String& text, const gk::Palette& p) : juce::Button (text), palette (p)
+    {
+        setClickingTogglesState (true);
+        setTooltip (juce::String::fromUTF8 ("R\xc3\xa9glages voix par voix : partie, niveau, pan, timbre"));
+        setWantsKeyboardFocus (true);
+    }
+    void paintButton (juce::Graphics& g, bool over, bool) override
+    {
+        const auto b = getLocalBounds().toFloat().reduced (2.0f);
+        const bool on = getToggleState();
+        g.setColour (palette (on ? teal : palette.surface).withMultipliedBrightness (over ? 1.15f : 1.0f));
+        g.fillRoundedRectangle (b, b.getHeight() * 0.5f);
+        g.setColour (palette (palette.outline));
+        g.drawRoundedRectangle (b, b.getHeight() * 0.5f, 2.0f);
+        // three little faders
+        const float x0 = b.getX() + 10.0f, cy = b.getCentreY();
+        g.setColour (palette (on ? palette.outline : teal));
+        for (int i = 0; i < 3; ++i)
+        {
+            const float x = x0 + 5.0f * (float) i, k = (float) ((i * 5 + 3) % 7) / 7.0f;
+            g.fillRect (x - 0.5f, cy - 6.0f, 1.0f, 12.0f);
+            g.fillRoundedRectangle (x - 2.0f, cy - 6.0f + 9.0f * k, 4.0f, 3.0f, 1.0f);
+        }
+        g.setColour (palette (on ? palette.outline : palette.text));
+        g.setFont (gk::GrooveFonts::font (11.5f).withExtraKerningFactor (0.1f));
+        g.drawText (getButtonText(), b.withTrimmedLeft (22.0f), juce::Justification::centred);
+    }
+
+private:
+    const gk::Palette& palette;
+};
+
+//==============================================================================
+/** The voice panel, like a harmony engine: for each of the 12 voices its part,
+    level, pan and size (formants), with a light when it sings. */
+class SingItBackEditor::VoicePanel final : public juce::Component
+{
+public:
+    VoicePanel (SingItBackProcessor& p, const gk::Palette& pal) : proc (p), palette (pal), sliderLook (pal)
+    {
+        setTitle ("Voices");
+        for (int k = 0; k < SingItBackDsp::maxVoices; ++k)
+        {
+            auto c = std::make_unique<Column> (p, k, palette, sliderLook);
+            addAndMakeVisible (*c);
+            columns.push_back (std::move (c));
+        }
+        reset.setButtonText (juce::String::fromUTF8 ("R\xc3\xa9initialiser"));
+        reset.setTooltip ("Every voice back to its style part, 0 dB, its place, its own size");
+        reset.onClick = [this] { resetAll(); };
+        reset.setColour (juce::TextButton::buttonColourId, palette.surface);
+        reset.setColour (juce::TextButton::textColourOffId, palette.text);
+        addAndMakeVisible (reset);
+        close.setButtonText (juce::String::fromUTF8 ("\xc3\x97"));
+        close.setTooltip ("Close");
+        close.setColour (juce::TextButton::buttonColourId, teal);
+        close.setColour (juce::TextButton::textColourOffId, palette.outline);
+        close.onClick = [this] { if (onClose) onClose(); };
+        addAndMakeVisible (close);
+    }
+
+    std::function<void()> onClose;
+
+    void resized() override
+    {
+        auto b = getLocalBounds().reduced (10, 6);
+        auto head = b.removeFromTop (26);
+        close.setBounds (head.removeFromRight (26).reduced (0, 1));
+        head.removeFromRight (6);
+        reset.setBounds (head.removeFromRight (96).reduced (0, 2));
+        b.removeFromTop (2);
+        const int rowH = b.getHeight() / 2, colW = b.getWidth() / 6;
+        for (int k = 0; k < (int) columns.size(); ++k)
+            columns[(size_t) k]->setBounds (b.getX() + (k % 6) * colW, b.getY() + (k / 6) * rowH, colW, rowH);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto b = getLocalBounds().toFloat().reduced (2.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.45f));
+        g.fillRoundedRectangle (b.translated (2.0f, 4.0f), 12.0f);
+        g.setGradientFill (juce::ColourGradient (palette (plum).darker (0.6f), b.getCentreX(), b.getY(), palette (palette.backgroundEdge), b.getCentreX(),
+                                                 b.getBottom(), false));
+        g.fillRoundedRectangle (b, 12.0f);
+        g.setColour (palette (teal).withAlpha (0.85f));
+        g.drawRoundedRectangle (b.reduced (1.0f), 12.0f, 2.0f);
+        g.setColour (palette (cream).withAlpha (0.85f));
+        g.setFont (gk::GrooveFonts::font (13.0f).withExtraKerningFactor (0.2f));
+        g.drawText ("VOIX", b.reduced (14.0f, 0.0f).withHeight (32.0f), juce::Justification::centredLeft);
+        g.setColour (palette (cream).withAlpha (0.45f));
+        g.setFont (gk::GrooveFonts::font (9.5f).withExtraKerningFactor (0.05f));
+        g.drawText (juce::String::fromUTF8 ("partie \xc2\xb7 niveau \xc2\xb7 pan \xc2\xb7 timbre"), b.reduced (62.0f, 0.0f).withHeight (32.0f), juce::Justification::centredLeft);
+    }
+
+    /** Lights and the voices in use (VOICES), at frame rate. */
+    void refresh()
+    {
+        auto& tel = proc.getDsp().getTelemetry();
+        const int choice = proc.getVoicesParameter().getIndex();
+        const int used = choice == 0 ? 4 : choice == 2 ? 12 : 8;
+        for (int k = 0; k < (int) columns.size(); ++k)
+            columns[(size_t) k]->setState (k < used, juce::jlimit (0.0f, 1.0f, 6.0f * tel.voiceLevel[(size_t) k].load (std::memory_order_relaxed)));
+    }
+
+private:
+    /** Vertical (level) and horizontal (pan, size) sliders in the Stage colours. */
+    struct SliderLook final : juce::LookAndFeel_V4
+    {
+        explicit SliderLook (const gk::Palette& p) : pal (p) {}
+        void drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float, float, juce::Slider::SliderStyle sliderStyle,
+                               juce::Slider& s) override
+        {
+            const bool vertical = sliderStyle == juce::Slider::LinearVertical;
+            const auto r = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h);
+            const auto colour = s.findColour (juce::Slider::trackColourId);
+            const float t = vertical ? 5.0f : 4.0f;
+            const auto track = vertical ? r.withSizeKeepingCentre (t, r.getHeight()) : r.withSizeKeepingCentre (r.getWidth(), t);
+            g.setColour (pal (pal.outline).withAlpha (0.9f));
+            g.fillRoundedRectangle (track.expanded (1.5f), t);
+            // filled part: from the bottom (level) or from the centre (pan, size)
+            const bool fromCentre = s.getMinimum() < 0.0;
+            juce::Rectangle<float> fill;
+            if (vertical)
+                fill = juce::Rectangle<float>::leftTopRightBottom (track.getX(), pos, track.getRight(), track.getBottom());
+            else
+            {
+                const float c = fromCentre ? r.getCentreX() : r.getX();
+                fill = juce::Rectangle<float>::leftTopRightBottom (juce::jmin (c, pos), track.getY(), juce::jmax (c, pos), track.getBottom());
+            }
+            g.setColour (pal (colour).withAlpha (s.isEnabled() ? 0.95f : 0.35f));
+            g.fillRoundedRectangle (fill, t * 0.5f);
+            const auto thumb = juce::Rectangle<float> (vertical ? 14.0f : 10.0f, vertical ? 8.0f : 12.0f)
+                                   .withCentre (vertical ? juce::Point<float> (r.getCentreX(), pos) : juce::Point<float> (pos, r.getCentreY()));
+            g.setColour (pal (pal.text));
+            g.fillRoundedRectangle (thumb, 3.0f);
+            g.setColour (pal (pal.outline));
+            g.drawRoundedRectangle (thumb, 3.0f, 1.5f);
+        }
+        const gk::Palette& pal;
+    };
+
+    class Column final : public juce::Component
+    {
+    public:
+        Column (SingItBackProcessor& p, int voice, const gk::Palette& pal, SliderLook& look)
+            : palette (pal), index (voice),
+              part (p.getPartParameter (voice), "VOIX " + juce::String (voice + 1), voice % 2 == 0 ? teal : orange, pal)
+        {
+            part.setDisplayNames ({ "Style", "Unisson", "3ce +", "4te +", "5te +", "8ve +", juce::String::fromUTF8 ("3ce \xe2\x88\x92"),
+                                    juce::String::fromUTF8 ("5te \xe2\x88\x92"), juce::String::fromUTF8 ("8ve \xe2\x88\x92"), "Muette" });
+            addAndMakeVisible (part);
+            setup (level, juce::Slider::LinearVertical, p.getVoiceLevelParameter (voice), orange, "Niveau");
+            setup (pan, juce::Slider::LinearHorizontal, p.getVoicePanParameter (voice), teal, "Pan");
+            setup (size, juce::Slider::LinearHorizontal, p.getVoiceSizeParameter (voice), plum.brighter (0.5f), "Timbre (+ plus petite, - plus grande)");
+            level.setLookAndFeel (&look);
+            pan.setLookAndFeel (&look);
+            size.setLookAndFeel (&look);
+            attachments.push_back (std::make_unique<juce::SliderParameterAttachment> (p.getVoiceLevelParameter (voice), level));
+            attachments.push_back (std::make_unique<juce::SliderParameterAttachment> (p.getVoicePanParameter (voice), pan));
+            attachments.push_back (std::make_unique<juce::SliderParameterAttachment> (p.getVoiceSizeParameter (voice), size));
+            level.setDoubleClickReturnValue (true, 0.0);
+            pan.setDoubleClickReturnValue (true, SingItBackDsp::defaultPan (voice));
+            size.setDoubleClickReturnValue (true, 0.0);
+        }
+        ~Column() override
+        {
+            for (auto* s : { &level, &pan, &size })
+                s->setLookAndFeel (nullptr);
+        }
+
+        void setState (bool used, float singing)
+        {
+            if (used != inUse)
+            {
+                inUse = used;
+                setAlpha (used ? 1.0f : 0.4f);
+            }
+            if (std::abs (singing - light) > 0.05f)
+            {
+                light = singing;
+                repaint (lightArea().toNearestInt().expanded (2));
+            }
+        }
+
+        void resized() override
+        {
+            auto b = getLocalBounds().reduced (3, 2);
+            part.setBounds (b.removeFromTop (36));
+            b.removeFromTop (2);
+            auto bottom = b.removeFromBottom (44);
+            level.setBounds (b.withSizeKeepingCentre (22, b.getHeight()).withTrimmedBottom (12));
+            pan.setBounds (bottom.removeFromTop (22).withTrimmedTop (9));
+            size.setBounds (bottom.withTrimmedTop (9));
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            const auto b = getLocalBounds().toFloat().reduced (1.5f);
+            g.setColour (palette (palette.surface).withAlpha (0.25f));
+            g.fillRoundedRectangle (b, 6.0f);
+            // the light: this voice sings
+            const auto l = lightArea();
+            g.setColour (palette (index % 2 == 0 ? teal : orange).withAlpha (0.15f + 0.85f * light));
+            g.fillEllipse (l);
+            g.setColour (palette (palette.outline));
+            g.drawEllipse (l, 1.0f);
+            // level value, pan / size captions
+            g.setColour (palette (cream).withAlpha (0.75f));
+            g.setFont (gk::GrooveFonts::font (8.5f));
+            const float db = (float) level.getValue();
+            const float shown = std::abs (db) < 0.05f ? 0.0f : db; // no "-0.0"
+            g.drawText (db <= -29.9f ? juce::String ("off") : (shown > 0.0f ? "+" : "") + juce::String (shown, 1), level.getBounds().toFloat().withY ((float) level.getBottom()).withHeight (12.0f).expanded (12.0f, 0.0f),
+                        juce::Justification::centred);
+            g.setColour (palette (cream).withAlpha (0.5f));
+            g.setFont (gk::GrooveFonts::font (7.5f).withExtraKerningFactor (0.1f));
+            g.drawText ("PAN", pan.getBounds().toFloat().translated (0.0f, -9.0f).withHeight (9.0f), juce::Justification::centred);
+            g.drawText ("TIMBRE", size.getBounds().toFloat().translated (0.0f, -9.0f).withHeight (9.0f), juce::Justification::centred);
+        }
+
+    private:
+        juce::Rectangle<float> lightArea() const { return juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ (float) getWidth() - 9.0f, 8.5f }); }
+        void setup (juce::Slider& s, juce::Slider::SliderStyle sliderStyle, juce::RangedAudioParameter& param, juce::Colour colour, const juce::String& tip)
+        {
+            s.setSliderStyle (sliderStyle);
+            s.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
+            s.setColour (juce::Slider::trackColourId, colour);
+            s.setTooltip (tip);
+            s.setPopupDisplayEnabled (true, true, nullptr);
+            s.onValueChange = [this] { repaint(); };
+            s.setTitle (param.getName (32));
+            addAndMakeVisible (s);
+        }
+
+        const gk::Palette& palette;
+        int index;
+        gk::ChoiceSelector part;
+        juce::Slider level, pan, size;
+        std::vector<std::unique_ptr<juce::SliderParameterAttachment>> attachments;
+        bool inUse = true;
+        float light = 0.0f;
+    };
+
+    void resetAll()
+    {
+        for (int k = 0; k < SingItBackDsp::maxVoices; ++k)
+        {
+            auto set = [] (juce::RangedAudioParameter& prm, float plain)
+            {
+                prm.beginChangeGesture();
+                prm.setValueNotifyingHost (prm.convertTo0to1 (plain));
+                prm.endChangeGesture();
+            };
+            set (proc.getPartParameter (k), 0.0f);
+            set (proc.getVoiceLevelParameter (k), 0.0f);
+            set (proc.getVoicePanParameter (k), SingItBackDsp::defaultPan (k));
+            set (proc.getVoiceSizeParameter (k), 0.0f);
+        }
+    }
+
+    SingItBackProcessor& proc;
+    const gk::Palette& palette;
+    SliderLook sliderLook;
+    std::vector<std::unique_ptr<Column>> columns;
+    juce::TextButton reset, close;
+};
+
+//==============================================================================
 gk::Palette SingItBackEditor::makePalette()
 {
     gk::Palette p;
@@ -369,15 +640,51 @@ SingItBackEditor::SingItBackEditor (SingItBackProcessor& p)
     advanced = std::make_unique<AdvancedPanel> (p, pal);
     addToCanvas (*advanced, { 30, 62, 360, 168 });
     advanced->setVisible (false);
+    voicePanel = std::make_unique<VoicePanel> (p, pal);
+    addToCanvas (*voicePanel, { 6, 58, 408, 400 });
+    voicePanel->setVisible (false);
     more = std::make_unique<MoreButton> (pal);
-    addToCanvas (*more, { 362, 412, 46, 26 });
-    more->onClick = [this] { advanced->setVisible (more->getToggleState()); };
+    addToCanvas (*more, { 362, 418, 46, 26 });
+    voicesButton = std::make_unique<PanelButton> ("VOIX", pal);
+    addToCanvas (*voicesButton, { 336, 386, 72, 26 });
+    // one panel at a time; the buttons stay above the voice panel
+    more->onClick = [this]
+    {
+        advanced->setVisible (more->getToggleState());
+        if (more->getToggleState())
+        {
+            voicesButton->setToggleState (false, juce::dontSendNotification);
+            voicePanel->setVisible (false);
+        }
+    };
+    voicesButton->onClick = [this]
+    {
+        const bool open = voicesButton->getToggleState();
+        voicePanel->setVisible (open);
+        // the panel has its own close button; the two buttons would sit on voice 12
+        voicesButton->setVisible (! open);
+        more->setVisible (! open);
+        if (open)
+        {
+            more->setToggleState (false, juce::dontSendNotification);
+            advanced->setVisible (false);
+            voicePanel->refresh();
+        }
+    };
+    voicePanel->onClose = [this]
+    {
+        voicesButton->setToggleState (false, juce::sendNotification);
+    };
 }
 
 SingItBackEditor::~SingItBackEditor() = default;
 
-void SingItBackEditor::setPreview (bool singing, int syllable, bool advancedOpen)
+void SingItBackEditor::setPreview (bool singing, int syllable, bool advancedOpen, bool voicesOpen)
 {
+    voicesButton->setToggleState (voicesOpen, juce::dontSendNotification);
+    voicePanel->setVisible (voicesOpen);
+    voicesButton->setVisible (! voicesOpen);
+    more->setVisible (! voicesOpen);
     static_cast<SugarMascot&> (getMascot()).setPreview (singing, syllable);
     previewDegree = singing ? 4 : -1; // Mi / nothing
     more->setToggleState (advancedOpen, juce::dontSendNotification);
@@ -399,5 +706,7 @@ void SingItBackEditor::editorTick (double dt)
     // in steps of 1/8: the big knob repaints when the glow visibly changes,
     // not on every frame
     getKnob().setPulse (std::round (pulse * 8.0f) / 8.0f);
+    if (voicePanel->isVisible())
+        voicePanel->refresh();
 }
 } // namespace sib

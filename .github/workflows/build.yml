@@ -10,6 +10,19 @@ on:
   workflow_dispatch:
 
 jobs:
+  # a release tag must match every plug-in's version (the installers carry it)
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag = plug-in versions
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          bad=$(grep -E '^set\((FF|BT|BW|PP|SIB)_VERSION ' cmake/GrooveIds.cmake | grep -v "\"$tag\"" || true)
+          if [ -n "$bad" ]; then echo "tag v$tag but:"; echo "$bad"; exit 1; fi
+          echo "all plug-ins are $tag"
+
   macos:
     runs-on: macos-14
     steps:
@@ -40,7 +53,7 @@ jobs:
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [macos, windows]
+    needs: [version, macos, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -53,7 +66,8 @@ jobs:
       - name: Check the installers are there
         run: |
           ls -la release
-          for f in FrenchFilter BoogieTrio Backwash PewPew SingItBack; do ls release/$f-*-Windows-Setup.exe; done
+          v="${GITHUB_REF_NAME#v}"
+          for f in FrenchFilter BoogieTrio Backwash PewPew SingItBack; do ls release/$f-$v-Windows-Setup.exe; done
       - uses: softprops/action-gh-release@v2
         with:
           name: Groove Knobs ${{ github.ref_name }}

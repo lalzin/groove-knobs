@@ -1150,3 +1150,62 @@ TEST_CASE ("SIB 23. Not auto-tuned: each voice's periods vary from one to the ne
     CHECK (club > robots + 0.1);
     CHECK (club < 1.0);
 }
+
+TEST_CASE ("SIB 24. Voice panel: part, mute, level, pan, size of each voice", "[sib][voicepanel]")
+{
+    const double sr = 48000.0;
+    const auto in = mono (vocalsynth::sustained (69, 1.6, sr, 'a'));
+    using D = sib::SingItBackDsp;
+    // part: voice 0 (unison in Club) set to "5te +": A4 -> E5
+    {
+        auto p = makeProc (1, sr, 1.0f);
+        setParam (p->getPartParameter (0), (float) D::partFifthUp);
+        setParam (p->getRoomParameter(), 0.0f);
+        setParam (p->getHumanizeParameter(), 0.0f);
+        p->getDsp().soloVoice (0);
+        const auto out = run (*p, in);
+        const auto w = crowdOf (out, in, p->getLatencySamples(), 1.0f);
+        const double f = medianPitch (w.data(), (int) (0.5 * sr), (int) w.size(), sr) / std::exp2 (p->getDsp().voiceInfo (0).detuneCents / 1200.0);
+        INFO ("voice 1 as a fifth up: " << f << " Hz (" << cents (f, midiHz (76)) << " c)");
+        CHECK (std::abs (cents (f, midiHz (76))) < 5.0);
+    }
+    // level and mute: the voice's energy follows its level (-6 dB = a quarter)
+    auto energyOf = [&] (int partIndex, float levelDb, float pan, int channel)
+    {
+        auto p = makeProc (2, sr, 1.0f);
+        setParam (p->getRoomParameter(), 0.0f);
+        setParam (p->getDropoutsParameter(), 0.0f);
+        setParam (p->getSpreadParameter(), 1.0f);
+        setParam (p->getPartParameter (1), (float) partIndex);
+        setParam (p->getVoiceLevelParameter (1), levelDb);
+        setParam (p->getVoicePanParameter (1), pan);
+        p->getDsp().soloVoice (1);
+        Buffer in2 (2, in.getNumSamples());
+        for (int c = 0; c < 2; ++c)
+            in2.copyFrom (c, 0, in, 0, 0, in.getNumSamples());
+        const auto out = run (*p, in2);
+        const float g = juce::Decibels::decibelsToGain (sib::SingItBackDsp::leadDb (1.0f));
+        double e = 0.0;
+        for (int i = (int) (0.5 * sr); i < out.getNumSamples(); ++i)
+        {
+            const double x = out.getSample (channel, i) - g * (i >= p->getLatencySamples() ? in2.getSample (channel, i - p->getLatencySamples()) : 0.0f);
+            e += x * x;
+        }
+        return e;
+    };
+    const double full = energyOf (0, 0.0f, 0.0f, 0), half = energyOf (0, -6.0206f, 0.0f, 0), muted = energyOf (D::partMuted, 0.0f, 0.0f, 0);
+    INFO ("voice 2 energy: 0 dB " << full << ", -6 dB " << half << ", muted " << muted);
+    CHECK (half / full == Catch::Approx (0.25).margin (0.03));
+    CHECK (muted < 1.0e-6 * full);
+    // pan: hard left -> nothing on the right
+    const double left = energyOf (0, 0.0f, -1.0f, 0), right = energyOf (0, 0.0f, -1.0f, 1);
+    INFO ("hard left: L " << left << ", R " << right);
+    CHECK (right < 1.0e-3 * left);
+    // size and the defaults: every voice's default pan is its designed place
+    sib::SingItBackProcessor q;
+    for (int k = 0; k < D::maxVoices; ++k)
+    {
+        CHECK (q.getVoicePanParameter (k).convertFrom0to1 (q.getVoicePanParameter (k).getDefaultValue()) == Catch::Approx (D::defaultPan (k)).margin (1.0e-4));
+        CHECK (q.getPartParameter (k).getIndex() == D::partStyle);
+    }
+}

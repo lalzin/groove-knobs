@@ -805,3 +805,67 @@ TEST_CASE ("BW 13. CPU: cost of the convolution, stereo 48 kHz", "[bw][cpu]")
 
 
 
+
+TEST_CASE ("BW 22. HITS in real time, with the defaults (LIVE + LOCK), changed after the memory was recorded", "[bw][timing][live]")
+{
+    const double sr = 44100.0, bpm = 120.0;
+    const int bar = (int) std::round (2.0 * sr), beat = bar / 4;
+    for (bool lock : { false, true })
+    for (int hits : { 0, 2, 3, 4, 5 })
+    {
+        auto p = makeLive (sr, 2, 0.8f, true, lock); // Clap Rewind
+        // the memory recorded with ALL first (as in a session), then HITS changed
+        {
+            p->setNonRealtime (std::getenv ("BW_OFFLINE") != nullptr);
+            const auto warm = tiledLoop (sr, bpm, 2);
+            for (int k = 0; k < 3; ++k)
+            {
+                runAt (*p, warm, sr, bpm, 512);
+                juce::Thread::sleep (300);
+            }
+        }
+        p->setNonRealtime (std::getenv ("BW_OFFLINE") != nullptr);
+        setParam (p->getHitsParameter(), (float) hits);
+        const auto in = tiledLoop (sr, bpm, 4);
+        for (int k = 0; k < 6; ++k)
+        {
+            runAt (*p, in, sr, bpm, 512);
+            juce::Thread::sleep (400); // the builder thread renders the swell
+        }
+        const auto out = runAt (*p, in, sr, bpm, 512);
+        std::vector<float> wet ((size_t) in.getNumSamples(), 0.0f);
+        for (int i = 0; i < in.getNumSamples(); ++i)
+            wet[(size_t) i] = out.getSample (0, i) - in.getSample (0, i);
+        std::array<double, 4> e {};
+        for (int b = 0; b < 2; ++b)
+            for (int k = 0; k < 4; ++k)
+                e[(size_t) k] += energy (wet, b * bar + k * beat - beat / 4, b * bar + k * beat);
+        INFO ((lock ? "LOCK, " : "") << "real time, hits " << hits << ": " << e[0] << " " << e[1] << " " << e[2] << " " << e[3]);
+        if (hits == 0)
+            CHECK (juce::jmin (e[1], e[3]) > 1.0);
+        else if (hits == 2)
+        {
+            CHECK (e[0] > 1.0);
+            CHECK (juce::jmax (e[1], e[2], e[3]) < 0.05 * e[0]);
+        }
+        else if (hits == 3)
+        {
+            CHECK (juce::jmin (e[1], e[3]) > 1.0);
+            CHECK (juce::jmax (e[0], e[2]) < 0.05 * juce::jmin (e[1], e[3]));
+        }
+        else if (hits == 4)
+        {
+            CHECK (e[3] > 1.0);
+            CHECK (juce::jmax (e[0], e[1], e[2]) < 0.05 * e[3]);
+        }
+        else
+        {
+            // 1 / 2 BARS: beat 1 of every other bar only — bar 2 (even) yes, bar 1 (odd) no
+            const double even = energy (wet, 2 * bar - beat / 4, 2 * bar), odd = energy (wet, bar - beat / 4, bar);
+            INFO ("1 / 2 BARS: before bar 2 " << even << ", before bar 1 " << odd);
+            CHECK (even > 1.0);
+            CHECK (odd < 0.05 * even);
+            CHECK (juce::jmax (e[1], e[2], e[3]) < 0.05 * even);
+        }
+    }
+}

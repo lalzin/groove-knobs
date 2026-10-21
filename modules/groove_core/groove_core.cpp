@@ -20,4 +20,5 @@
 #include "ui/ToggleChips.cpp"
 #include "ui/ChoiceChips.cpp"
 #include "ui/MascotComponent.cpp"
+#include "ui/UpdateCheck.cpp"
 #include "ui/OneKnobEditor.cpp"

@@ -19,12 +19,12 @@ bool writePng (const juce::Image& img, const juce::File& file)
     return os.openedOk() && juce::PNGImageFormat().writeImageToStream (img, os);
 }
 
-juce::Image shoot (sib::SingItBackProcessor& proc, float scale, bool singing, int syllable, bool advanced = false)
+juce::Image shoot (sib::SingItBackProcessor& proc, float scale, bool singing, int syllable, bool advanced = false, bool voices = false)
 {
     proc.editorScale.store (juce::jmin (2.0f, scale));
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     auto* editor = dynamic_cast<sib::SingItBackEditor*> (ed.get());
-    editor->setPreview (singing, syllable, advanced);
+    editor->setPreview (singing, syllable, advanced, voices);
     editor->snapForSnapshot();
     return editor->createComponentSnapshot (editor->getLocalBounds(), true, juce::jmax (1.0f, scale / 2.0f));
 }
@@ -96,6 +96,11 @@ int runWeb (const juce::File& out)
 
 int main (int argc, char** argv)
 {
+#if JUCE_WINDOWS
+    _putenv_s ("GK_NO_UPDATE_CHECK", "1"); // no network: screenshots and tests never depend on the website
+#else
+    setenv ("GK_NO_UPDATE_CHECK", "1", 1); // no network: screenshots and tests never depend on the website
+#endif
     juce::ScopedJuceInitialiser_GUI juceInit;
     if (argc > 1 && juce::String (argv[1]) == "--web")
         return runWeb (juce::File::getCurrentWorkingDirectory().getChildFile (argc > 2 ? argv[2] : "web-assets"));
@@ -160,6 +165,25 @@ int main (int argc, char** argv)
         setParam (proc.getVoicesParameter(), 1.0f);
         setParam (proc.getCrowdParameter(), 0.5f);
         add (row, "advanced", "advanced panel", false, 0, true);
+        // the voice panel, with a few voices set by hand
+        setParam (proc.getPartParameter (1), 4.0f);   // 5te +
+        setParam (proc.getPartParameter (4), 9.0f);   // muted
+        setParam (proc.getVoiceLevelParameter (2), -6.0f);
+        setParam (proc.getVoicePanParameter (3), -1.0f);
+        setParam (proc.getVoiceSizeParameter (5), 0.2f);
+        {
+            const auto img = shoot (proc, 1.0f, true, 1, false, true);
+            writePng (img, outDir.getChildFile ("voices.png"));
+            row.push_back ({ "voice panel", img });
+            writePng (shoot (proc, 2.0f, true, 1, false, true), outDir.getChildFile ("voices@2x.png"));
+        }
+        for (int k = 0; k < 12; ++k)
+        {
+            setParam (proc.getPartParameter (k), 0.0f);
+            setParam (proc.getVoiceLevelParameter (k), 0.0f);
+            setParam (proc.getVoicePanParameter (k), sib::SingItBackDsp::defaultPan (k));
+            setParam (proc.getVoiceSizeParameter (k), 0.0f);
+        }
         setParam (proc.getBypassParameterObject(), 1.0f);
         add (row, "bypass", "bypass", false, 0);
         setParam (proc.getBypassParameterObject(), 0.0f);

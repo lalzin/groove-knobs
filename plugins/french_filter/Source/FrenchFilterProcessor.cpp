@@ -10,6 +10,8 @@ namespace
     {
         gk::OneKnobConfig cfg;
         cfg.productName = FF_PRODUCT_NAME;
+        cfg.version = FF_VERSION_STRING;
+        cfg.updateSlug = "french-filter"; // key in lalzin.com/plugins/versions.json
         cfg.suiteName = GK_SUITE_NAME;
         cfg.companyName = GK_COMPANY_NAME;
         cfg.bipolar = true; // centre = neutral, left = low-pass side, right = high-pass side

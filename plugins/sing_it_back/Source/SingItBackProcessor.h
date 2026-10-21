@@ -28,5 +28,10 @@ public:
     juce::AudioParameterChoice& getRoomSizeParameter() noexcept { return getChoiceParameter (SingItBackDsp::roomSizeChoice); }
     juce::AudioParameterChoice& getStyleParameter() noexcept { return getChoiceParameter (SingItBackDsp::styleChoice); }
     juce::AudioParameterChoice& getResponseParameter() noexcept { return getChoiceParameter (SingItBackDsp::responseChoice); }
+    // the voice panel
+    juce::AudioParameterChoice& getPartParameter (int voice) noexcept { return getChoiceParameter (SingItBackDsp::partChoice0 + voice); }
+    juce::RangedAudioParameter& getVoiceLevelParameter (int voice) noexcept { return getKnobParameter (SingItBackDsp::levelKnob0 + voice); }
+    juce::RangedAudioParameter& getVoicePanParameter (int voice) noexcept { return getKnobParameter (SingItBackDsp::panKnob0 + voice); }
+    juce::RangedAudioParameter& getVoiceSizeParameter (int voice) noexcept { return getKnobParameter (SingItBackDsp::sizeKnob0 + voice); }
 };
 } // namespace sib

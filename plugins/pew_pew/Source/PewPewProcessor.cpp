@@ -10,6 +10,8 @@ namespace
     {
         gk::OneKnobConfig cfg;
         cfg.productName = PP_PRODUCT_NAME;
+        cfg.version = PP_VERSION_STRING;
+        cfg.updateSlug = "pew-pew"; // key in lalzin.com/plugins/versions.json
         cfg.suiteName = GK_SUITE_NAME;
         cfg.companyName = GK_COMPANY_NAME;
         cfg.presets = std::move (presets);

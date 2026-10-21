@@ -65,6 +65,9 @@ private:
     std::vector<std::unique_ptr<SmallKnob>> smallKnobs;
     class CreditLink;
     std::unique_ptr<CreditLink> creditLink;
+    class UpdateBadge;
+    std::unique_ptr<UpdateBadge> updateBadge;
+    std::unique_ptr<UpdateCheck> updateCheck;
     int shownPreset = -1, shownSide = -2;
     std::unique_ptr<PowerButton> power;
     std::unique_ptr<juce::ButtonParameterAttachment> powerAttachment;

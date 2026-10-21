@@ -182,7 +182,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
         juce::NormalisableRange<float> range (k.minimum, k.maximum);
         range.skew = k.skew;
         const bool db = k.unit == "dB";
-        const float minimum = k.minimum;
+        const float minimum = k.minimum, maximum = k.maximum;
         layout.add (std::make_unique<juce::AudioParameterFloat> (
             juce::ParameterID { k.id, 1 }, k.name, range, k.defaultValue,
             juce::AudioParameterFloatAttributes()
@@ -193,12 +193,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
                                                       return juce::String (juce::roundToInt (v * 100.0f)) + " %";
                                                   return v <= minimum + 0.01f ? juce::String ("-inf") : juce::String (v, 1) + " dB";
                                               })
-                .withValueFromStringFunction ([db, minimum] (const juce::String& t)
+                .withValueFromStringFunction ([db, minimum, maximum] (const juce::String& t)
                                               {
                                                   const auto x = t.trim().trimCharactersAtEnd ("%dB ").trim();
                                                   if (db)
                                                       return x.containsIgnoreCase ("inf") ? minimum : x.getFloatValue();
-                                                  return juce::jlimit (0.0f, 1.0f, x.getFloatValue() / 100.0f);
+                                                  return juce::jlimit (minimum, maximum, x.getFloatValue() / 100.0f);
                                               })));
     }
     for (const auto& c : cfg.choices)
@@ -340,7 +340,7 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
     }
     if (! knobParams.empty())
     {
-        std::array<float, 8> v {}; // plain values (% knobs: 0..1, dB knobs: dB)
+        std::array<float, 64> v {}; // plain values (% knobs: 0..1, dB knobs: dB)
         const int n = juce::jmin ((int) knobParams.size(), (int) v.size());
         for (int k = 0; k < n; ++k)
             v[(size_t) k] = knobValues[(size_t) k]->load();
@@ -389,7 +389,7 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
         updateSwitches (snapToggles);
     if (! choiceParams.empty())
     {
-        std::array<int, 8> idx {};
+        std::array<int, 64> idx {};
         const int n = juce::jmin ((int) choiceParams.size(), (int) idx.size());
         for (int c = 0; c < n; ++c)
             idx[(size_t) c] = juce::roundToInt (choiceValues[(size_t) c]->load());

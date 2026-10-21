@@ -38,6 +38,10 @@ struct OneKnobConfig
     juce::String suiteName { "Groove Knobs" };
     juce::String companyName { "LALZIN" };   // shown as "made by ..." in the editor
     juce::String companyUrl { "https://www.lalzin.com/links" }; // opened by a click on the credit (empty: not clickable)
+    /** Update check (gk::UpdateCheck): the plug-in's version and its key in
+        the website's versions file. Empty version or slug: no check. */
+    juce::String version, updateSlug;
+    juce::String updateUrl { "https://www.lalzin.com/plugins/versions.json" };
     PresetManager presets;
 
     /** Bipolar knob: centred by default, left and right drive two sides of

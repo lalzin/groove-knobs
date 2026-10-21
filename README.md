@@ -16,7 +16,7 @@ scripts/build_mac.sh --native   # plus rapide pour le développement → build/
 
 Windows : `powershell -ExecutionPolicy Bypass -File scripts\build_win.ps1`.
 
-Le build copie le plugin dans `~/Library/Audio/Plug-Ins/VST3` et `.../Components` (signature ad hoc). Dans Ableton : Préférences → Plug-ins → Rescan.
+Le build ne copie plus les plugins nulle part (une copie pendant que Live tourne le perdait : « plugin introuvable »). Pour tester dans Live : installer le `.pkg` (`scripts/make_installer_mac.sh`), ou configurer avec `-DGK_COPY_PLUGINS=ON` (copie dans `~/Library/Audio/Plug-Ins`, à éviter avec Live ouvert). Dans Ableton : Préférences → Plug-ins → Rescan.
 
 Identifiants (nom, codes, bundle ID, version) : un seul fichier, `cmake/GrooveIds.cmake`.
 
@@ -198,6 +198,7 @@ Une **foule qui chante avec ta voix**. Le knob **CROWD** va de **SOLO** (0 % : t
 - **Jamais robotique** : chaque voix a son retard (3–40 ms), son léger désaccord, son vibrato, son niveau, sa place stéréo et son envoi de reverb ; elles décrochent de temps en temps (DROPS) ; rien ne chante sur les consonnes sourdes.
 - **STYLE** : Club (défaut), Gospel (accords empilés), Stade (une foule qui scande), Chorale (serrée et juste), Enfants (une octave au-dessus, petites voix), Géants (une octave en dessous), Robots (accords raides, voulu).
 - **RÉPONSE** : Ensemble, ou la foule te renvoie ta phrase **une demi-mesure ou une mesure plus tard**, au tempo de l'hôte : le *call & response*.
+- Panneau **VOIX** (comme un harmoniseur) : pour chacune des 12 voix, sa partie (Style, Unisson, Tierce + / −, Quarte +, Quinte + / −, Octave + / −, Muette), son niveau, son pan et son timbre, avec un voyant quand elle chante.
 - **HARMONIE**, **VOIX** (4 / 8 / 12) ; panneau **⋯** : SPREAD (largeur), HUMAN (humanisation), DROPS (décrochages), ROOM et ROOM SIZE (Petite / Club / Stade) — la reverb ne touche que la foule.
 - Au-delà de 40 %, ta voix recule doucement (−10 dB à 100 %) pour laisser la foule devant.
 

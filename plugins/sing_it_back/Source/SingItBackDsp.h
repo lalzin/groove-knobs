@@ -88,9 +88,19 @@ public:
     static constexpr int chunk = 32; // control rate (samples), on a global grid
     // knobs / switches / choices (OneKnobConfig order)
     static constexpr int spreadKnob = 0, humanizeKnob = 1, dropoutsKnob = 2, roomKnob = 3, volumeKnob = 4; // VOL: applied by the processor
+    // the voice panel: per voice a level (dB), a pan (-1..1), a size (formants,
+    // -0.3..0.3) and a part
+    static constexpr int levelKnob0 = 5, panKnob0 = 17, sizeKnob0 = 29, partChoice0 = 7;
     static constexpr int snapSwitch = 0;
     static constexpr int keyChoice = 0, scaleChoice = 1, harmonyChoice = 2, voicesChoice = 3, roomSizeChoice = 4, styleChoice = 5,
                          responseChoice = 6;
+
+    /** What a voice sings (the voice panel). Style: the style's part for it
+        (with HARMONIE). */
+    enum Part { partStyle, partUnison, partThirdUp, partFourthUp, partFifthUp, partOctaveUp, partThirdDown, partFifthDown, partOctaveDown, partMuted, numParts };
+    static juce::StringArray partNames();
+    /** Each voice's place in the stereo field by default: left / right in turn, spread out. */
+    static float defaultPan (int voice) noexcept;
 
     /** Crowd styles: who sings what, and how (DECISIONS.md). */
     enum Style { club, gospel, stadium, choir, kids, giants, robots, numStyles };
@@ -169,6 +179,8 @@ private:
     void makeMarks (std::int64_t available);
     const Mark* findMark (double u, std::int64_t available, double span) const noexcept;
     double roleTarget (double midi, Harmony::Role role) const noexcept;
+    double partTarget (double midi, int voice, Harmony::Role styleRole) const noexcept;
+    Harmony::Role effectiveRole (int voice, Harmony::Role styleRole) const noexcept;
     float historyAt (double t) const noexcept;
     void processChunk (std::int64_t chunkStart, float crowdNow);
 
@@ -181,6 +193,8 @@ private:
     // parameters
     float spread = 0.6f, humanize = 0.5f, dropouts = 0.3f, room = 0.4f;
     int key = 0, scale = 0, harmony = 0, voicesMax = 8, roomSize = 1, style = club, response = 0;
+    std::array<int, maxVoices> part {};
+    std::array<float, maxVoices> partGain {}, partPan {}, partSize {};
     bool snap = true;
 
     // signal

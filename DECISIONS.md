@@ -421,3 +421,29 @@ Une ligne par décision : **contexte** — choix — raison.
   5. **Voix à l'octave basse** : les plus « machine » après transposition → −4 dB, en fond.
   6. Désaccord individuel ±11 cents × humanize (avant ±8), formants ±8 % par voix en Club (avant ±5 %).
 - Robots reste volontairement auto-tune (pas de jitter, de dérive ni de scoop). Les tests de justesse comparent maintenant la voix à sa note **plus son propre désaccord** voulu.
+
+## Sing It Back — panneau VOIX, façon Harmony Engine (2026-10-20)
+- **Demande d'Alan** : « un panneau pour régler plus facilement les voix, comme Antares Harmony Engine ». Bouton **VOIX** (à droite, sous le choix du nombre de voix) : un panneau sur la scène, 12 colonnes (2 × 6), une par voix :
+  - **partie** : Style (celle du style, avec HARMONIE — défaut), Unisson, Tierce +, Quarte +, Quinte +, Octave +, Tierce −, Quinte −, Octave −, Muette ;
+  - **niveau** (fader, −30 … +6 dB, « off » en bas, 0 dB par défaut) ;
+  - **pan** (−100 … +100 %, défaut = sa place dans la foule) ;
+  - **timbre** (formants −30 … +30 % : + voix plus petite / claire, − plus grande / sombre ; ajouté à celui du style et à la variation propre à la voix) ;
+  - un voyant qui s'allume quand la voix chante (télémétrie) ; les voix au-delà de VOIX (4 / 8 / 12) sont grisées ; double-clic = valeur par défaut ; « Réinitialiser » ; × pour fermer (les boutons VOIX / ⋯ sont masqués pendant que le panneau est ouvert, ils seraient sur la voix 12).
+- **48 paramètres** de plus, automatisables (`v1Level` … `v12Size`, `v1Part` … `v12Part`), hors presets. Les parties par défaut sont « Style » : STYLE continue de tout piloter et les sessions existantes sonnent pareil.
+- Une voix **Muette** garde sa place dans la foule (les suivantes ne remontent pas quand CROWD monte), comme une voix coupée dans un harmoniseur.
+- **Pans par défaut** : une table fixe (gauche / droite en alternance, du centre vers les côtés, les côtés alternés pour qu'une petite foule soit déjà large), au lieu du tirage aléatoire — nécessaire pour une valeur par défaut de paramètre, et plus lisible dans le panneau. Les silhouettes de Sugar étaient déjà placées ainsi.
+- groove_core : jusqu'à 64 petits knobs et 64 choix (avant 8), plage négative pour les knobs en % (le pan), `ChoiceSpec::ownControl` réutilisé (les parties ne sont pas dans les sélecteurs génériques). Sans effet sur les autres plugins (empreintes identiques).
+- Test 24 : partie (Quinte + à ±5 cents), niveau (−6 dB = ¼ de l'énergie), Muette, pan, défauts.
+
+## Mises à jour : vérification façon « petit éditeur » (2026-10-20)
+- **Choix d'Alan** : pas d'installation automatique (un plugin chargé ne peut pas se remplacer, l'installation demande un mot de passe administrateur, et un téléchargeur-exécuteur intégré est un risque de sécurité) mais une **vérification** : `gk::UpdateCheck`, pour les cinq plugins.
+- Lit `https://www.lalzin.com/plugins/versions.json` (https uniquement) **au plus une fois par jour**, à l'ouverture de l'éditeur, sur un fil de fond (jamais le fil audio), délai 2,5 s, rien hors ligne ; seul l'en-tête `User-Agent: GrooveKnobs/<slug>/<version>` part. La réponse est gardée dans `~/Library/Application Support/LALZIN/Groove Knobs.settings` (Windows : `%APPDATA%`) : le badge s'affiche aussi hors ligne. Une réponse quelconque du serveur (même 404) compte comme la vérification du jour.
+- Version plus récente (comparaison numérique, « 0.10.1 » > « 0.9 ») → badge **« MAJ x.y.z »** à droite de « made by LALZIN » ; clic = page produit (https seulement, sinon `/plugins/<slug>`). Rien n'est téléchargé ni installé par le plugin.
+- **Clic droit sur « made by LALZIN »** : « Vérifier les mises à jour (une fois par jour) » (coché par défaut, réglage commun aux plugins), « Vérifier maintenant », lalzin.com.
+- `GK_NO_UPDATE_CHECK` coupe tout (posé par les outils de captures et les tests : aucune dépendance au site, empreintes UI inchangées — le badge n'existe que s'il y a une mise à jour).
+- Site : `web-assets/versions.json` généré par `scripts/make_versions_json.py` depuis `plugins.json` ; prompt du site complété (servir le fichier, politique de confidentialité, ordre de publication : installateurs d'abord, `versions.json` ensuite). Aujourd'hui le fichier n'existe pas encore (404) : les plugins ne font rien.
+
+## Release 0.1.2 et numéros de version (2026-10-21)
+- **Remarque d'Alan** : la release v0.1.1 contenait des installateurs nommés « 0.1.0 » (le tag avait changé, pas la version des plugins). Les cinq plugins passent en **0.1.2** dans `cmake/GrooveIds.cmake`, seule source : noms des installateurs, `Distribution` du .pkg, `CFBundleShortVersionString` / `CFBundleVersion` des VST3, AU et applications, version Inno Setup, `plugins.json` / `versions.json`. Vérifié dans les cinq `.pkg` (tout en 0.1.2, aucun 0.1.0 restant) ; notarisés, agrafés, acceptés par Gatekeeper.
+- **Garde-fou CI** : un job `version` refuse un tag `vX.Y.Z` si un plugin n'est pas en X.Y.Z, et la release vérifie que les `.exe` portent `X.Y.Z` dans leur nom.
+- **Plus de copie des plugins au build** (`GK_COPY_PLUGINS` OFF par défaut) : la copie dans `~/Library/Audio/Plug-Ins` remplaçait les plugins sous Live pendant mes builds — Alan a eu « French Filter introuvable ». Les copies de développement ont été mises à la corbeille (`groove-knobs-dev-builds`). pluginval valide l'AU dans le dossier du build ; auval l'installe dans le dossier utilisateur le temps de la validation seulement.

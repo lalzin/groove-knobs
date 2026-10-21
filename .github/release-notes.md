@@ -9,10 +9,12 @@
 | **Pew Pew** *(nouveau, instrument)* | le pew disco, en instrument MIDI — *the disco pew, as a MIDI instrument* |
 | **Sing It Back** *(nouveau)* | une foule qui chante avec ta voix — *a crowd singing along with your voice* |
 
-### Nouveau dans cette version / *What's new*
-- **Pew Pew** et **Sing It Back** rejoignent la suite (Windows ci-dessous, macOS sur lalzin.com).
-- Installateurs Windows corrigés : chaque plugin a désormais son propre identifiant d'installation (avant, installer Boogie Trio ou Backwash remplaçait l'entrée de French Filter dans « Applications installées »). Si tu as installé plusieurs plugins de la v0.1.0, réinstalle-les.
-- *Pew Pew and Sing It Back join the suite. Windows installers fixed: each plugin now has its own install ID (installing a second plugin no longer replaced the first one's uninstall entry) — reinstall if you had several from v0.1.0.*
+### Nouveau dans la 0.1.2 / *What's new in 0.1.2*
+- **Vérification des mises à jour** : chaque plugin te prévient (badge « MAJ ») quand une nouvelle version sort — rien ne s'installe tout seul. Clic droit sur *made by LALZIN* pour la désactiver.
+- **Sing It Back** : panneau **VOIX** (partie, niveau, pan et timbre de chacune des 12 voix), foule plus naturelle, plus de grésillement, knob VOL.
+- **Pew Pew** : MODE **SOLO / MULTI** (un pew à la fois ou jusqu'à 8).
+- Installateurs Windows : un identifiant d'installation par plugin (depuis la 0.1.1) ; si tu avais installé plusieurs plugins en 0.1.0, réinstalle-les.
+- *Update check (an "MAJ" badge when a new version is out, nothing installs by itself); Sing It Back voice panel and a more natural crowd; Pew Pew SOLO / MULTI mode.*
 
 ### Windows (10 / 11, 64 bits)
 Télécharge le `…-Windows-Setup.exe` du plugin ci-dessous et lance-le : VST3 dans `C:\Program Files\Common Files\VST3` + application autonome.

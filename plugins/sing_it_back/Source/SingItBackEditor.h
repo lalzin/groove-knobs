@@ -17,8 +17,8 @@ public:
     ~SingItBackEditor() override;
     static gk::Palette makePalette();
 
-    /** Screenshots: Sugar singing (or not), the advanced panel open. */
-    void setPreview (bool singing, int syllable, bool advancedOpen);
+    /** Screenshots: Sugar singing (or not), the advanced panel or the voice panel open. */
+    void setPreview (bool singing, int syllable, bool advancedOpen, bool voicesOpen = false);
 
 protected:
     void editorTick (double dt) override;
@@ -27,6 +27,8 @@ private:
     class ScaleBar;
     class AdvancedPanel;
     class MoreButton;
+    class VoicePanel;
+    class PanelButton;
 
     SingItBackProcessor& proc;
     std::unique_ptr<gk::ChoiceSelector> style, response, harmony, voices;
@@ -34,6 +36,8 @@ private:
     std::unique_ptr<AdvancedPanel> advanced;
     std::unique_ptr<MoreButton> more;
     std::unique_ptr<gk::SmallKnob> volume;
+    std::unique_ptr<VoicePanel> voicePanel;
+    std::unique_ptr<PanelButton> voicesButton;
     float pulse = 0.0f;
     int previewDegree = -3; // screenshots: the note shown (-3 = live)
 };

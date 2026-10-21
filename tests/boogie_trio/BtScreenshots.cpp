@@ -88,6 +88,11 @@ int main (int argc, char** argv)
         juce::ScopedJuceInitialiser_GUI webInit;
         return runWeb (juce::File::getCurrentWorkingDirectory().getChildFile (argc > 2 ? argv[2] : "web-assets"));
     }
+#if JUCE_WINDOWS
+    _putenv_s ("GK_NO_UPDATE_CHECK", "1"); // no network: screenshots and tests never depend on the website
+#else
+    setenv ("GK_NO_UPDATE_CHECK", "1", 1); // no network: screenshots and tests never depend on the website
+#endif
     juce::ScopedJuceInitialiser_GUI juceInit;
     const auto outDir = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 ? argv[1] : "screenshots/boogie_trio");
     outDir.createDirectory();

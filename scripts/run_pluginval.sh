@@ -29,7 +29,7 @@ if [[ -z "$PV" ]]; then
 fi
 
 status=0
-for plugin in "$ART/VST3/$PLUGIN.vst3" "$HOME/Library/Audio/Plug-Ins/Components/$PLUGIN.component"; do
+for plugin in "$ART/VST3/$PLUGIN.vst3" "$ART/AU/$PLUGIN.component"; do
   [[ -e "$plugin" ]] || { echo "missing: $plugin"; status=1; continue; }
   log="$BUILD/pluginval_$(basename "$plugin" | tr ' ' '_').log"
   echo "== pluginval strictness $STRICT: $plugin"
