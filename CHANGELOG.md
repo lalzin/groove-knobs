@@ -2,6 +2,8 @@
 
 ## Kick Lock 0.1.4 — 2026-10-21 (Kick Lock seul) : le même verrouillage à chaque fois
 - **LOCK identique pour une note identique** (Alan : « parfois le recalage est parfait, mais pour la même note ... un résultat différent ») : la phase est mesurée sur le cycle de la basse qui suit le kick (Kick Lock l'entend en avance), plus sur les cycles d'avant. Même note, même attaque : la même correction à chaque kick, à moins de 3° près, que la note démarre 120 ms avant le kick, dessus ou juste après. Latence 16 → ~32 ms (Live la compense).
+- **Basses riches en harmoniques (saw)** : la hauteur, la phase et la stabilité se mesurent sur le bas du spectre de la basse seulement (filtré sans déphasage), la correction s'applique à la basse entière ; plus de « 3e harmonique prise pour la note », plus de UNSTABLE dû aux harmoniques. L'oscilloscope montre la fondamentale de la basse telle qu'on l'entend (une sinusoïde nette face au kick).
+- Windows : compilation réparée (`near`, une macro de windows.h).
 - **Dans une loop** (Alan, dans Live : « à la reprise de la loop le plugin oublie le link ») : les kicks de Kick Lock Send sont replacés sur le bon passage de la loop, même quand la piste du kick et celle de la basse ne reprennent pas au même bloc ; plus aucun kick perdu après une reprise.
 - **Une mélodie de sub** (une note différente avant chaque kick) : chaque note verrouillée à ~1° près, qu'elle démarre 120 ms ou 10 ms avant le kick (avant : jusqu'à 170° d'erreur pour une note démarrée 10 à 60 ms avant le kick — la hauteur de la note d'avant était utilisée). Une note qui démarre sur le kick ou après est laissée telle quelle (pas de clic).
 

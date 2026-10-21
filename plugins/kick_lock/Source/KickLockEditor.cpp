@@ -239,7 +239,7 @@ private:
 
 //==============================================================================
 /** The oscilloscope, one beat from the last kick: the kick (orange) and the
-    bass as heard (lime), and over them the ducking curve, editable like
+    bass as heard, its low band only (lime: under SUB CUT, where the phase is), and over them the ducking curve, editable like
     LFOTool's: drag a point; double-click to add one (or remove it); drag the
     small ring in the middle of a segment to bend it; right-click for the
     presets. */

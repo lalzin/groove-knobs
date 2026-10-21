@@ -287,7 +287,7 @@ inline void writeSuite (const juce::File& outRoot, const std::vector<std::pair<j
         }
     const auto cream = pal.text, ink = pal.outline;
 
-    auto compose = [&] (int w, int h, float titleH, juce::Rectangle<float> windows, const std::vector<juce::Image>& uis, const juce::String& file)
+    auto compose = [&] (int w, int h, float titleH, juce::Rectangle<float> windows, const std::vector<juce::Image>& shown, const juce::String& file)
     {
         juce::Image img (juce::Image::RGB, w, h, true);
         juce::Graphics g (img);
@@ -297,7 +297,7 @@ inline void writeSuite (const juce::File& outRoot, const std::vector<std::pair<j
         g.fillPath (textPath ("by LALZIN  -  with groove and love", titleH * 0.26f, b.getCentreX(), titleH * 1.62f, 0.2f, true));
         cartoonText (g, textPath ("GROOVE KNOBS", titleH, b.getCentreX(), titleH * 1.18f, 0.03f, true), cream, ink, titleH * 0.1f);
         // the windows side by side, fanned out, the middle one on top
-        const int n = (int) uis.size();
+        const int n = (int) shown.size();
         const float ww = windows.getWidth() / (float) n;
         std::vector<int> order;
         for (int k = 0; k < n; ++k)
@@ -311,8 +311,8 @@ inline void writeSuite (const juce::File& outRoot, const std::vector<std::pair<j
                                                       windows.getHeight())
                                   .expanded (ww * (n > 3 ? 0.22f : 0.08f), 0.0f);
             // a wide window (Kick Lock) gets a wider slot, or it is a stamp
-            const bool wideUi = uis[(size_t) k].getWidth() > uis[(size_t) k].getHeight();
-            drawWindow (g, uis[(size_t) k], wideUi ? area.withSizeKeepingCentre (area.getWidth() * 1.4f, area.getHeight() * 0.8f) : area, 0.06f * side);
+            const bool wideUi = shown[(size_t) k].getWidth() > shown[(size_t) k].getHeight();
+            drawWindow (g, shown[(size_t) k], wideUi ? area.withSizeKeepingCentre (area.getWidth() * 1.4f, area.getHeight() * 0.8f) : area, 0.06f * side);
         }
         writePng (img, outRoot.getChildFile (file));
     };

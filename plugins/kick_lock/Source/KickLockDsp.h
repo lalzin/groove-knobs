@@ -25,7 +25,7 @@ struct KickTelemetry
     std::array<std::atomic<std::int64_t>, 4> recentKicks { { -1, -1, -1, -1 } }; // the last kicks (slot = count % 4)
     // oscilloscope: 2 s of the corrected sub, the output and the kick (1 in 8)
     int scopeSize = 0;
-    // scopeSub: the fundamental as heard; scopeBass: the output (mono); scopeKick: the kick (L later, as heard)
+    // scopeSub: the fundamental as heard; scopeBass: the output's low band (mono, under SUB CUT); scopeKick: the kick (L later, as heard)
     std::unique_ptr<std::atomic<float>[]> scopeSub, scopeKick, scopeBass;
     std::atomic<int> scopeWrite { 0 };
     std::atomic<std::int64_t> scopeTime { 0 }; // output time of the last scope sample written
@@ -94,6 +94,7 @@ public:
         lowest note measured (40 Hz), then the 5 ms crossfade, before the kick
         is heard. */
     static constexpr double measureFloorHz = 40.0;
+    static constexpr double steadyLimit = 0.04; // the low band one period later: further than this, not lockable
     static int baseLatencyFor (double sampleRate) noexcept
     {
         const int legacy = (int) std::round (firSeconds * sampleRate) + (int) std::round (advanceSeconds * sampleRate);
@@ -142,11 +143,18 @@ private:
     /** The phase (degrees, 0 = rising zero crossing) and amplitude of the
         fundamental at `at`, from the `length` samples of the bass that follow
         it (projection on f0: the harmonics cancel over a whole period). */
-    void measureForward (std::int64_t at, double periodSamples, int length, double& phaseDeg, double& amplitude) const noexcept;
+    void measureForward (std::int64_t at, double periodSamples, int length, double& phaseDeg, double& amplitude, bool low = false) const noexcept;
     int measureLength() const noexcept;
     /** The period (samples) of the note between `from` and `to`, from the bass
         itself (YIN, decimated by 4); 0 if none clear. */
     double periodBetween (std::int64_t from, std::int64_t to) const noexcept;
+    // the bass's lowest band (its fundamental, the infra), zero-phase (filtered
+    // forth and back) over [from, to), mono, into `analysis`: a saw's
+    // harmonics no longer pull the period or the steadiness checks
+    int lowBand (std::int64_t from, std::int64_t to, double T) const noexcept; // T: the note's period (0 = unknown)
+    double refinePeriod (std::int64_t from, std::int64_t to, double T0) const noexcept;
+    double steadiness (std::int64_t from, std::int64_t to, double T) const noexcept;
+    mutable std::vector<float> analysis;
     double differenceAt (std::int64_t from, std::int64_t to, double T) const noexcept;
     float monoSubAt (std::int64_t t) const noexcept { return mono[(size_t) (t & mask)]; }
     double targetPsiFor (double phaseDeg, double periodSamples) const noexcept;
