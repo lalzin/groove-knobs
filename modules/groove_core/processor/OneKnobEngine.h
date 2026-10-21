@@ -59,6 +59,14 @@ public:
         (their offset in the chunk is position - start). Audio thread. */
     virtual void setMidi (const juce::MidiBuffer& midi, int start, int numSamples) { juce::ignoreUnused (midi, start, numSamples); }
 
+    /** OneKnobConfig::sidechain: the sidechain samples of the next processWet()
+        chunk (numChannels 0 = no sidechain connected / bus disabled). Audio
+        thread, before processWet; the pointers are valid during that call only. */
+    virtual void setSidechain (const float* const* channels, int numChannels, int numSamples)
+    {
+        juce::ignoreUnused (channels, numChannels, numSamples);
+    }
+
     /** Plugins with small knobs (OneKnobConfig::knobs): their values (0..1),
         before every block; smoothing is up to the engine. Audio thread. */
     virtual void setKnobs (const float* values, int numKnobs) { juce::ignoreUnused (values, numKnobs); }

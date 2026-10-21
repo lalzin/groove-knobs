@@ -26,7 +26,8 @@ struct KnobSpec
 {
     juce::String id, name, caption;
     float defaultValue = 0.0f;
-    /** Range and unit: percent 0..1 by default; "dB": minimum = -inf. */
+    /** Range and unit: percent 0..1 by default; "dB": minimum = -inf; any other
+        unit ("°", "ms", "Hz"...) shows the plain value with that unit. */
     float minimum = 0.0f, maximum = 1.0f, skew = 1.0f;
     juce::String unit { "%" };
 };
@@ -95,6 +96,11 @@ struct OneKnobConfig
     /** false: the editor does not create or place the switch chips, small
         knobs and choice selectors (the plugin's editor lays them out itself). */
     bool editorBuildsControls = true;
+
+    /** A sidechain input (second input bus, "Sidechain", mono or stereo, may be
+        disabled): its samples reach the engine with each chunk
+        (OneKnobEngine::setSidechain). Off: the bus does not exist. */
+    bool sidechain = false;
 
     /** Also accept a mono input with a stereo output (mono is duplicated). */
     bool allowMonoToStereo = false;
@@ -261,6 +267,8 @@ private:
     LinearSmoother amountSmoother, bypassSmoother, wetGate, wetInputFade;
     SmoothParam makeupSmoother;
     LinearSmoother outputGain; // OneKnobConfig::outputGainKnob
+    std::array<int, 2> sidechainChannelIndex {};
+    int sidechainChannels = 0;
     float outputGainTarget() const noexcept;
     float crossfadeWeight = 0.0f, crossfadeMaxStep = 1.0f;
     int maxBlock = 0, latency = 0, warmupRemaining = 0, currentPreset = -1;

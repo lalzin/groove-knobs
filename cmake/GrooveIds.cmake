@@ -46,3 +46,10 @@ set(SIB_PLUGIN_CODE        "SItB")
 set(SIB_AU_TYPE            "aufx")          # kAudioUnitType_Effect
 set(SIB_BUNDLE_ID          "${GK_BUNDLE_ID_PREFIX}.singitback")
 set(SIB_VERSION            "0.1.2")
+
+# Kick Lock (sidechain ducking + sub phase lock) — working name
+set(KL_PRODUCT_NAME        "Kick Lock")
+set(KL_PLUGIN_CODE         "KkLk")
+set(KL_AU_TYPE             "aufx")          # kAudioUnitType_Effect
+set(KL_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.kicklock")
+set(KL_VERSION             "0.1.0")

@@ -9,6 +9,11 @@ juce::AudioProcessor::BusesProperties OneKnobProcessor::busesFor (const OneKnobC
 {
     if (cfg.isInstrument) // no audio input
         return BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true);
+    if (cfg.sidechain)
+        return BusesProperties()
+            .withInput ("Input", juce::AudioChannelSet::stereo(), true)
+            .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
+            .withInput ("Sidechain", juce::AudioChannelSet::stereo(), true);
     return BusesProperties()
         .withInput ("Input", juce::AudioChannelSet::stereo(), true)
         .withOutput ("Output", juce::AudioChannelSet::stereo(), true);
@@ -186,16 +191,20 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
         layout.add (std::make_unique<juce::AudioParameterFloat> (
             juce::ParameterID { k.id, 1 }, k.name, range, k.defaultValue,
             juce::AudioParameterFloatAttributes()
-                .withLabel (db ? "dB" : "%")
-                .withStringFromValueFunction ([db, minimum] (float v, int)
+                .withLabel (k.unit)
+                .withStringFromValueFunction ([db, minimum, unit = k.unit] (float v, int)
                                               {
+                                                  if (unit != "%" && ! db)
+                                                      return juce::String (v, std::abs (v) < 10.0f && unit == "ms" ? 1 : 0) + " " + unit;
                                                   if (! db)
                                                       return juce::String (juce::roundToInt (v * 100.0f)) + " %";
                                                   return v <= minimum + 0.01f ? juce::String ("-inf") : juce::String (v, 1) + " dB";
                                               })
-                .withValueFromStringFunction ([db, minimum, maximum] (const juce::String& t)
+                .withValueFromStringFunction ([db, minimum, maximum, unit = k.unit] (const juce::String& t)
                                               {
                                                   const auto x = t.trim().trimCharactersAtEnd ("%dB ").trim();
+                                                  if (unit != "%" && ! db)
+                                                      return juce::jlimit (minimum, maximum, t.retainCharacters ("-0123456789.,").replaceCharacter (',', '.').getFloatValue());
                                                   if (db)
                                                       return x.containsIgnoreCase ("inf") ? minimum : x.getFloatValue();
                                                   return juce::jlimit (minimum, maximum, x.getFloatValue() / 100.0f);
@@ -234,6 +243,12 @@ bool OneKnobProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
     const auto out = layouts.getMainOutputChannelSet();
     if (config.isInstrument)
         return in.isDisabled() && (out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo());
+    if (config.sidechain && layouts.inputBuses.size() > 1)
+    {
+        const auto sc = layouts.getChannelSet (true, 1);
+        if (! sc.isDisabled() && sc != juce::AudioChannelSet::mono() && sc != juce::AudioChannelSet::stereo())
+            return false;
+    }
     if (config.allowMonoToStereo && in == juce::AudioChannelSet::mono() && out == juce::AudioChannelSet::stereo())
         return true;
     if (in != out)
@@ -327,8 +342,23 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
 
     const int numSamples = buffer.getNumSamples();
     const int numChannels = juce::jmin (buffer.getNumChannels(), dryBuffer.getNumChannels());
+    // The sidechain's channels (after the main ones) are kept for the engine
+    sidechainChannels = 0;
+    if (config.sidechain && getBusCount (true) > 1)
+        if (auto* bus = getBus (true, 1); bus != nullptr && bus->isEnabled())
+        {
+            const int first = bus->getChannelIndexInProcessBlockBuffer (0);
+            for (int c = 0; c < bus->getNumberOfChannels() && c < 2 && first + c < buffer.getNumChannels(); ++c)
+                sidechainChannelIndex[(size_t) sidechainChannels++] = first + c;
+        }
     for (int ch = numChannels; ch < buffer.getNumChannels(); ++ch)
-        buffer.clear (ch, 0, numSamples);
+    {
+        bool isSidechain = false;
+        for (int c = 0; c < sidechainChannels; ++c)
+            isSidechain = isSidechain || sidechainChannelIndex[(size_t) c] == ch;
+        if (! isSidechain)
+            buffer.clear (ch, 0, numSamples);
+    }
     if (numSamples == 0 || numChannels == 0 || maxBlock == 0)
         return;
     if (config.isInstrument)
@@ -546,6 +576,13 @@ void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start
             engine->setToggleValues (togglePointers.data(), (int) toggleParams.size());
         if (config.isInstrument && chunkMidi != nullptr)
             engine->setMidi (*chunkMidi, start, n);
+        if (config.sidechain)
+        {
+            const float* sc[2] {};
+            for (int c = 0; c < sidechainChannels; ++c)
+                sc[c] = buffer.getReadPointer (sidechainChannelIndex[(size_t) c], start);
+            engine->setSidechain (sc, sidechainChannels, n);
+        }
         engine->processWet (wetBuffer, n, amountBuffer.data(), timing);
 
         const bool useMakeup = makeupEnabled.load (std::memory_order_relaxed);

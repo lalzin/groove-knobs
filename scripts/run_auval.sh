@@ -19,6 +19,7 @@ case "$P" in
   BW) ART="$BUILD/plugins/backwash/Backwash_artefacts/Release" ;;
   PP) ART="$BUILD/plugins/pew_pew/PewPew_artefacts/Release" ;;
   SIB) ART="$BUILD/plugins/sing_it_back/SingItBack_artefacts/Release" ;;
+  KL) ART="$BUILD/plugins/kick_lock/KickLock_artefacts/Release" ;;
 esac
 COMP="$(ls -d "$ART"/AU/*.component 2>/dev/null | head -1 || true)"
 TMP=""

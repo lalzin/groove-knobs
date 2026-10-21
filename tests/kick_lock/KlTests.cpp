@@ -1,0 +1,537 @@
+// Kick Lock tests: phase accuracy and convergence, glide, confidence, freeze,
+// null, ducking, no sidechain, mono sum, crossover, latency, automation,
+// block sizes, stability, state, CPU.
+
+#include "KickLockProcessor.h"
+#include "GkTestUtils.h"
+#include "KickBass.h"
+#include <catch2/catch_approx.hpp>
+#include <numeric>
+
+using namespace gktest;
+using namespace kickbass;
+using kl::KickLockDsp;
+using kl::KickLockProcessor;
+using kl::Status;
+
+namespace
+{
+std::unique_ptr<KickLockProcessor> makeKl (double sr, float mix, bool lock, float depth = 1.0f, int block = 512)
+{
+    auto p = std::make_unique<KickLockProcessor>();
+    p->setNonRealtime (true);
+    setParam (p->getMixParameter(), mix);
+    setParam (p->getLockParameter(), lock ? 1.0f : 0.0f);
+    setParam (p->getDepthParameter(), depth);
+    p->prepareToPlay (sr, block);
+    return p;
+}
+
+/** Phase errors (degrees) of the output's fundamental at each kick heard after `from` seconds. */
+std::vector<double> errorsAtKicks (const Buffer& out, int latency, double hz, double sr, const std::vector<double>& kicks, double from, double to = 1.0e9,
+                                   double target = 0.0)
+{
+    std::vector<double> e;
+    for (double k : kicks)
+        if (k >= from && k < to)
+        {
+            const int at = (int) std::round (k * sr) + latency;
+            if (at + (int) (2.0 * sr / hz) < out.getNumSamples())
+                e.push_back (KickLockDsp::wrap180 (phaseAt (out.getReadPointer (0), out.getNumSamples(), at, hz, sr) - target));
+        }
+    return e;
+}
+
+double maxAbs (const std::vector<double>& v)
+{
+    double m = 0.0;
+    for (auto x : v)
+        m = juce::jmax (m, std::abs (x));
+    return m;
+}
+} // namespace
+
+//==============================================================================
+TEST_CASE ("KL 1. Phase accuracy: every note 40-110 Hz, the kick -10..+10 ms off, error < 5 deg after convergence", "[kl][phase]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 4.0;
+    juce::String table;
+    double worst = 0.0;
+    for (double hz : { 40.0, 45.0, 49.0, 55.0, 61.7, 65.4, 73.4, 82.4, 98.0, 110.0 })
+        for (double off : { -0.010, -0.004, 0.0, 0.003, 0.010 })
+        {
+            auto p = makeKl (sr, 1.0f, true, 0.0f); // depth 0: the phase is measured on the full bass
+            const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr);
+            const auto k = kicks (seconds, sr, bpm, 0.25 + off);
+            const auto out = run (*p, b, &k, { 512 }, bpm);
+            const auto e = errorsAtKicks (out, p->getLatencySamples(), hz, sr, kickTimes (seconds, bpm, 0.25 + off), 1.0, seconds - 0.2);
+            const double m = maxAbs (e);
+            worst = juce::jmax (worst, m);
+            if (juce::exactlyEqual (off, 0.0))
+                table << juce::String (hz, 1) << " Hz: " << juce::String (m, 2) << " deg; ";
+            INFO (hz << " Hz, kick " << off * 1000.0 << " ms: worst error " << m << " deg over " << e.size() << " kicks");
+            CHECK (e.size() >= 4);
+            CHECK (m < 5.0);
+        }
+    WARN ("per note (kick on the grid): " << table << "worst of all: " << worst << " deg");
+}
+
+TEST_CASE ("KL 2. Convergence: after a note change, under 5 deg within 1 s", "[kl][phase]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 6.0;
+    auto p = makeKl (sr, 1.0f, true, 0.0f);
+    const auto b = bass ({ { 0.0, 3.0, 55.0 }, { 3.0, 3.0, 73.4 } }, seconds, sr);
+    const auto k = kicks (seconds, sr, bpm, 0.1);
+    const auto out = run (*p, b, &k, { 512 }, bpm);
+    const auto times = kickTimes (seconds, bpm, 0.1);
+    // every kick from 1 s after the change on
+    const auto e = errorsAtKicks (out, p->getLatencySamples(), 73.4, sr, times, 3.0 + 1.0, seconds - 0.2);
+    // and the first kick after the change (convergence time)
+    double firstGood = -1.0;
+    for (double t : times)
+        if (t > 3.05 && t < seconds - 0.2)
+        {
+            const auto one = errorsAtKicks (out, p->getLatencySamples(), 73.4, sr, { t }, 0.0);
+            if (! one.empty() && std::abs (one[0]) < 5.0)
+            {
+                firstGood = t - 3.0;
+                break;
+            }
+        }
+    INFO ("worst error from 1 s after the change: " << maxAbs (e) << " deg; first kick under 5 deg " << firstGood << " s after the change");
+    CHECK (maxAbs (e) < 5.0);
+    CHECK (firstGood >= 0.0);
+    CHECK (firstGood < 1.0);
+}
+
+TEST_CASE ("KL 3. Glide 55 -> 110 Hz in 200 ms: no jump in the output", "[kl][phase]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 3.0;
+    Buffer b (2, (int) (seconds * sr));
+    double ph = 0.0;
+    for (int i = 0; i < b.getNumSamples(); ++i)
+    {
+        const double t = i / sr;
+        const double f = t < 1.5 ? 55.0 : t < 1.7 ? 55.0 * std::pow (2.0, (t - 1.5) / 0.2) : 110.0;
+        ph += f / sr;
+        const float v = (float) (0.4 * std::sin (2.0 * juce::MathConstants<double>::pi * ph));
+        b.setSample (0, i, v);
+        b.setSample (1, i, v);
+    }
+    const auto k = kicks (seconds, sr, bpm, 0.1);
+    auto p = makeKl (sr, 1.0f, true, 0.0f);
+    const auto out = run (*p, b, &k, { 512 }, bpm);
+    // largest sample-to-sample step: the input's (110 Hz, 0.4) is ~0.0058
+    float step = 0.0f;
+    for (int i = (int) (0.5 * sr); i + 1 < out.getNumSamples(); ++i)
+        step = juce::jmax (step, std::abs (out.getSample (0, i + 1) - out.getSample (0, i)));
+    INFO ("largest step " << step);
+    CHECK (step < 0.012f);
+}
+
+TEST_CASE ("KL 4. Confidence: a noise or FM sub is never OK", "[kl][confidence]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 4.0;
+    for (int kind : { 0, 1 })
+    {
+        Buffer b (2, (int) (seconds * sr));
+        if (kind == 0)
+        {
+            gk::testsignals::Rng rng (3);
+            gk::TptSvf lp;
+            const auto c = gk::TptSvf::Coeffs::make (90.0, sr, 0.7);
+            for (int i = 0; i < b.getNumSamples(); ++i)
+            {
+                const float v = (float) (2.0 * lp.processLowpass (rng.bipolar(), c));
+                b.setSample (0, i, v);
+                b.setSample (1, i, v);
+            }
+        }
+        else
+            b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr, true, 0.25); // deep FM
+        const auto k = kicks (seconds, sr, bpm, 0.1);
+        auto p = makeKl (sr, 1.0f, true, 0.0f);
+        int ok = 0, unstable = 0;
+        run (*p, b, &k, { 512 }, bpm, [&] (int pos)
+             {
+                 if (pos < (int) (1.0 * sr))
+                     return;
+                 const auto st = (Status) p->getDsp().getTelemetry().status.load();
+                 ok += st == Status::ok ? 1 : 0;
+                 unstable += st == Status::unstable ? 1 : 0;
+             });
+        INFO ((kind == 0 ? "noise" : "FM") << ": OK " << ok << " blocks, unstable " << unstable);
+        CHECK (ok == 0);
+        CHECK (unstable > 0);
+    }
+}
+
+TEST_CASE ("KL 5. Freeze: below 0.7 confidence the shift does not move (< 0.1 ms)", "[kl][confidence]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 5.0;
+    // a steady note (locked), then noise: the shift stays where it was
+    auto steady = bass ({ { 0.0, 2.5, 61.7 } }, seconds, sr, true);
+    gk::testsignals::Rng rng (8);
+    gk::TptSvf lp;
+    const auto c = gk::TptSvf::Coeffs::make (80.0, sr, 0.7);
+    for (int i = (int) (2.5 * sr); i < steady.getNumSamples(); ++i)
+    {
+        const float v = (float) (2.0 * lp.processLowpass (rng.bipolar(), c));
+        steady.setSample (0, i, v);
+        steady.setSample (1, i, v);
+    }
+    const auto k = kicks (seconds, sr, bpm, 0.1);
+    auto p = makeKl (sr, 1.0f, true, 0.0f);
+    std::vector<double> shifts;
+    run (*p, steady, &k, { 512 }, bpm, [&] (int pos)
+         {
+             if (pos > (int) (2.8 * sr))
+                 shifts.push_back (p->getDsp().currentShiftMs());
+         });
+    const auto [lo, hi] = std::minmax_element (shifts.begin(), shifts.end());
+    INFO ("shift during the noise: " << *lo << " .. " << *hi << " ms");
+    CHECK (*hi - *lo < 0.1);
+}
+
+TEST_CASE ("KL 6. Null: MIX 0 is bit-exact with the input delayed by the latency, LOCK on or off", "[kl][null]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 2.0;
+    for (bool lock : { false, true })
+    {
+        auto p = makeKl (sr, 0.0f, lock);
+        const int L = p->getLatencySamples();
+        const auto b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr);
+        const auto k = kicks (seconds, sr, bpm);
+        const auto out = run (*p, b, &k, { 512 }, bpm);
+        bool exact = true;
+        for (int c = 0; c < 2; ++c)
+            for (int i = 0; i < out.getNumSamples(); ++i)
+                exact = exact && juce::exactlyEqual (out.getSample (c, i), i >= L ? b.getSample (c, i - L) : 0.0f);
+        INFO ("lock " << lock);
+        CHECK (exact);
+    }
+}
+
+TEST_CASE ("KL 7. Ducking: the gain is lowest at the kick (+-1 ms) and comes back over the release", "[kl][duck]")
+{
+    // (the kicks every 2 beats, so a 1/4 release ends before the next one)
+    const double sr = 48000.0, bpm = 124.0, seconds = 3.5;
+    Buffer b (2, (int) (seconds * sr));
+    for (int i = 0; i < b.getNumSamples(); ++i)
+        for (int c = 0; c < 2; ++c)
+            b.setSample (c, i, 0.25f); // DC: the gain itself (the sub filter passes DC, no shift with LOCK off)
+    for (int rel : { 0, 2, 3 })
+    {
+        auto p = makeKl (sr, 1.0f, false, 1.0f);
+        setParam (p->getReleaseParameter(), (float) rel);
+        const auto k = kicks (seconds, sr, bpm / 2.0, 0.5);
+        const auto out = run (*p, b, &k, { 512 }, bpm);
+        const int L = p->getLatencySamples();
+        const int kick = (int) std::round ((0.5 + 2.0 * 120.0 / bpm) * sr) + L; // the third kick
+        int argMin = kick;
+        for (int i = kick - (int) (0.01 * sr); i < kick + (int) (0.01 * sr); ++i)
+            if (out.getSample (0, i) < out.getSample (0, argMin))
+                argMin = i;
+        const double releaseMs = KickLockDsp::releaseBeats (rel) * 60000.0 / bpm;
+        const int back = kick + (int) std::round (releaseMs * 0.001 * sr);
+        INFO ("release " << releaseMs << " ms: minimum at " << (argMin - kick) / sr * 1000.0 << " ms from the kick, gain " << out.getSample (0, argMin) / 0.25f
+                         << ", back to " << out.getSample (0, back + 48) / 0.25f << " after the release");
+        CHECK (std::abs (argMin - kick) <= (int) (0.001 * sr));
+        CHECK (out.getSample (0, argMin) < 0.01f);
+        CHECK (out.getSample (0, back + 48) == Catch::Approx (0.25f).margin (0.002f));
+        CHECK (out.getSample (0, kick + (int) (0.5 * releaseMs * 0.001 * sr)) < 0.24f);
+    }
+}
+
+TEST_CASE ("KL 8. No sidechain: the output is the bass, status 'no kick'", "[kl][sidechain]")
+{
+    const double sr = 48000.0, seconds = 3.0;
+    auto p = makeKl (sr, 0.6f, false);
+    const int L = p->getLatencySamples();
+    const auto b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr);
+    const auto out = run (*p, b, nullptr);
+    // (after the generic 3 ms fade-in of the engine's input at start-up)
+    double err = 0.0;
+    for (int i = L + (int) (0.05 * sr); i < out.getNumSamples(); ++i)
+        err = juce::jmax (err, (double) std::abs (out.getSample (0, i) - b.getSample (0, i - L)));
+    INFO ("max difference " << err);
+    CHECK (err < 1.0e-5);
+    CHECK ((Status) p->getDsp().getTelemetry().status.load() == Status::noKick);
+    // a connected sidechain that stays silent: the same after 2 s
+    Buffer silent (2, b.getNumSamples());
+    silent.clear();
+    auto q = makeKl (sr, 0.6f, true);
+    run (*q, b, &silent);
+    CHECK ((Status) q->getDsp().getTelemetry().status.load() == Status::noKick);
+}
+
+TEST_CASE ("KL 9. Mono sum: with LOCK on, L + R loses less than 3 dB", "[kl][mono]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 4.0;
+    auto b = bass ({ { 0.0, 2.0, 55.0 }, { 2.0, 2.0, 82.4 } }, seconds, sr);
+    // a little width in the mids (different harmonics on the right)
+    for (int i = 0; i < b.getNumSamples(); ++i)
+        b.setSample (1, i, b.getSample (1, i) + 0.05f * (float) std::sin (2.0 * juce::MathConstants<double>::pi * 330.0 * i / sr));
+    const auto k = kicks (seconds, sr, bpm, 0.1);
+    auto p = makeKl (sr, 1.0f, true, 0.6f);
+    const auto out = run (*p, b, &k, { 512 }, bpm);
+    double eL = 0.0, eR = 0.0, eM = 0.0;
+    for (int i = (int) (0.5 * sr); i < out.getNumSamples(); ++i)
+    {
+        const double l = out.getSample (0, i), r = out.getSample (1, i), m = 0.5 * (l + r);
+        eL += l * l;
+        eR += r * r;
+        eM += m * m;
+    }
+    const double loss = 10.0 * std::log10 (0.5 * (eL + eR) / eM);
+    INFO ("mono sum loss " << loss << " dB; telemetry " << p->getDsp().getTelemetry().monoSumLossDb.load() << " dB");
+    CHECK (loss < 3.0);
+    CHECK (p->getDsp().getTelemetry().monoSumLossDb.load() < 3.0f);
+}
+
+TEST_CASE ("KL 10. Crossover: sub + mids rebuild the bass exactly (no shift, no ducking)", "[kl][crossover]")
+{
+    const double sr = 48000.0, seconds = 2.0;
+    auto p = makeKl (sr, 1.0f, false, 0.0f);
+    const int L = p->getLatencySamples();
+    const auto b = bass ({ { 0.0, 1.0, 55.0 }, { 1.0, 1.0, 110.0 } }, seconds, sr);
+    const auto k = kicks (seconds, sr, 124.0);
+    const auto out = run (*p, b, &k);
+    double err = 0.0, peak = 0.0;
+    for (int i = L + (int) (0.05 * sr); i < out.getNumSamples(); ++i)
+    {
+        err = juce::jmax (err, (double) std::abs (out.getSample (0, i) - b.getSample (0, i - L)));
+        peak = juce::jmax (peak, (double) std::abs (b.getSample (0, i - L)));
+    }
+    INFO ("max difference " << err << " (" << 20.0 * std::log10 (1.0 + err / peak) << " dB)");
+    CHECK (20.0 * std::log10 (1.0 + err / peak) < 0.1);
+}
+
+TEST_CASE ("KL 11. Latency: reported = measured, constant whatever the settings", "[kl][latency]")
+{
+    for (double sr : sampleRates)
+    {
+        auto p = makeKl (sr, 1.0f, false, 0.0f);
+        const int L = p->getLatencySamples();
+        Buffer in (2, L + 4096);
+        in.clear();
+        in.setSample (0, 100, 0.5f);
+        in.setSample (1, 100, 0.5f);
+        const auto out = run (*p, in, nullptr);
+        int first = -1;
+        for (int i = 0; i < out.getNumSamples() && first < 0; ++i)
+            if (std::abs (out.getSample (0, i)) > 0.25f)
+                first = i;
+        INFO ("sr " << sr << ": latency " << L << " samples (" << 1000.0 * L / sr << " ms), impulse at " << first);
+        CHECK (first == 100 + L);
+        setParam (p->getLockParameter(), 1.0f);
+        setParam (p->getSubCutoffParameter(), 150.0f);
+        setParam (p->getOffsetParameter(), 15.0f);
+        run (*p, in, nullptr);
+        CHECK (p->getLatencySamples() == L);
+    }
+}
+
+TEST_CASE ("KL 12. Automation: MIX and LOCK swept, no click", "[kl][automation]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 4.0;
+    const auto b = bass ({ { 0.0, seconds, 61.7 } }, seconds, sr);
+    const auto k = kicks (seconds, sr, bpm, 0.1);
+    auto p = makeKl (sr, 0.0f, false, 0.5f);
+    const auto out = run (*p, b, &k, { 64 }, bpm, [&] (int pos)
+                          {
+                              const double t = pos / sr;
+                              setParam (p->getMixParameter(), (float) (0.5 + 0.5 * std::sin (2.0 * juce::MathConstants<double>::pi * 1.3 * t)));
+                              setParam (p->getLockParameter(), std::fmod (t, 1.0) < 0.5 ? 1.0f : 0.0f);
+                          });
+    // DECISIONS.md: "no click" = no sample step above twice the bass's own largest step (+ the kicks' ducking slope)
+    float bassStep = 0.0f, step = 0.0f;
+    for (int i = 1; i < b.getNumSamples(); ++i)
+        bassStep = juce::jmax (bassStep, std::abs (b.getSample (0, i) - b.getSample (0, i - 1)));
+    for (int i = (int) (0.3 * sr); i < out.getNumSamples(); ++i)
+        step = juce::jmax (step, std::abs (out.getSample (0, i) - out.getSample (0, i - 1)));
+    INFO ("largest step " << step << ", the bass's " << bassStep);
+    CHECK (step < 2.0f * bassStep);
+}
+
+TEST_CASE ("KL 13. Block sizes: identical output for any partition", "[kl][blocks]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 3.0;
+    const auto b = bass ({ { 0.0, 1.5, 55.0 }, { 1.5, 1.5, 73.4 } }, seconds, sr);
+    const auto k = kicks (seconds, sr, bpm, 0.05);
+    auto render = [&] (const std::vector<int>& sizes)
+    {
+        auto p = makeKl (sr, 0.7f, true, 0.8f, 4096);
+        setParam (p->getWaveStartParameter(), 45.0f);
+        return run (*p, b, &k, sizes, bpm);
+    };
+    const auto ref = render ({ 512 });
+    juce::Random rng (4);
+    std::vector<int> randomSizes;
+    for (int i = 0; i < 2000; ++i)
+        randomSizes.push_back (1 + rng.nextInt (1500));
+    for (const auto& sizes : std::vector<std::vector<int>> { { 1 }, { 7 }, { 64 }, { 4096 }, randomSizes })
+    {
+        const auto out = render (sizes);
+        double err = 0.0;
+        for (int c = 0; c < 2; ++c)
+            for (int i = 0; i < out.getNumSamples(); ++i)
+                err = juce::jmax (err, (double) std::abs (out.getSample (c, i) - ref.getSample (c, i)));
+        INFO ("block " << sizes.front() << (sizes.size() > 1 ? " (random)" : "") << ": max difference " << err);
+        CHECK (err < 1.0e-6);
+    }
+}
+
+TEST_CASE ("KL 14. Stability: no NaN / Inf, peak below 0 dBFS, every rate, mono or stereo sidechain", "[kl][stability]")
+{
+    for (double sr : sampleRates)
+        for (int scCh : { 1, 2 })
+        {
+            const double seconds = 2.0;
+            auto p = std::make_unique<KickLockProcessor>();
+            auto layout = p->getBusesLayout();
+            layout.inputBuses.getReference (1) = scCh == 1 ? juce::AudioChannelSet::mono() : juce::AudioChannelSet::stereo();
+            REQUIRE (p->setBusesLayout (layout));
+            p->setNonRealtime (true);
+            setParam (p->getLockParameter(), 1.0f);
+            setParam (p->getMixParameter(), 1.0f);
+            p->prepareToPlay (sr, 512);
+            const auto b = bass ({ { 0.0, 1.0, 41.2 }, { 1.0, 1.0, 110.0 } }, seconds, sr);
+            auto k = kicks (seconds, sr, 128.0);
+            k.setSize (scCh, k.getNumSamples(), true);
+            const auto out = run (*p, b, &k, { 512 }, 128.0);
+            bool finite = true;
+            float peak = 0.0f;
+            for (int c = 0; c < 2; ++c)
+                for (int i = 0; i < out.getNumSamples(); ++i)
+                {
+                    finite = finite && std::isfinite (out.getSample (c, i));
+                    peak = juce::jmax (peak, std::abs (out.getSample (c, i)));
+                }
+            INFO ("sr " << sr << ", sidechain " << scCh << " ch: peak " << peak << ", kicks " << p->getDsp().getTelemetry().kickEvents.load());
+            CHECK (finite);
+            CHECK (peak < 1.0f);
+            CHECK (p->getDsp().getTelemetry().kickEvents.load() > 2);
+        }
+}
+
+TEST_CASE ("KL 15. State round trip, the defaults, the reset button", "[kl][state]")
+{
+    KickLockProcessor a;
+    setParam (a.getMixParameter(), 0.3f);
+    setParam (a.getLockParameter(), 1.0f);
+    setParam (a.getTargetPhaseParameter(), 90.0f);
+    setParam (a.getOffsetParameter(), -5.0f);
+    setParam (a.getSubCutoffParameter(), 100.0f);
+    setParam (a.getDepthParameter(), 0.4f);
+    setParam (a.getWaveStartParameter(), 180.0f);
+    setParam (a.getThresholdParameter(), -24.0f);
+    setParam (a.getShapeParameter(), 3.0f);
+    setParam (a.getReleaseParameter(), 4.0f);
+    a.editorScale.store (1.5f);
+    juce::MemoryBlock state;
+    a.getStateInformation (state);
+    KickLockProcessor b;
+    b.setStateInformation (state.getData(), (int) state.getSize());
+    auto plain = [] (juce::RangedAudioParameter& p) { return p.convertFrom0to1 (p.getValue()); };
+    CHECK (plain (b.getMixParameter()) == Catch::Approx (0.3f).margin (1.0e-4));
+    CHECK (b.getLockParameter().get());
+    CHECK (plain (b.getTargetPhaseParameter()) == Catch::Approx (90.0f).margin (0.01));
+    CHECK (plain (b.getOffsetParameter()) == Catch::Approx (-5.0f).margin (0.01));
+    CHECK (plain (b.getSubCutoffParameter()) == Catch::Approx (100.0f).margin (0.01));
+    CHECK (plain (b.getDepthParameter()) == Catch::Approx (0.4f).margin (1.0e-4));
+    CHECK (plain (b.getWaveStartParameter()) == Catch::Approx (180.0f).margin (0.01));
+    CHECK (plain (b.getThresholdParameter()) == Catch::Approx (-24.0f).margin (0.01));
+    CHECK (b.getShapeParameter().getIndex() == 3);
+    CHECK (b.getReleaseParameter().getIndex() == 4);
+    CHECK (b.editorScale.load() == Catch::Approx (1.5f));
+    // defaults: MIX 60 % first, LOCK off, release 1/8, 120 Hz, -18 dB
+    KickLockProcessor c;
+    CHECK (dynamic_cast<juce::RangedAudioParameter*> (c.getParameters()[0])->getParameterID() == "mix");
+    CHECK (plain (c.getMixParameter()) == Catch::Approx (0.6f));
+    CHECK_FALSE (c.getLockParameter().get());
+    CHECK (c.getReleaseParameter().getCurrentChoiceName() == "1/8");
+    CHECK (plain (c.getSubCutoffParameter()) == Catch::Approx (120.0f));
+    CHECK (plain (c.getThresholdParameter()) == Catch::Approx (-18.0f));
+    // the reset button
+    b.resetAllToDefaults();
+    CHECK (plain (b.getMixParameter()) == Catch::Approx (0.6f).margin (1.0e-4));
+    CHECK_FALSE (b.getLockParameter().get());
+    CHECK (b.getShapeParameter().getIndex() == 0);
+    // the sidechain bus exists and is called so (hosts route a track to it)
+    CHECK (c.getBusCount (true) == 2);
+    CHECK (c.getBus (true, 1)->getName() == "Sidechain");
+}
+
+TEST_CASE ("KL 17. CPU: stereo bass + stereo sidechain, LOCK on, 48 kHz", "[kl][cpu]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 8.0;
+    auto p = makeKl (sr, 1.0f, true, 0.8f);
+    const auto b = bass ({ { 0.0, 4.0, 55.0 }, { 4.0, 4.0, 73.4 } }, seconds, sr);
+    const auto k = kicks (seconds, sr, bpm);
+    const auto t0 = juce::Time::getMillisecondCounterHiRes();
+    run (*p, b, &k, { 512 }, bpm);
+    const double ms = juce::Time::getMillisecondCounterHiRes() - t0;
+    const double pct = 100.0 * ms / (seconds * 1000.0);
+    WARN ("Kick Lock: " << pct << " % of one core");
+    if (timingChecksEnforced())
+        CHECK (pct < 10.0);
+}
+
+TEST_CASE ("diag: f0 estimate", "[.kldiag]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 2.0;
+    for (double hz : { 40.0, 55.0, 61.7, 73.4, 98.0, 110.0 })
+    {
+        auto p = makeKl (sr, 1.0f, true, 0.0f);
+        const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr);
+        const auto k = kicks (seconds, sr, bpm, 0.25);
+        run (*p, b, &k, { 512 }, bpm);
+        const double f = p->getDsp().getTelemetry().f0Hz.load();
+        WARN (hz << " Hz: f0 " << f << " (" << 1200.0 * std::log2 (f / hz) << " cents), confidence " << p->getDsp().getTelemetry().phaseConfidence.load());
+    }
+}
+
+TEST_CASE ("diag: one kick", "[.kldiag2]")
+{
+    const double sr = 48000.0, seconds = 2.0;
+    for (double hz : { 40.0, 55.0 })
+    {
+        auto p = makeKl (sr, 1.0f, true, 0.0f);
+        const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr, true);
+        Buffer k (2, b.getNumSamples());
+        k.clear();
+        const double tk = 1.0;
+        const auto all = kicks (seconds, sr, 60.0, tk); // kicks at 1 s only (60 BPM: next at 2 s)
+        k.makeCopyOf (all);
+        const auto out = run (*p, b, &k, { 512 }, 120.0);
+        const int L = p->getLatencySamples();
+        const double truth = KickLockDsp::wrap180 (360.0 * hz * tk);
+        const double meas = p->getDsp().lastMeasuredPhase();
+        const double shift = p->getDsp().currentShiftMs();
+        const double outPh = phaseAt (out.getReadPointer (0), out.getNumSamples(), (int) (tk * sr) + L, hz, sr);
+        const double inPh = phaseAt (b.getReadPointer (0), b.getNumSamples(), (int) (tk * sr), hz, sr);
+        WARN ("onset " << p->getDsp().getTelemetry().lastKickSample.load() << " (true " << (int) (tk * sr) << "), f0 " << p->getDsp().getTelemetry().f0Hz.load());
+        WARN (hz << " Hz: truth " << truth << ", input measured by the test " << inPh << ", plugin measured " << meas << ", shift " << shift << " ms (expected "
+                 << KickLockDsp::wrap180 (meas) / 360.0 / hz * 1000.0 << "), output phase at the kick " << outPh);
+    }
+}
+
+TEST_CASE ("diag: ducking trace", "[.kldiag3]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 3.0;
+    Buffer b (2, (int) (seconds * sr));
+    for (int i = 0; i < b.getNumSamples(); ++i)
+        for (int c = 0; c < 2; ++c)
+            b.setSample (c, i, 0.25f);
+    auto p = makeKl (sr, 1.0f, false, 1.0f);
+    setParam (p->getReleaseParameter(), 0.0f);
+    const auto k = kicks (seconds, sr, bpm, 0.5);
+    const auto out = run (*p, b, &k, { 512 }, bpm);
+    const int L = p->getLatencySamples();
+    const int kick = (int) std::round (1.467741935 * sr) + L;
+    juce::String s;
+    for (int ms = -5; ms < 480; ms += 20)
+        s << ms << ":" << juce::String (out.getSample (0, kick + ms * 48) / 0.25f, 3) << " ";
+    WARN (s << " kicks " << p->getDsp().getTelemetry().kickEvents.load());
+}

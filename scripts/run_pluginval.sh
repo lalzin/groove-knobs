@@ -14,6 +14,7 @@ case "$PLUGIN" in
   "Backwash")      ART="$BUILD/plugins/backwash/Backwash_artefacts/Release" ;;
   "Pew Pew")       ART="$BUILD/plugins/pew_pew/PewPew_artefacts/Release" ;;
   "Sing It Back")  ART="$BUILD/plugins/sing_it_back/SingItBack_artefacts/Release" ;;
+  "Kick Lock")     ART="$BUILD/plugins/kick_lock/KickLock_artefacts/Release" ;;
   *) echo "unknown plugin: $PLUGIN"; exit 2 ;;
 esac
 
@@ -28,8 +29,23 @@ if [[ -z "$PV" ]]; then
   fi
 fi
 
+# macOS only creates Audio Units that are installed: the built AU is put in
+# the user Components folder for the validation only (removed afterwards), so
+# the AU validated is this build's (its version is the newest: macOS takes it)
+AU_SRC="$ART/AU/$PLUGIN.component"
+AU="$HOME/Library/Audio/Plug-Ins/Components/$PLUGIN.component"
+TMP_AU=""
+if [[ -e "$AU_SRC" && ! -e "$AU" ]]; then
+  TMP_AU="$AU"
+  trap 'rm -rf "$TMP_AU"; killall -9 AudioComponentRegistrar 2>/dev/null || true' EXIT
+  cp -R "$AU_SRC" "$AU"
+  killall -9 AudioComponentRegistrar 2>/dev/null || true
+  sleep 1
+fi
+[[ -e "$AU" ]] || AU="$AU_SRC"
+
 status=0
-for plugin in "$ART/VST3/$PLUGIN.vst3" "$ART/AU/$PLUGIN.component"; do
+for plugin in "$ART/VST3/$PLUGIN.vst3" "$AU"; do
   [[ -e "$plugin" ]] || { echo "missing: $plugin"; status=1; continue; }
   log="$BUILD/pluginval_$(basename "$plugin" | tr ' ' '_').log"
   echo "== pluginval strictness $STRICT: $plugin"
