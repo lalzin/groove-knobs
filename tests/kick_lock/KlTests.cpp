@@ -17,6 +17,14 @@ using kl::Status;
 
 namespace
 {
+// the link's shared block: one of the tests' own (a Live running on this
+// machine with Kick Lock Send must never be seen by the tests, nor disturbed)
+const bool testLinkBlock = []
+{
+    kl::KickLink::blockName() = "gk_kl_test_" + juce::String (juce::Random::getSystemRandom().nextInt (1 << 30));
+    return true;
+}();
+
 std::unique_ptr<KickLockProcessor> makeKl (double sr, float mix, bool lock, float depth = 1.0f, int block = 512)
 {
     auto p = std::make_unique<KickLockProcessor>();
@@ -681,9 +689,7 @@ TEST_CASE ("KL 21. No kick, the host playing: ducking and lock on the beats (TRI
 
 TEST_CASE ("KL 22. Link: Kick Lock Send on the kick's track drives Kick Lock, on time or a block late", "[kl][link]")
 {
-    // a block of shared memory of its own (a running Live is never disturbed)
-    kl::KickLink::blockName() = "gk_kl_test_" + juce::String (juce::Random::getSystemRandom().nextInt (1 << 30));
-    kl::KickLink::removeBlock();
+    kl::KickLink::removeBlock(); // a fresh block
     const double sr = 48000.0, bpm = 124.0, seconds = 6.0, hz = 55.0;
     const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr);
     const auto kickTrack = kicks (seconds, sr, bpm, 0.0);
@@ -743,7 +749,60 @@ TEST_CASE ("KL 22. Link: Kick Lock Send on the kick's track drives Kick Lock, on
         CHECK (p->getDsp().linkPredicting() == (order == 1));
         CHECK (p->getDsp().linkName().isNotEmpty());
     }
+    // Auto with Kick Lock Send connected but no kick (an intro, a break): no
+    // ducking on the beats (that looked like "the link drops")
+    {
+        kls::KickSendProcessor send;
+        send.setNonRealtime (true);
+        send.prepareToPlay (sr, 512);
+        auto p = makeKl (sr, 1.0f, true, 1.0f);
+        gk::OfflinePlayHead ph;
+        ph.bpm = bpm;
+        ph.sampleRate = sr;
+        ph.playing = true;
+        send.setPlayHead (&ph);
+        p->setPlayHead (&ph);
+        Buffer silent (2, (int) (3.0 * sr)), bassIo (2, silent.getNumSamples());
+        silent.clear();
+        for (int c = 0; c < 2; ++c)
+            bassIo.copyFrom (c, 0, b, c, 0, bassIo.getNumSamples());
+        juce::MidiBuffer midi;
+        for (int pos = 0; pos < silent.getNumSamples(); pos += 512)
+        {
+            ph.samplePosition = pos;
+            Buffer kv (silent.getArrayOfWritePointers(), 2, pos, 512), bv (bassIo.getArrayOfWritePointers(), 2, pos, 512);
+            send.processBlock (kv, midi);
+            p->processBlock (bv, midi);
+        }
+        send.setPlayHead (nullptr);
+        p->setPlayHead (nullptr);
+        CHECK (p->getDsp().getTelemetry().linkSlot.load() >= 0);
+        CHECK (p->getDsp().getTelemetry().kickEvents.load() == 0);
+    }
     kl::KickLink::removeBlock();
+}
+
+TEST_CASE ("KL 24. A bass note starting on each kick: in place, not 'unstable'", "[kl][status]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 3.0;
+    const auto beat = 60.0 / bpm;
+    std::vector<kickbass::Note> notes;
+    for (double t = 0.1; t < seconds; t += beat)
+        notes.push_back ({ t, beat * 0.8, 55.0 }); // retriggered with every kick
+    const auto b = bass (notes, seconds, sr);
+    const auto k = kicks (seconds, sr, bpm, 0.1);
+    auto p = makeKl (sr, 1.0f, true);
+    int blocks = 0, unstable = 0;
+    run (*p, b, &k, { 512 }, bpm, [&] (int pos)
+         {
+             if (pos > (int) (0.8 * sr))
+             {
+                 ++blocks;
+                 unstable += (Status) p->getDsp().getTelemetry().status.load() == Status::unstable ? 1 : 0;
+             }
+         });
+    INFO ("unstable in " << unstable << " of " << blocks << " blocks");
+    CHECK (unstable == 0);
 }
 
 TEST_CASE ("KL 17. CPU: stereo bass + stereo sidechain, LOCK on, 48 kHz", "[kl][cpu]")

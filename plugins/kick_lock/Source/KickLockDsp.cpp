@@ -504,8 +504,12 @@ void KickLockDsp::onKick (std::int64_t when)
             const double T = periodSamples > 1.0 ? periodSamples : sampleRate / 55.0;
             rampTo (targetPsiFor (targetPhase, T), when + releaseFor (when), returnFor (when)); // lock part 0: phase = target
             prevKick = when;
-            lastConfidence = 0.0; // no measurement for this kick
-            telemetry.phaseConfidence.store (0.0f, std::memory_order_relaxed);
+            // nothing to measure: the note starts with the kick, in place
+            // (not "unstable": Alan's bass retriggered on every kick showed
+            // UNSTABLE all the time)
+            lastConfidence = 1.0;
+            telemetry.phaseConfidence.store (1.0f, std::memory_order_relaxed);
+            telemetry.phaseErrorDeg.store (0.0f, std::memory_order_relaxed);
             return;
         }
     }
@@ -735,9 +739,12 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         // Beat): the host's quarter notes while it plays, like a tempo-synced ducker
         {
             const double b = timing.beatsAt (i);
+            // (Auto: never while a Kick Lock Send is connected — no kick on its
+            // track means no ducking, as with a sidechain; Alan: the beats
+            // came in during an intro and after a break, "the link drops")
+            const bool linked = telemetry.linkSlot.load (std::memory_order_relaxed) >= 0;
             const bool useBeats = trigger == triggerBeat
-                                  || (trigger == triggerAuto && (scChannels == 0 || clock - lastSidechainKick > noKickSamples)
-                                      && clock - lastLinkKick > noKickSamples);
+                                  || (trigger == triggerAuto && ! linked && (scChannels == 0 || clock - lastSidechainKick > noKickSamples));
             if (! timing.isPlaying)
                 beatValid = false;
             else if (! beatValid || b < lastBeatFloor - 0.001 || b > lastBeatFloor + 2.0)
