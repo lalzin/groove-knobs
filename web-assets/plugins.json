@@ -441,7 +441,7 @@
         },
         "windows": {
           "file": "KickLock-0.1.4-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 23625790,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
