@@ -264,7 +264,7 @@ inline void writePlugin (const PluginInfo& info, const std::vector<Shot>& shots,
 inline const std::vector<std::pair<juce::String, juce::String>>& suiteVisuals()
 {
     static const std::vector<std::pair<juce::String, juce::String>> v {
-        { "french-filter", "" }, { "boogie-trio", "" }, { "backwash", "" }, { "pew-pew", "" }, { "sing-it-back", "" }, { "kick-lock", "ui-send@3x.png" }
+        { "french-filter", "" }, { "boogie-trio", "" }, { "backwash", "" }, { "pew-pew", "" }, { "sing-it-back", "" }, { "kick-lock", "ui-send@3x.png" }, { "slapper", "" }
     };
     return v;
 }

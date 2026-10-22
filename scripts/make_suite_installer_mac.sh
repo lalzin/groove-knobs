@@ -32,7 +32,7 @@ fi
 
 VERSION="$(get GK_SUITE_VERSION)"
 PREFIX="$(get GK_BUNDLE_ID_PREFIX)"
-PLUGINS=(FF BT BW PP SIB KL)
+PLUGINS=(FF BT BW PP SIB KL SL)
 for P in "${PLUGINS[@]}"; do
   [[ "$(get ${P}_VERSION)" == "$VERSION" ]] || { echo "$P is $(get ${P}_VERSION), the suite is $VERSION: align cmake/GrooveIds.cmake"; exit 1; }
 done
@@ -52,7 +52,7 @@ for P in "${PLUGINS[@]}"; do
   fi
   PRODUCT="$(get ${P}_PRODUCT_NAME)"
   BUNDLE_ID="$(get ${P}_BUNDLE_ID)"
-  KIND="effet audio"; [[ "$P" == PP ]] && KIND="instrument"; [[ "$P" == KL ]] && KIND="effet audio, avec Kick Lock Send"
+  KIND="effet audio"; [[ "$P" == PP || "$P" == SL ]] && KIND="instrument"; [[ "$P" == KL ]] && KIND="effet audio, avec Kick Lock Send"
   outline+="        <line choice=\"$P\">
             <line choice=\"$P-vst3\"/>
             <line choice=\"$P-au\"/>

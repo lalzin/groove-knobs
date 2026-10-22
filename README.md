@@ -1,4 +1,4 @@
-# Groove Knobs — French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back, Kick Lock
+# Groove Knobs — French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back, Kick Lock, Slapper
 
 La suite **Groove Knobs** (LALZIN) : des plugins à un seul knob pour la funky house et la disco. **French Filter** (le filtre French Touch), **Boogie Trio** (chorus triple de string machine), **Backwash** (reverb inversée calée sur le tempo), **Pew Pew** (le pew disco, instrument) et **Sing It Back** (une foule qui chante avec ta voix).
 VST3 / AU / Standalone, macOS (universel) et Windows.
@@ -250,3 +250,14 @@ scripts/make_suite_installer_mac.sh  # toute la suite en un seul installateur �
 ```
 
 Windows : `scripts\make_installer_win.ps1 -Plugin FF|BT|BW|PP|SIB|Suite|All` (Visual Studio 2022 + Inno Setup 6 ; `Suite` / `All` produisent aussi `GrooveKnobs-<v>-Windows-Setup.exe`), ou le workflow GitHub Actions, qui construit les cinq plugins, la suite et leurs installateurs Mac et Windows à chaque push.
+
+# Slapper
+
+Instrument MIDI : **la basse funk en un knob**. Pas de samples : une corde modélisée (chaque harmonique avec son amortissement, la corde qui tape les frettes), un micro de P-bass, un sub calé sur la fondamentale, un ampli (saturation suréchantillonnée, baffle modal). Mascotte : **Pluck**.
+
+- **FUNK** (le knob) : de la basse ronde (0 %) au slap agressif (100 %) — dureté du pouce, clac des frettes, rebond, saturation, timbre.
+- **ENGINE** : **STRING** (la corde), **ANALOG** (mono-synthé, filtre 24 dB résonant), **FM** (deux opérateurs, la basse FM des années 80), **PULSE** (impulsion à largeur modulée, la basse boogie / disco). Chaque preset choisit le sien.
+- **ATTACK** (doigt → slap → pop ; sur les synthés : la vitesse de l'attaque), **MUTE** (paume, longueur des notes), **DRIVE**, **TONE**, **VOL**. PICK, STRING, BODY, HUMAN : réglés par les presets, automatisables.
+- **MONO** (par défaut) : une note jouée par-dessus une autre glisse vers elle (30–80 ms) ; vélocité < 20 : ghost note. **POLY** : 6 voix. Pitch bend ±2 demi-tons. Latence nulle.
+- 24 presets au même volume (`trimDb`, `scripts/calibrate_slapper_trims.py`). Tests : `ctest -R sl_` (accord ±2 cents, 60 s de jeu aléatoire, réglages tournés en jouant sans grésillement, presets distincts, CPU < 4 % pour 6 voix).
+

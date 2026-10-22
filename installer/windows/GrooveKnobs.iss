@@ -1,5 +1,5 @@
 ﻿; Groove Knobs — Windows installer for one plugin (Inno Setup 6).
-; Built by scripts/make_installer_win.ps1 -Plugin FF|BT|BW|PP|SIB|KL, or:
+; Built by scripts/make_installer_win.ps1 -Plugin FF|BT|BW|PP|SIB|KL|SL, or:
 ;   iscc /DPlugin=BT /DMyAppVersion=0.1.2 /DBuildDir=<...>\BoogieTrio_artefacts\Release installer\windows\GrooveKnobs.iss
 
 #ifndef Plugin
@@ -14,6 +14,11 @@
   #ifndef SendDir
     #define SendDir "..\..\build-win\plugins\kick_lock_send\KickLockSend_artefacts\Release"
   #endif
+#elif Plugin == "SL"
+  #define MyAppName "Slapper"
+  #define MyFileName "Slapper"
+  #define MyAppId "{{4E12FE91-FBC2-4365-B5EA-7DF528D08177}"
+  #define MyBuildFolder "slapper\Slapper_artefacts"
 #elif Plugin == "PP"
   #define MyAppName "Pew Pew"
   #define MyFileName "PewPew"
@@ -42,7 +47,7 @@
 #endif
 #define MyPublisher "LALZIN"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.5"
+  #define MyAppVersion "0.1.6"
 #endif
 #ifndef BuildDir
   #define BuildDir "..\..\build-win\plugins\" + MyBuildFolder + "\Release"

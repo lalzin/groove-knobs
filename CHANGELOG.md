@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.6 — 2026-10-22 (toute la suite, sept plugins)
+- **Slapper** entre dans la suite (validé par Alan : « ça marche bien ») : la basse funk en un knob, instrument MIDI — corde modélisée (doigt, slap, pop, ghost notes, glissés) et trois moteurs synthé (ANALOG, FM, PULSE), 24 presets au même volume, MONO / POLY, Pluck en mascotte. Voir les versions de test ci-dessous.
+- L'installateur de la suite (macOS et Windows) contient les sept plugins. Les autres plugins passent en 0.1.6 sans changement de son.
+
 ## Slapper 0.1.0-test3 — 2026-10-22 (version de test, hors suite)
 - **Même volume pour tous les presets**, quel que soit le moteur (calibré, ±0,4 dB) ; les synthés ne sonnent plus plus gros ni plus graves que la corde : BODY renforce la fondamentale de la note au lieu d'ajouter l'octave en dessous.
 - **24 presets** : nouveaux Acid Funk, Velvet Sub, Square Strut (ANALOG), Bell Bottom, Wood Block (FM), Roller Disco, Night Drive, Hot Wire (PULSE).
