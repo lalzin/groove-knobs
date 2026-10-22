@@ -34,6 +34,8 @@ struct Case
     int kicks = 1; // the mascot's step (its pose in the dance)
     bool customCurve = false, stopped = false;
     int explain = -1; // the scope explaining TARGET / OFFSET / SUB CUT / WAVE START
+    bool precise = true, phase = true, pad = false; // pad: a chord synth, no bass (a plain sidechain)
+    int monoBelow = 0;
 };
 
 juce::Image shoot (const Case& c, int& statusOut)
@@ -44,6 +46,9 @@ juce::Image shoot (const Case& c, int& statusOut)
     proc.setNonRealtime (true);
     setParam (proc.getLockParameter(), c.lock ? 1.0f : 0.0f);
     setParam (proc.getLockModeParameter(), c.transition ? 1.0f : 0.0f);
+    setParam (proc.getPreciseParameter(), c.precise ? 1.0f : 0.0f);
+    setParam (proc.getPhaseParameter(), c.phase ? 1.0f : 0.0f);
+    setParam (proc.getMonoBelowParameter(), (float) c.monoBelow);
     if (c.sidechain) // the kick fed through the sidechain bus here (in a song: Kick Lock Send)
         setParam (proc.getTriggerParameter(), (float) kl::KickLockDsp::triggerSidechain);
     if (c.customCurve)
@@ -54,6 +59,18 @@ juce::Image shoot (const Case& c, int& statusOut)
     }
     proc.prepareToPlay (sr, 512);
     auto b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr);
+    if (c.pad)
+        for (int i = 0; i < b.getNumSamples(); ++i)
+        {
+            // a chord (A minor, saw-ish), nothing under 200 Hz
+            const double t = i / sr;
+            double v = 0.0;
+            for (double f : { 220.0, 261.6, 329.6, 440.0 })
+                for (int h = 1; h <= 4; ++h)
+                    v += 0.06 / h * std::sin (juce::MathConstants<double>::twoPi * f * h * t + h);
+            b.setSample (0, i, (float) v);
+            b.setSample (1, i, (float) v);
+        }
     if (c.noise)
     {
         gk::testsignals::Rng rng (3);
@@ -143,6 +160,11 @@ int runWeb (const juce::File& out)
     { Case c; c.slug = "hero"; c.scale = 3.0f; c.kicks = 1; shot ("hero", c); }
     { Case c; c.slug = "curve"; c.scale = 2.0f; c.customCurve = true; shot ("curve", c); }
     { Case c; c.slug = "explain"; c.scale = 2.0f; c.explain = 0; shot ("explain", c); }
+    // 0.1.5: LIVE (the phase at the kick), the plain sidechain (PHASE off, a
+    // chord: the whole signal), MONO BELOW set
+    { Case c; c.slug = "live"; c.scale = 2.0f; c.precise = false; shot ("live", c); }
+    { Case c; c.slug = "sidechain"; c.scale = 2.0f; c.phase = false; c.pad = true; c.lock = false; shot ("sidechain", c); }
+    { Case c; c.slug = "mono"; c.scale = 2.0f; c.monoBelow = 4; c.kicks = 3; shot ("mono", c); }
     gkweb::PluginInfo info;
     info.slug = "kick-lock";
     info.name = "Kick Lock";

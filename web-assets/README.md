@@ -14,6 +14,7 @@ Pose principale de la mascotte : variable `GK_HERO` (FF 13, BT 1, BW 11, PP 26, 
 | `<slug>/ui-hero.webp` | 840×1040 | fenêtre du plugin (hero, carte) |
 | `<slug>/ui-hero@3x.webp` | 1260×1560 | idem, écrans haute densité / grand format |
 | `<slug>/ui-<état>.webp` | 840×1040 | galerie (autres réglages) |
+| `kick-lock/ui-live.webp`, `ui-sidechain.webp`, `ui-mono.webp` | 1520×960 | Kick Lock en LIVE, en sidechain simple (PHASE éteint), MONO BELOW (légendes : `gallery` dans `plugins.json`) |
 | `kick-lock/ui-send.webp`, `ui-send@3x.webp` | 840×1040, 1260×1560 | la fenêtre de Kick Lock Send (lié à Kick Lock) |
 | `<slug>/mascot.webp`, `poses/*.webp` | ~340–650 px | mascottes détourées |
 | `<slug>/og.webp` | 1200×630 | partage (Open Graph, X, WhatsApp) |

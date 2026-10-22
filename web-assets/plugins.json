@@ -462,11 +462,62 @@
           ]
         }
       },
-      "images_note": "the window is 760 x 480: ui-hero.webp is 1520 x 960, ui-hero@3x.webp 2280 x 1440",
+      "images_note": "the window is 760 x 480: ui-*.webp are 1520 x 960 (ui-hero@3x.webp 2280 x 1440); ui-send.webp is Kick Lock Send's window, 840 x 1040",
       "latency_note": {
         "fr": "PRECISE (par défaut) ~360 ms, compensée par le DAW ; LIVE 32 ms pour jouer",
         "en": "PRECISE (default) ~360 ms, compensated by the DAW; LIVE 32 ms to play"
-      }
+      },
+      "gallery": [
+        {
+          "file": "ui-hero.webp",
+          "caption": {
+            "fr": "PRECISE (par défaut) : la correction faite à chaque kick, la basse et le kick sur l'oscilloscope",
+            "en": "PRECISE (default): the correction made on each kick, bass and kick on the scope"
+          }
+        },
+        {
+          "file": "ui-live.webp",
+          "caption": {
+            "fr": "LIVE (32 ms, pour jouer) : la phase du sub au kick",
+            "en": "LIVE (32 ms, to play): the sub's phase on the kick"
+          }
+        },
+        {
+          "file": "ui-sidechain.webp",
+          "caption": {
+            "fr": "PHASE éteint : un sidechain simple sur n'importe quelle piste, tout le signal à l'écran",
+            "en": "PHASE off: a plain sidechain on any track, the whole signal on screen"
+          }
+        },
+        {
+          "file": "ui-mono.webp",
+          "caption": {
+            "fr": "MONO BELOW : le bas de la basse en mono, sans déphasage",
+            "en": "MONO BELOW: the low end in mono, no phase shift"
+          }
+        },
+        {
+          "file": "ui-curve.webp",
+          "caption": {
+            "fr": "La courbe de ducking se dessine sur l'oscilloscope",
+            "en": "Draw the ducking curve on the scope"
+          }
+        },
+        {
+          "file": "ui-explain.webp",
+          "caption": {
+            "fr": "Chaque réglage s'explique à l'écran",
+            "en": "Every setting explains itself on screen"
+          }
+        },
+        {
+          "file": "ui-send.webp",
+          "caption": {
+            "fr": "Kick Lock Send, sur la piste du kick : aucun routage",
+            "en": "Kick Lock Send, on the kick's track: no routing"
+          }
+        }
+      ]
     }
   ],
   "images_per_plugin": {
