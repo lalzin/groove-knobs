@@ -1569,9 +1569,11 @@ TEST_CASE ("KL 40. CPU: the worst block (a kick's analysis must not spike): lega
         b.setSample (1, i, (float) (0.3 * y * 0.9));
     }
     const auto k = kicks (seconds, sr, bpm, 0.5);
+    for (int engine : { 0, 1 })
     for (int block : { 128, 512 })
     {
         auto p = makeKl (sr, 1.0f, true, 1.0f, block);
+        setParam (p->getPreciseParameter(), (float) engine);
         p->getDsp().setAimAtCollision (true);
         setParam (p->getMonoBelowParameter(), 4.0f); // 120 Hz
         p->prepareToPlay (sr, block);
@@ -1590,7 +1592,7 @@ TEST_CASE ("KL 40. CPU: the worst block (a kick's analysis must not spike): lega
         const double worst = times[times.size() - 4];
         const int blocks = (int) times.size();
         const double budget = 1000.0 * block / sr;
-        WARN (block << "-sample blocks: worst " << worst << " ms (" << 100.0 * worst / budget << " % of its " << budget << " ms), average " << 100.0 * total / blocks / budget << " %");
+        WARN ((engine ? "PRECISE, " : "LIVE, ") << block << "-sample blocks: worst " << worst << " ms (" << 100.0 * worst / budget << " % of its " << budget << " ms), average " << 100.0 * total / blocks / budget << " %");
         if (timingChecksEnforced())
             CHECK (worst < 0.3 * budget); // (~0.5 ms per kick's analysis, once a beat)
     }
@@ -1675,17 +1677,18 @@ TEST_CASE ("KL 41. No click: a sine sub melody (legato / detached), the lock at 
                 b.setSample (1, i, v);
             }
             const auto k = kicks (seconds, sr, bpm, 0.5);
-            for (int mode : { 0, 1 }) // Hold, Transition
+            for (int mode : { 0, 1, 2 }) // Hold, Transition, PRECISE (Hold)
             {
                 auto p = makeKl (sr, 1.0f, true, 0.0f); // no ducking: the lock alone
+                setParam (p->getPreciseParameter(), mode == 2 ? 1.0f : 0.0f);
                 p->getDsp().setAimAtCollision (true);
-                setParam (p->getLockModeParameter(), (float) mode);
+                setParam (p->getLockModeParameter(), (float) (mode == 1 ? 1 : 0));
                 p->prepareToPlay (sr, 512);
                 const auto out = run (*p, b, &k, { 512 }, bpm);
                 const int L = p->getLatencySamples();
                 const double in = highs (b, 0, (int) (0.5 * sr), b.getNumSamples() - L);
                 const double o = highs (out, 0, (int) (0.5 * sr) + L, out.getNumSamples());
-                INFO ((legato ? "legato" : "detached") << ", notes " << noteOffset << " beat off, " << (mode ? "Transition" : "Hold") << ": the bass's own highs " << in << ", the output's " << o << " at " << (worstAt - L) / sr << " s (input time; kicks every " << beat << " s from 0.5)");
+                INFO ((legato ? "legato" : "detached") << ", notes " << noteOffset << " beat off, " << (mode == 2 ? "PRECISE" : mode ? "Transition" : "Hold") << ": the bass's own highs " << in << ", the output's " << o << " at " << (worstAt - L) / sr << " s (input time; kicks every " << beat << " s from 0.5)");
                 CHECK (o < juce::jmax (2.0 * in, 2.0e-4));
             }
         }
@@ -1790,6 +1793,118 @@ TEST_CASE ("KL 43. Hold on a real-ish bass melody: filtered saw, eighth notes, s
     INFO ("phase 35 ms after each kick, brought back to it: " << line);
     CHECK (counted > 15);
     CHECK (worst < 10.0);
+}
+
+TEST_CASE ("KL 44. PRECISE: no note detection, the collision seen ahead - the kick and the bass add up the most, on a held note, a legato melody, a filtered saw", "[kl][precise]")
+{
+    const double sr = 48000.0, seconds = 10.0;
+  for (double bpm : { 124.0, 145.0 })
+  {
+    const double beat = 60.0 / bpm;
+    const auto k = kicks (seconds, sr, bpm, 0.5);
+    const auto kt = kickTimes (seconds, bpm, 0.5);
+    const double notes[] { 55.0, 55.0, 65.4, 49.0, 41.2, 41.2, 61.7, 46.2 };
+    auto melody = [&] (int kind)
+    {
+        Buffer b (2, (int) (seconds * sr));
+        double ph = 0.0, lp = 0.0;
+        for (int i = 0; i < b.getNumSamples(); ++i)
+        {
+            const double t = i / sr, pos = (t - 0.5) / (kind == 2 ? beat / 2.0 : beat);
+            const double hz = kind == 0 ? 55.0 : notes[(size_t) ((((int) std::floor (pos)) % 8 + 8) % 8)];
+            ph += hz / sr;
+            double y;
+            if (kind == 2)
+            {
+                const double inNote = (pos - std::floor (pos)) * beat / 2.0;
+                const double fc = 120.0 + 180.0 * std::exp (-inNote / 0.06), a = 1.0 - std::exp (-juce::MathConstants<double>::twoPi * fc / sr);
+                lp += a * ((2.0 * (ph - std::floor (ph)) - 1.0) - lp);
+                y = 0.5 * lp;
+            }
+            else
+                y = 0.5 * std::sin (juce::MathConstants<double>::twoPi * ph);
+            b.setSample (0, i, (float) y);
+            b.setSample (1, i, (float) y);
+        }
+        return b;
+    };
+    for (int kind : { 0, 1, 2 }) // a held 55 Hz, a legato sine melody, a filtered saw in eighths
+    {
+        const auto b = melody (kind);
+        auto energy = [&] (int engine) // 0 LOCK off, 1 LIVE, 2 PRECISE
+        {
+            auto p = makeKl (sr, 1.0f, engine > 0, 1.0f);
+            p->getDsp().setAimAtCollision (true);
+            setParam (p->getPreciseParameter(), engine == 2 ? 1.0f : 0.0f);
+            p->prepareToPlay (sr, 512);
+            const auto out = run (*p, b, &k, { 512 }, bpm);
+            const int L = p->getLatencySamples();
+            if (engine == 2)
+                CHECK (L == KickLockDsp::preciseLatencyFor (sr, 512));
+            double sum = 0.0;
+            for (double t : kt)
+                if (t > 1.0 && t < seconds - 0.5)
+                    for (int u = 0; u < (int) (juce::jmin (0.3, 60.0 / bpm) * sr); ++u) // (the kick's whole tail, to the next kick)
+                    {
+                        const int i = (int) (t * sr) + u;
+                        const double v = k.getSample (0, i) + out.getSample (0, i + L);
+                        sum += v * v;
+                    }
+            return sum;
+        };
+        const double off = energy (0), live = energy (1), precise = energy (2);
+        INFO (bpm << " BPM, " << (kind == 0 ? "held 55 Hz" : kind == 1 ? "legato sine melody" : "filtered saw, eighths") << ": kick + bass over the releases - LOCK off " << off << ", LIVE " << live << ", PRECISE " << precise);
+        CHECK (precise >= off);
+        CHECK (precise >= 0.98 * live);
+    }
+  }
+}
+
+TEST_CASE ("diag: a bass file against a kick: LOCK off / LIVE / PRECISE (GK_KL_FILE, GK_KL_BPM)", "[.kldiag14]")
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> r (fm.createReaderFor (juce::File (std::getenv ("GK_KL_FILE"))));
+    REQUIRE (r != nullptr);
+    Buffer b (2, (int) r->lengthInSamples);
+    r->read (&b, 0, (int) r->lengthInSamples, 0, true, true);
+    const double sr = r->sampleRate, bpm = std::atof (std::getenv ("GK_KL_BPM")), seconds = b.getNumSamples() / sr;
+    const auto k = kicks (seconds, sr, bpm, 0.0);
+    const auto kt = kickTimes (seconds, bpm, 0.0);
+    juce::String line;
+    const float target = std::getenv ("GK_KL_TARGET") ? (float) std::atof (std::getenv ("GK_KL_TARGET")) : 0.0f;
+    for (int engine : { 0, 1, 2 })
+    {
+        auto p = makeKl (sr, 1.0f, engine > 0, 1.0f);
+        setParam (p->getTargetPhaseParameter(), target);
+        p->getDsp().setAimAtCollision (true);
+        setParam (p->getPreciseParameter(), engine == 2 ? 1.0f : 0.0f);
+        p->prepareToPlay (sr, 512);
+        const auto out = run (*p, b, &k, { 512 }, bpm);
+        const int L = p->getLatencySamples();
+        double sum = 0.0;
+        for (double t : kt)
+            if (t > 0.5 && t < seconds - 0.5)
+                for (int u = 0; u < (int) (juce::jmin (0.3, 60.0 / bpm) * sr); ++u) // (the kick's whole tail, to the next kick)
+                {
+                    const int i = (int) (t * sr) + u;
+                    const double v = k.getSample (0, i) + 0.5 * (out.getSample (0, i + L) + out.getSample (1, i + L)); // (mono: what a club plays)
+                    sum += v * v;
+                }
+        double bassIn = 0.0, bassOut = 0.0, lowIn = 0.0, lowOut = 0.0;
+        double a1 = 0.0, a2 = 0.0;
+        for (int i = (int) (0.5 * sr); i + L < out.getNumSamples(); ++i)
+        {
+            bassIn += (double) b.getSample (0, i) * b.getSample (0, i);
+            bassOut += (double) out.getSample (0, i + L) * out.getSample (0, i + L);
+            a1 += 0.01 * (b.getSample (0, i) - a1);
+            a2 += 0.01 * (out.getSample (0, i + L) - a2);
+            lowIn += a1 * a1;
+            lowOut += a2 * a2;
+        }
+        line << (engine == 0 ? "LOCK off " : engine == 1 ? " LIVE " : " PRECISE ") << sum << " (bass out/in " << bassOut / bassIn << ", lows " << lowOut / lowIn << ")";
+    }
+    WARN (line);
 }
 
 TEST_CASE ("diag: a bass file (GK_KL_FILE, GK_KL_BPM)", "[.kldiag8]")

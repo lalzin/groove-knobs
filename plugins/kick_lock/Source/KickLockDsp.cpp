@@ -132,7 +132,9 @@ void KickLockDsp::prepare (double sr, int maxBlock, int nch)
     firDelay = (int) std::round (firSeconds * sr);
     firLength = 2 * firDelay + 1;
     linkSlack = linkSlackFor (sr, maxBlock);
-    latency = latencyFor (sr, maxBlock);
+    liveLatency = latencyFor (sr, maxBlock);
+    preciseLatency = preciseLatencyFor (sr, maxBlock);
+    latency = precise ? preciseLatency : liveLatency;
     for (int k = 0; k < 2; ++k)
     {
         kernels[(size_t) k].assign ((size_t) firLength, 0.0f);
@@ -185,6 +187,26 @@ void KickLockDsp::prepare (double sr, int maxBlock, int nch)
     decimated.assign ((size_t) (0.25 * sr) / 8 + 512, 0.0f);
     lowFrom = lowTo = -1;
     decimation = juce::jmax (1, (int) std::round (sr / 3000.0));
+    {
+        // PRECISE: a Hilbert transformer at ~3 kHz, +-45 ms (Kaiser), and the
+        // rings of the sub there (~1.3 s)
+        const double fsd = sr / decimation;
+        hilM = (int) std::round (hilbertSeconds * fsd) | 1;
+        lowKernel.assign ((size_t) hilM + 1, 0.0f);
+        hilbertKernel.assign ((size_t) hilM + 1, 0.0f);
+        pairCutoff = -1.0f;
+        designPair();
+        std::int64_t n = 1;
+        while (n < (std::int64_t) (1.3 * fsd))
+            n <<= 1;
+        dMask = n - 1;
+        for (int c = 0; c < 2; ++c)
+        {
+            dSub[(size_t) c].assign ((size_t) n, 0.0f);
+            dLow[(size_t) c].assign ((size_t) n, 0.0f);
+            dHil[(size_t) c].assign ((size_t) n, 0.0f);
+        }
+    }
     dec.assign (1024, 0.0f);
     fadeLength = juce::jmax (1, (int) std::round (crossfadeSeconds * sr));
     scAttack = (float) (1.0 - std::exp (-1.0 / (0.0002 * sr)));
@@ -257,6 +279,15 @@ void KickLockDsp::reset()
     pitchHoldUntil = pitchHoldNote = -1;
     trackPeriod = 0.0;
     bassRms = 0.0f;
+    dWritten = 0;
+    dPhase = 0;
+    dAcc = {};
+    for (int c = 0; c < 2; ++c)
+    {
+        std::fill (dSub[(size_t) c].begin(), dSub[(size_t) c].end(), 0.0f);
+        std::fill (dLow[(size_t) c].begin(), dLow[(size_t) c].end(), 0.0f);
+        std::fill (dHil[(size_t) c].begin(), dHil[(size_t) c].end(), 0.0f);
+    }
     heldPeriod = 0.0;
     retrackPending = rampPending = false;
     yinAperiodicity = 1.0f;
@@ -837,7 +868,7 @@ int KickLockDsp::measureLength() const noexcept
     return juce::jmax (16, room);
 }
 
-double KickLockDsp::collisionPhase (double T) const noexcept
+double KickLockDsp::collisionPhase (double T, std::int64_t when) const noexcept
 {
     // Where the sub and the kick meet: the kick (the last one, as heard: a
     // kick is not a sine — its pitch falls, its phase moves) weighted by how
@@ -849,7 +880,11 @@ double KickLockDsp::collisionPhase (double T) const noexcept
         return 0.0;
     const auto heardUpTo = clock - latency; // the output's time: what has been heard of the kick
     const double releaseLength = releaseSamplesNow();
-    const auto window = juce::jmin<std::int64_t> (heardUpTo - prevKick, (std::int64_t) (releaseLength + attackSeconds * sampleRate), (std::int64_t) (0.4 * sampleRate));
+    // (the whole kick's tail, up to the next kick: after the release the sub
+    // is back at full level while the kick still sounds — the collision
+    // weighs most there; the window used to stop at the release's end)
+    const auto beatLength = (std::int64_t) (60.0 / juce::jmax (1.0, bpm) * sampleRate);
+    const auto window = juce::jmin<std::int64_t> (heardUpTo - prevKick, (std::int64_t) (collisionSeconds * sampleRate), when - prevKick > 0 ? when - prevKick : beatLength);
     if (window < (std::int64_t) (0.03 * sampleRate))
         return 0.0;
     const auto& table = shape == custom ? customTables[(size_t) customPublished.load (std::memory_order_acquire)] : presetTables[(size_t) shape];
@@ -1030,6 +1065,172 @@ void KickLockDsp::addTrigger (std::int64_t onset, int source)
         pendingSource[(size_t) pendingCount] = source;
         pendingKicks[(size_t) pendingCount++] = onset;
     }
+}
+
+void KickLockDsp::setSwitches (const bool* on, int n)
+{
+    lock = n > lockSwitch && on[lockSwitch];
+    phaseOn = n <= phaseSwitch || on[phaseSwitch];
+    const bool p = n > preciseSwitch && on[preciseSwitch];
+    if (p != precise)
+    {
+        precise = p;
+        applyLatency(); // (the processor has faded the output out for it)
+    }
+}
+
+void KickLockDsp::applyLatency() noexcept
+{
+    latency = precise ? preciseLatency : liveLatency;
+    lookahead = latency - 3;
+    pendingCount = linkPendingCount = linkWaitingCount = 0;
+    psiNow = psiTo = psiFrom = 0.0;
+    fadeStart = -1;
+    retrackPending = rampPending = false;
+    dWritten = 0;
+    dPhase = 0;
+    dAcc = {};
+}
+
+void KickLockDsp::designPair() noexcept
+{
+    // everything under SUB CUT passes whole (the transition, ~30 Hz, above
+    // it): the low-pass sin (w m) / (pi m), its Hilbert pair
+    // (1 - cos (w m)) / (pi m), windowed alike (Kaiser, ~50 dB)
+    if (juce::exactlyEqual (pairCutoff, subCutoff) || lowKernel.empty())
+        return;
+    pairCutoff = subCutoff;
+    const double fsd = sampleRate / decimation, fc = (subCutoff + 16.0) / fsd, w = juce::MathConstants<double>::twoPi * fc;
+    const double beta = 5.0;
+    auto i0 = [] (double x)
+    {
+        double sum = 1.0, term = 1.0;
+        for (int j = 1; j < 30; ++j)
+        {
+            term *= (x / (2.0 * j)) * (x / (2.0 * j));
+            sum += term;
+        }
+        return sum;
+    };
+    double dc = 2.0 * fc;
+    lowKernel[0] = (float) (2.0 * fc);
+    for (int m = 1; m <= hilM; ++m)
+    {
+        const double r = (double) m / (hilM + 1), win = i0 (beta * std::sqrt (1.0 - r * r)) / i0 (beta);
+        lowKernel[(size_t) m] = (float) (std::sin (w * m) / (juce::MathConstants<double>::pi * m) * win);
+        hilbertKernel[(size_t) m] = (float) ((1.0 - std::cos (w * m)) / (juce::MathConstants<double>::pi * m) * win);
+        dc += 2.0 * lowKernel[(size_t) m];
+    }
+    for (auto& v : lowKernel)
+        v = (float) (v / dc); // unity under the cut
+    for (auto& v : hilbertKernel)
+        v = (float) (v / dc);
+}
+
+float KickLockDsp::lowAt (int channel, std::int64_t t) const noexcept
+{
+    const double u = ((double) t - dFirst) / decimation;
+    const auto k = (std::int64_t) std::floor (u);
+    const auto ready = dWritten - 1 - hilM;
+    if (k - 1 < juce::jmax<std::int64_t> (0, dWritten - dMask) || k + 2 > ready)
+        return 0.0f;
+    const float f = (float) (u - (double) k);
+    const auto& h = dLow[(size_t) channel];
+    const float p0 = h[(size_t) ((k - 1) & dMask)], p1 = h[(size_t) (k & dMask)], p2 = h[(size_t) ((k + 1) & dMask)], p3 = h[(size_t) ((k + 2) & dMask)];
+    return p1 + 0.5f * f * (p2 - p0 + f * (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3 + f * (3.0f * (p1 - p2) + p3 - p0)));
+}
+
+float KickLockDsp::hilbertAt (int channel, std::int64_t t) const noexcept
+{
+    // the sub's Hilbert transform at a full-rate time (Catmull-Rom between
+    // its ~3 kHz samples; it holds nothing above ~300 Hz)
+    const double u = ((double) t - dFirst) / decimation;
+    const auto k = (std::int64_t) std::floor (u);
+    const auto ready = dWritten - 1 - hilM;
+    if (k - 1 < juce::jmax<std::int64_t> (0, dWritten - dMask) || k + 2 > ready)
+        return 0.0f;
+    const float f = (float) (u - (double) k);
+    const auto& h = dHil[(size_t) channel];
+    const float p0 = h[(size_t) ((k - 1) & dMask)], p1 = h[(size_t) (k & dMask)], p2 = h[(size_t) ((k + 1) & dMask)], p3 = h[(size_t) ((k + 2) & dMask)];
+    return p1 + 0.5f * f * (p2 - p0 + f * (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3 + f * (3.0f * (p1 - p2) + p3 - p0)));
+}
+
+void KickLockDsp::onKickPrecise (std::int64_t when, int source)
+{
+    const int count = telemetry.kickEvents.load (std::memory_order_relaxed) + 1;
+    telemetry.recentKicks[(size_t) (count % 4)].store (when, std::memory_order_relaxed);
+    telemetry.lastKickSample.store (when, std::memory_order_relaxed);
+    telemetry.kickEvents.store (count, std::memory_order_release);
+    const auto base = (double) waveStart + (periodSamples > 1.0 ? offsetMs * 0.001 * sampleRate / periodSamples * 360.0 : 0.0);
+    // (no analysis: PHASE off, no kick heard, no bass — as in LIVE)
+    const bool bass = subRms > 1.0e-5f && subRms >= 0.25f * bassRms;
+    const int reason = ! phaseOn ? 1 : source == 2 ? 2 : ! bass ? 3 : 0;
+    telemetry.analysisReason.store (reason, std::memory_order_relaxed);
+    lastConfidence = 1.0;
+    if (reason != 0)
+    {
+        rampTo (0.0, when + releaseFor (when), returnFor (when));
+        prevKick = when;
+        telemetry.phaseErrorDeg.store (0.0f, std::memory_order_relaxed);
+        telemetry.kickPhaseDeg.store (0.0f, std::memory_order_relaxed);
+        return;
+    }
+    // The collision, seen ahead: over ~90 ms after the kick (the release, at
+    // most), the kick against the sub (the low band and its Hilbert transform)
+    // weighted by how much sub the curve lets through. Turned by psi, the sub
+    // is cos psi L + sin psi H: its correlation with the kick, cos psi A +
+    // sin psi B, is largest at psi = atan2 (B, A) — no note, no period.
+    // The kick: the one on the sidechain itself (seen ahead too), or, from
+    // Kick Lock Send, the last one as heard (the same sample every beat).
+    const double releaseLength = releaseSamplesNow();
+    // (the whole kick's tail, up to the next kick — see collisionPhase)
+    const double window = juce::jmin (collisionSeconds * sampleRate, prevKick >= 0 && when > prevKick ? (double) (when - prevKick) : 60.0 / juce::jmax (1.0, bpm) * sampleRate);
+    const auto& table = shape == custom ? customTables[(size_t) customPublished.load (std::memory_order_acquire)] : presetTables[(size_t) shape];
+    const int D = decimation;
+    const auto kFirst = (std::int64_t) std::ceil (((double) when - dFirst) / D);
+    const auto kLast = juce::jmin ((std::int64_t) std::floor (((double) when + window - dFirst) / D), dWritten - 1 - hilM);
+    const bool current = source == 1;
+    const auto heardUpTo = clock - latency;
+    double A = 0.0, B = 0.0, kk = 0.0, ll = 0.0;
+    for (auto k = juce::jmax (kFirst, dWritten - dMask); k <= kLast; ++k)
+    {
+        const double t = dFirst + (double) k * D, u = t - (double) when;
+        const float pos = (float) juce::jmin (1.0, u / releaseLength) * (float) curveTableSize;
+        const int i0 = juce::jlimit (0, curveTableSize - 1, (int) pos);
+        const float c = 1.0f - (table[(size_t) i0] + (pos - (float) i0) * (table[(size_t) i0 + 1] - table[(size_t) i0]));
+        const double g = 1.0 - depth * c;
+        double kv = 0.0;
+        if (current)
+        {
+            const auto t0 = (std::int64_t) std::llround (t) - D / 2;
+            for (int j = 0; j < D; ++j)
+                kv += kickRing[(size_t) ((t0 + j) & mask)];
+            kv /= D;
+        }
+        else if (prevKick >= 0 && prevKick + (std::int64_t) u <= heardUpTo)
+            kv = heardKick[(size_t) (((prevKick + (std::int64_t) u) / KickTelemetry::scopeDecimation) & heardMask)];
+        double L = 0.0, H = 0.0;
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            L += dLow[(size_t) ch][(size_t) (k & dMask)];
+            H += dHil[(size_t) ch][(size_t) (k & dMask)];
+        }
+        L /= numChannels;
+        H /= numChannels;
+        A += kv * g * L;
+        B += kv * g * H;
+        kk += kv * kv * g * g;
+        ll += 0.5 * (L * L + H * H);
+    }
+    const double strength = std::hypot (A, B);
+    const double psiStar = strength > 1.0e-12 && ll > 1.0e-12 ? std::atan2 (B, A) * 180.0 / juce::MathConstants<double>::pi : 0.0;
+    const double coherence = kk > 0.0 && ll > 0.0 ? strength / std::sqrt (kk * ll) : 0.0;
+    rampTo (lock ? psiStar + targetPhase + base : base, when + releaseFor (when), returnFor (when));
+    prevKick = when;
+    kickPhase = psiStar;
+    telemetry.kickPhaseDeg.store ((float) psiStar, std::memory_order_relaxed);
+    telemetry.phaseErrorDeg.store (lock ? 0.0f : (float) wrap180 (-psiStar), std::memory_order_relaxed);
+    telemetry.phaseConfidence.store ((float) juce::jlimit (0.0, 1.0, coherence), std::memory_order_relaxed);
 }
 
 void KickLockDsp::onKick (std::int64_t when, int extra, int source)
@@ -1213,7 +1414,7 @@ void KickLockDsp::onKick (std::int64_t when, int extra, int source)
     // at 0, and Hold never brings it back there by itself): change it now
     if (! youngUnknown && ! retrackPending && Tm > 1.0 && (trackPeriod <= 1.0 || std::abs (Tm / trackPeriod - 1.0) > 0.01))
         requestRetrack (clock - (std::int64_t) (0.2 * sampleRate), Tm);
-    kickPhase = aimAtCollision ? collisionPhase (Tm) : 0.0;
+    kickPhase = aimAtCollision ? collisionPhase (Tm, when) : 0.0;
     telemetry.kickPhaseDeg.store ((float) kickPhase, std::memory_order_relaxed);
     lastTm = Tm;
     lastNoteAgeMs = (double) (when - lastNoteStart) / sampleRate * 1000.0;
@@ -1442,6 +1643,41 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         }
         if (kernelFade > 0 && --kernelFade == 0)
             activeKernel = 1 - activeKernel;
+        // PRECISE: the sub at ~3 kHz, and its Hilbert transform hilM samples
+        // behind (it needs that much of the future)
+        if (precise)
+        {
+            for (int c = 0; c < nch; ++c)
+                dAcc[(size_t) c] += sub[(size_t) c][(size_t) (aligned & mask)];
+            if (++dPhase >= decimation)
+            {
+                dPhase = 0;
+                if (dWritten == 0)
+                    dFirst = (double) aligned - 0.5 * (decimation - 1);
+                for (int c = 0; c < nch; ++c)
+                {
+                    dSub[(size_t) c][(size_t) (dWritten & dMask)] = dAcc[(size_t) c] / (float) decimation;
+                    dAcc[(size_t) c] = 0.0f;
+                }
+                ++dWritten;
+                const auto k = dWritten - 1 - hilM;
+                designPair(); // (SUB CUT moved)
+                if (k >= 0)
+                    for (int c = 0; c < nch; ++c)
+                    {
+                        const auto& x = dSub[(size_t) c];
+                        float low = lowKernel[0] * x[(size_t) (k & dMask)], hil = 0.0f;
+                        for (int m = 1; m <= hilM; ++m)
+                        {
+                            const float before = x[(size_t) ((k - m) & dMask)], after = x[(size_t) ((k + m) & dMask)];
+                            low += lowKernel[(size_t) m] * (before + after);
+                            hil += hilbertKernel[(size_t) m] * (before - after);
+                        }
+                        dLow[(size_t) c][(size_t) (k & dMask)] = low;
+                        dHil[(size_t) c][(size_t) (k & dMask)] = hil;
+                    }
+            }
+        }
         // the fundamental (see the header): z = bass x e^-i theta summed, then
         // at tau = clock - lookahead the window [tau - T/2, tau + T/2]. Only
         // notes under SUB CUT, once YIN knows them (else it fades out: rest +
@@ -1449,6 +1685,7 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         // (the detector's new period followed only with the rotation at 0)
         if (periodSamples > 1.0 && ! juce::exactlyEqual (periodSamples, trackPeriod) && (trackPeriod <= 1.0 || rotationIdle()))
             trackPeriod = periodSamples;
+        if (! precise) // (PRECISE turns the low band with its Hilbert transform: no tracking)
         {
             const double T = trackPeriod;
             const double hz = T > 1.0 ? sampleRate / T : 0.0;
@@ -1620,7 +1857,20 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
                 }
             }
         }
-        if (pendingCount > 0 && clock >= pendingKicks[0] + measureLength() + pendingExtra[0] + (std::int64_t) (0.001 * sampleRate))
+        if (pendingCount > 0 && precise && clock >= pendingKicks[0] + (latency - linkSlack - fadeLength - (std::int64_t) (0.0015 * sampleRate)))
+        {
+            const auto when = pendingKicks[0];
+            const int source = pendingSource[0];
+            for (int n = 1; n < pendingCount; ++n)
+            {
+                pendingKicks[(size_t) n - 1] = pendingKicks[(size_t) n];
+                pendingExtra[(size_t) n - 1] = pendingExtra[(size_t) n];
+                pendingSource[(size_t) n - 1] = pendingSource[(size_t) n];
+            }
+            --pendingCount;
+            onKickPrecise (when, source);
+        }
+        else if (pendingCount > 0 && ! precise && clock >= pendingKicks[0] + measureLength() + pendingExtra[0] + (std::int64_t) (0.001 * sampleRate))
         {
             const auto when = pendingKicks[0];
             const int extra = pendingExtra[0], source = pendingSource[0];
@@ -1717,17 +1967,25 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         // fundamental's rotation the same on both sides (it is under it)
         const bool monoLow = nch == 2 && (monoTo > 0 || monoFade > 0);
         const float lowSide = monoLow ? sideLow[(size_t) (t & mask)] : 0.0f;
-        float rotMono = 0.0f;
+        // the rotation's term per channel: LIVE, the fundamental (tracked);
+        // PRECISE, the whole low band with its Hilbert transform
+        float turn[2] {};
+        if (rotate)
+            for (int c = 0; c < nch; ++c)
+            {
+                const auto ti = (size_t) (t & mask);
+                turn[c] = precise ? (cr - 1.0f) * lowAt (c, t) + sr * hilbertAt (c, t)
+                                  : (cr - 1.0f) * fund[(size_t) c][ti] + sr * fundQ[(size_t) c][ti];
+            }
         if (monoLow && rotate)
-            for (int c = 0; c < 2; ++c)
-                rotMono += 0.5f * ((cr - 1.0f) * fund[(size_t) c][(size_t) (t & mask)] + sr * fundQ[(size_t) c][(size_t) (t & mask)]);
+            turn[0] = turn[1] = 0.5f * (turn[0] + turn[1]);
         for (int c = 0; c < nch; ++c)
         {
             const auto ti = (size_t) (t & mask);
             const float x = input[(size_t) c][ti] + (monoLow ? (c == 0 ? -lowSide : lowSide) : 0.0f);
             const float e = fund[(size_t) c][ti], q = fundQ[(size_t) c][ti];
-            // the fundamental rotated by psi (cos psi e + sin psi q) instead of itself
-            outs[c] = duck * (rotate ? x + (monoLow ? rotMono : (cr - 1.0f) * e + sr * q) : x);
+            // the fundamental (LIVE) or the low band (PRECISE) rotated by psi instead of itself
+            outs[c] = duck * (rotate ? x + turn[c] : x);
             scopeSub += (cr * e + sr * q) / (float) nch;
             // the output's low band (under SUB CUT: the sub, its rotation included)
             scopeLow += duck * (sub[(size_t) c][ti] + (rotate ? (cr - 1.0f) * e + sr * q : 0.0f)) / (float) nch;

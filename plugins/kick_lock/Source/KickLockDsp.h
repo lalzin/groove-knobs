@@ -53,7 +53,7 @@ struct KickTelemetry
 class KickLockDsp final : public gk::OneKnobEngine
 {
 public:
-    static constexpr int lockSwitch = 0, phaseSwitch = 1;
+    static constexpr int lockSwitch = 0, phaseSwitch = 1, preciseSwitch = 2;
     static constexpr int targetKnob = 0, offsetKnob = 1, subCutKnob = 2, depthKnob = 3, waveStartKnob = 4, thresholdKnob = 5;
     static constexpr int shapeChoice = 0, releaseChoice = 1, modeChoice = 2, triggerChoice = 3, linkChoice = 4, monoChoice = 5;
     // MONO BELOW: Off, then these frequencies (the low band made mono)
@@ -124,10 +124,21 @@ public:
     void reset() override;
     int getLatencySamples() const override { return latency; }
     void setPreset (int) override {}
-    void setSwitches (const bool* on, int n) override
+    void setSwitches (const bool* on, int n) override;
+    int latencyForSwitches (const bool* on, int n) const override { return n > preciseSwitch && on[preciseSwitch] ? preciseLatency : liveLatency; }
+    int getMaxLatencySamples() const override { return juce::jmax (liveLatency, preciseLatency); }
+    /** PRECISE: no note detection at all — the low band and its Hilbert
+        transform (the same band turned 90 deg, whatever it holds: legato,
+        glides, a saw), and the rotation chosen on the collision itself: the
+        kick against the sub coming back, weighted by the ducking curve, over
+        ~90 ms after the kick, both seen ahead. It needs to see them: ~150 ms
+        of latency (the host compensates it; for mixing, not for playing). */
+    static constexpr double hilbertSeconds = 0.045, collisionSeconds = 0.3;
+    static int preciseLatencyFor (double sampleRate, int maxBlock) noexcept
     {
-        lock = n > lockSwitch && on[lockSwitch];
-        phaseOn = n <= phaseSwitch || on[phaseSwitch];
+        const int D = juce::jmax (1, (int) std::round (sampleRate / 3000.0));
+        return (int) std::round ((firSeconds + hilbertSeconds + collisionSeconds + crossfadeSeconds + 0.0015) * sampleRate) + 4 * D
+               + linkSlackFor (sampleRate, maxBlock);
     }
     void setKnobs (const float* v, int n) override;
     void setChoices (const int* idx, int n) override;
@@ -185,7 +196,7 @@ private:
     std::int64_t clock = 0, mask = 0;
 
     // parameters
-    bool lock = false, phaseOn = true;
+    bool lock = false, phaseOn = true, precise = false;
     float targetPhase = 0.0f, offsetMs = 0.0f, subCutoff = 120.0f, depth = 1.0f, waveStart = 0.0f, thresholdDb = -18.0f;
     int shape = exponential, release = 2, lockMode = continuous, trigger = triggerAuto, linkChannel = 1;
     std::int64_t lastSidechainKick = -1000000; // the last kick on the sidechain (Auto: the beats take over 2 s after)
@@ -291,7 +302,23 @@ private:
     std::vector<float> heardKick;
     std::int64_t heardMask = 0;
     double kickPhase = 0.0; // degrees: the kick's phase at the note's frequency, weighted by the sub's return (0 = unknown)
-    double collisionPhase (double T) const noexcept;
+    double collisionPhase (double T, std::int64_t when) const noexcept;
+    // PRECISE: the sub at 1 in D (~3 kHz) and its Hilbert transform there,
+    // per channel; index k is the time dFirst + k D (the input's time line)
+    std::array<std::vector<float>, 2> dSub, dLow, dHil;
+    // a sharp low-pass at SUB CUT and its Hilbert pair (the same band turned
+    // 90 deg), +-45 ms at ~3 kHz, the same Kaiser window: m = 0..hilM
+    std::vector<float> lowKernel, hilbertKernel;
+    float pairCutoff = -1.0f;
+    void designPair() noexcept;
+    float lowAt (int channel, std::int64_t t) const noexcept;
+    std::array<float, 2> dAcc {};
+    std::int64_t dWritten = 0, dMask = 0;
+    double dFirst = 0.0;
+    int dPhase = 0, hilM = 0, liveLatency = 0, preciseLatency = 0;
+    float hilbertAt (int channel, std::int64_t t) const noexcept;
+    void onKickPrecise (std::int64_t when, int source);
+    void applyLatency() noexcept;
     bool aimAtCollision = true;
     using CurveTable = std::array<float, curveTableSize + 1>;
     std::array<CurveTable, 4> presetTables {};

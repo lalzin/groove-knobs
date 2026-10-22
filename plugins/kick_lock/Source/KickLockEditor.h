@@ -45,6 +45,9 @@ private:
     std::unique_ptr<PhaseGauge> gauge;
     std::unique_ptr<Scope> scope;
     std::unique_ptr<MetricsBar> metrics;
+    class EnginePill;
+    std::unique_ptr<EnginePill> engine;
+    std::unique_ptr<juce::ButtonParameterAttachment> engineAttachment;
     std::unique_ptr<LockButton> lockButton, phaseButton;
     std::unique_ptr<juce::ButtonParameterAttachment> lockAttachment, phaseAttachment;
     std::unique_ptr<gk::ChoiceSelector> shape, release, mode, trigger, linkSel, monoSel;

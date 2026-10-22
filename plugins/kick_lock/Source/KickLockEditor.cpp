@@ -940,6 +940,40 @@ private:
 
 //==============================================================================
 /** LOCK: a pill with a padlock, lit lime when the phase lock is on. */
+/** LIVE / PRECISE: the engine (a toggle pill in the title bar). */
+class KickLockEditor::EnginePill final : public juce::Button
+{
+public:
+    explicit EnginePill (const gk::Palette& p) : juce::Button ("Engine"), palette (p)
+    {
+        setClickingTogglesState (true);
+        setTitle ("Precise");
+        setTooltip ("LIVE: the note's pitch is followed, 32 ms of latency (play live). PRECISE: no note detection - the bass's low band "
+                    "and the kick are compared over the whole collision, seen ahead: ~360 ms of latency (the host compensates it: for mixing)");
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    }
+
+    void paintButton (juce::Graphics& g, bool over, bool) override
+    {
+        const bool on = getToggleState();
+        const auto b = getLocalBounds().toFloat().reduced (1.0f);
+        g.setColour (on ? palette (lime) : palette (juce::Colour (0xff121318)).withAlpha (0.85f));
+        g.fillRoundedRectangle (b, b.getHeight() * 0.5f);
+        if (over)
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.1f));
+            g.fillRoundedRectangle (b, b.getHeight() * 0.5f);
+        }
+        g.setColour (on ? palette (palette.outline) : palette (lime).withAlpha (0.7f));
+        g.drawRoundedRectangle (b, b.getHeight() * 0.5f, 1.5f);
+        g.setFont (gk::GrooveFonts::font (14.0f).withExtraKerningFactor (0.08f));
+        g.drawText (on ? "PRECISE" : "LIVE", b, juce::Justification::centred);
+    }
+
+private:
+    const gk::Palette& palette;
+};
+
 class KickLockEditor::LockButton final : public juce::Button
 {
 public:
@@ -1054,6 +1088,9 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
 
     status = std::make_unique<StatusPill> (p, pal);
     addToCanvas (*status, { 576, 17, 132, 28 });
+    engine = std::make_unique<EnginePill> (pal);
+    engineAttachment = std::make_unique<juce::ButtonParameterAttachment> (proc.getPreciseParameter(), *engine);
+    addToCanvas (*engine, { 484, 17, 84, 28 });
     gauge = std::make_unique<PhaseGauge> (p, pal);
     addToCanvas (*gauge, { 10, 70, 182, 104 });
     scope = std::make_unique<Scope> (p, pal);
