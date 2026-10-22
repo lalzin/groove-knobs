@@ -158,7 +158,7 @@ class KickLockEditor::PhaseGauge final : public juce::Component, public juce::Se
 public:
     PhaseGauge (KickLockProcessor& p, const gk::Palette& pal) : proc (p), palette (pal)
     {
-        setTooltip ("Phase of the sub on the kick, against the target (TARGET). Green: within 5 degrees.");
+        setTooltip ("Phase of the sub against its aim: in phase with the kick where the sub comes back under it (the collision, under the ducking curve), plus TARGET. Green: within 5 degrees.");
     }
 
     void update (int preview, bool snap)
@@ -485,7 +485,7 @@ public:
         const float f0 = proc.getDsp().getTelemetry().f0Hz.load (std::memory_order_relaxed);
         const float hz = f0 > 1.0f ? f0 : 55.0f;
         const float pulse = 0.5f + 0.5f * (float) std::sin (explainTime * 5.0);
-        static const char* titles[] { "TARGET  \xc2\xb7  where the sub's cycle sits when the kick hits",
+        static const char* titles[] { "TARGET  \xc2\xb7  the sub against the kick where they collide (0 = in phase)",
                                       "OFFSET  \xc2\xb7  the sub moved later / earlier than the kick",
                                       "SUB CUT  \xc2\xb7  the highest note whose sub is locked",
                                       "WAVE START  \xc2\xb7  the sub's cycle turned, on top of the lock" };
@@ -568,7 +568,7 @@ public:
                 dotOnWave (kickX, target);
                 dial ({ m.getRight() - 34.0f, m.getY() + 26.0f }, target, juce::String (juce::roundToInt (target)) + fr ("\xc2\xb0"));
                 g.setColour (palette (cream).withAlpha (0.6f));
-                g.drawText (fr ("dashed: 0\xc2\xb0, the sub rising through zero on the kick (the usual)"), note, juce::Justification::centredLeft);
+                g.drawText (fr ("dashed: 0\xc2\xb0, in phase with the kick where the sub comes back (the usual)"), note, juce::Justification::centredLeft);
                 break;
             }
             case explainOffset:
@@ -968,6 +968,7 @@ public:
         juce::String t;
         t << "error " << (measuring ? num (tel.phaseErrorDeg.load (std::memory_order_relaxed), 1) + fr ("\xc2\xb0") : juce::String ("--")) << dot
           << "confidence " << (measuring ? num (tel.phaseConfidence.load (std::memory_order_relaxed), 2) : juce::String ("--")) << dot
+          << "kick at collision " << (measuring ? num (tel.kickPhaseDeg.load (std::memory_order_relaxed), 0) + fr ("\xc2\xb0") : juce::String ("--")) << dot
           << "mono sum " << fr ("\xe2\x88\x92") << num (tel.monoSumLossDb.load (std::memory_order_relaxed), 1) << " dB" << dot
           << "f0 " << (f0 > 1.0f ? num (f0, 1) + " Hz" : juce::String ("--")) << dot
           << (tel.linkSlot.load (std::memory_order_relaxed) >= 0

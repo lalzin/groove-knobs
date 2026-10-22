@@ -165,6 +165,13 @@ void KickLockDsp::prepare (double sr, int maxBlock, int nch)
     mono.assign ((size_t) size, 0.0f);
     envRing.assign ((size_t) size, 0.0f);
     kickRing.assign ((size_t) size, 0.0f);
+    {
+        std::int64_t n = 1;
+        while (n < (std::int64_t) (2.0 * sr / KickTelemetry::scopeDecimation))
+            n <<= 1;
+        heardKick.assign ((size_t) n, 0.0f);
+        heardMask = n - 1;
+    }
     analysis.assign ((size_t) (0.25 * sr) + 4096, 0.0f);
     decimation = juce::jmax (1, (int) std::round (sr / 3000.0));
     dec.assign (1024, 0.0f);
@@ -208,6 +215,8 @@ void KickLockDsp::reset()
     std::fill (mono.begin(), mono.end(), 0.0f);
     std::fill (envRing.begin(), envRing.end(), 0.0f);
     std::fill (kickRing.begin(), kickRing.end(), 0.0f);
+    std::fill (heardKick.begin(), heardKick.end(), 0.0f);
+    kickPhase = 0.0;
     std::fill (dec.begin(), dec.end(), 0.0f);
     clock = 0;
     scEnv = slowEnv = 0.0f;
@@ -496,13 +505,13 @@ double KickLockDsp::differenceAt (std::int64_t from, std::int64_t to, double T) 
     return energy > 0.0 ? diff / energy : 1.0;
 }
 
-double KickLockDsp::fitPeriod (const float* x, int n, double rate, double T0) noexcept
+double KickLockDsp::fitPeriod (const float* x, int n, double rate, double T0, int harmonics, double* residualOut) noexcept
 {
     // least squares: x ~ sum of cos / sin of the first harmonics (up to
     // ~400 Hz, at most 6) at 1 / T; the T leaving the least residual, by a
     // golden-section search within 4 % of T0 (one minimum there: the window
     // is longer than a period)
-    const int H = juce::jlimit (1, 6, (int) std::floor (400.0 * T0 / rate));
+    const int H = harmonics > 0 ? juce::jmin (6, harmonics) : juce::jlimit (1, 6, (int) std::floor (400.0 * T0 / rate));
     auto residual = [&] (double T)
     {
         constexpr int M = 12;
@@ -571,7 +580,54 @@ double KickLockDsp::fitPeriod (const float* x, int n, double rate, double T0) no
             p2 = lo + g * (hi - lo); r2 = residual (p2);
         }
     }
+    if (residualOut != nullptr)
+        *residualOut = residual (0.5 * (lo + hi));
     return 0.5 * (lo + hi);
+}
+
+double KickLockDsp::shortPeriod (std::int64_t from, std::int64_t to) const noexcept
+{
+    // A note heard over about one period only (it changed on the kick: the
+    // cycle after it is all there is): its low band fitted as one sinusoid,
+    // frequency searched over 35-160 Hz (7 % steps, each refined), then again
+    // with the tail continued at the period found. A clean fit or nothing.
+    constexpr int D = 4;
+    const double rate = sampleRate / D;
+    double best = 0.0;
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        const int n = lowBand (from, to, best) / D;
+        if (n < 16)
+            return 0.0;
+        double energy = 0.0;
+        for (int i = 0; i < n; ++i)
+        {
+            float acc = 0.0f;
+            for (int j = 0; j < D; ++j)
+                acc += analysis[(size_t) (i * D + j)];
+            analysis[(size_t) i] = acc / (float) D;
+            energy += (double) analysis[(size_t) i] * analysis[(size_t) i];
+        }
+        double bestResidual = 1.0e300;
+        if (pass == 0)
+        {
+            for (double T0 = rate / 160.0; T0 <= rate / 35.0; T0 *= 1.07)
+            {
+                double res = 0.0;
+                const double T = fitPeriod (analysis.data(), n, rate, T0, 1, &res);
+                if (res < bestResidual)
+                {
+                    bestResidual = res;
+                    best = T * D;
+                }
+            }
+        }
+        else
+            best = fitPeriod (analysis.data(), n, rate, best / D, 1, &bestResidual) * D;
+        if (energy <= 1.0e-12 || bestResidual > 0.02 * energy || (double) n * D < 0.8 * best)
+            return 0.0;
+    }
+    return best;
 }
 
 int KickLockDsp::lowBand (std::int64_t from, std::int64_t to, double T) const noexcept
@@ -718,12 +774,49 @@ int KickLockDsp::measureLength() const noexcept
     return juce::jmax (16, room);
 }
 
+double KickLockDsp::collisionPhase (double T) const noexcept
+{
+    // Where the sub and the kick meet: the kick (the last one, as heard: a
+    // kick is not a sine — its pitch falls, its phase moves) weighted by how
+    // much sub is back at each instant (the ducking curve), projected on the
+    // note's frequency. In phase with that, the two add up where they collide
+    // (Alan: "c'est au niveau de la collision des deux que c'est important").
+    // The last kick's shape: the same sample every bar, no look-ahead needed.
+    if (prevKick < 0 || heardKick.empty() || T <= 1.0)
+        return 0.0;
+    const auto heardUpTo = clock - latency; // the output's time: what has been heard of the kick
+    const double releaseLength = releaseSamplesNow();
+    const auto window = juce::jmin<std::int64_t> (heardUpTo - prevKick, (std::int64_t) (releaseLength + attackSeconds * sampleRate), (std::int64_t) (0.4 * sampleRate));
+    if (window < (std::int64_t) (0.03 * sampleRate))
+        return 0.0;
+    const auto& table = shape == custom ? customTables[(size_t) customPublished.load (std::memory_order_acquire)] : presetTables[(size_t) shape];
+    const int step = KickTelemetry::scopeDecimation;
+    double kc = 0.0, ks = 0.0, total = 0.0;
+    for (std::int64_t u = 0; u < window; u += step)
+    {
+        const float k = heardKick[(size_t) (((prevKick + u) / step) & heardMask)];
+        const float pos = (float) juce::jmin (1.0, (double) u / releaseLength) * (float) curveTableSize;
+        const int i0 = juce::jmin ((int) pos, curveTableSize - 1);
+        const float c = 1.0f - (table[(size_t) i0] + (pos - (float) i0) * (table[(size_t) i0 + 1] - table[(size_t) i0]));
+        const double g = 1.0 - depth * c; // the sub heard (0 on the kick, back to 1 after the release)
+        const double w = juce::MathConstants<double>::twoPi * (double) u / T;
+        kc += k * g * std::cos (w);
+        ks += k * g * std::sin (w);
+        total += std::abs (k) * g;
+    }
+    // (a kick with nothing at the note's frequency where the sub is back: no aim)
+    if (total <= 1.0e-9 || std::hypot (kc, ks) < 0.05 * total)
+        return 0.0;
+    return std::atan2 (kc, ks) * 180.0 / juce::MathConstants<double>::pi;
+}
+
 double KickLockDsp::targetPsiFor (double phaseDeg, double T) const noexcept
 {
     // + = later. Lock: the rotation that brings the fundamental to the
     // target phase at the kick; WAVE START and OFFSET added on top (deliberate)
+    // (the target: TARGET from the kick's own phase where the two meet)
     const double base = waveStart + offsetMs * 0.001 * sampleRate / T * 360.0;
-    return base + (lock ? wrap180 (phaseDeg - targetPhase) : 0.0);
+    return base + (lock ? wrap180 (phaseDeg - targetPhase - kickPhase) : 0.0);
 }
 
 void KickLockDsp::rampTo (double psi, std::int64_t holdUntil, double returnSamples, int fadeSamples) noexcept
@@ -883,30 +976,89 @@ void KickLockDsp::onKick (std::int64_t when)
     double Tm = periodSamples > 1.0 ? periodSamples : sampleRate / 55.0;
     bool youngUnknown = false; // a note too young for its period to be known
     lastSource = 0;
-    // a note started since less than ~100 ms: the detector's estimate may be
-    // the note before or a guess in the silence — its period from the note
-    // itself (from its start to the end of the cycle after the kick)
-    // (with at least ~45 ms of it — less, a period is a guess too: the
-    // detector's last one then, the note before's, right for a repeated note)
-    if (when - lastNoteStart < (std::int64_t) (0.1 * sampleRate))
+    // The period of the note heard at the kick, from the bass itself: the
+    // longest stretch ending with the cycle after the kick that holds one
+    // steady note (80, 60, 45, 35 ms, on its low band). The pitch detector
+    // lags ~50-100 ms: a note started just before the kick — after a gap, or
+    // legato (no level jump: Alan's sub melody, 30-80 deg off) — was measured
+    // at the note before's period.
+    const auto to = when + measureLength();
+    const bool young = when - lastNoteStart < (std::int64_t) (0.1 * sampleRate);
+    // (a note's attack left out: a growing note pulls the estimate 1-3 % short)
+    const auto earliest = young ? lastNoteStart + (std::int64_t) (0.005 * sampleRate) : to - (std::int64_t) (0.08 * sampleRate);
+    double local = 0.0;
+    std::int64_t localFrom = to;
+    for (double span : { 0.08, 0.06, 0.045, 0.035 })
     {
-        // (its attack left out: a growing note pulls the estimate 1-3 % short)
-        const auto from = juce::jmax (lastNoteStart + (std::int64_t) (0.005 * sampleRate), when - (std::int64_t) (0.1 * sampleRate)), to = when + measureLength();
-        const double local = periodBetween (from, to);
-        lastSource = local > 1.0 ? 1 : 2;
-        if (local > 1.0)
-            Tm = local;
-        else if (cleanPeriod > 1.0 && differenceAt (from, to, cleanPeriod) < 0.05)
-            Tm = cleanPeriod; // the last note held steadily, if this one repeats with it (the same note again)
-        else
-            youngUnknown = true;
-        if (! youngUnknown && lastNoteStart <= when)
+        const auto from = juce::jmax (earliest, to - (std::int64_t) (span * sampleRate));
+        if (from >= localFrom)
+            continue; // the same stretch (cut by the note's start)
+        localFrom = from;
+        const double T = periodBetween (from, to);
+        if (T <= 1.0)
+            continue;
+        const double r = steadiness (from, to, T);
+        if (r < steadyLimit) // (r < 0: too short to tell — a young note, trusted)
         {
-            retrack (juce::jmax (lastNoteStart, clock - (std::int64_t) (0.2 * sampleRate)), Tm);
-            pitchHoldNote = lastNoteStart;
-            pitchHoldUntil = lastNoteStart + (std::int64_t) (0.15 * sampleRate);
+            local = T;
+            break;
         }
     }
+    // none steady: the note may have changed on the kick (or just before):
+    // the cycle after the kick alone, fitted as a sinusoid
+    if (local <= 1.0)
+    {
+        const auto from = juce::jmax (earliest, when);
+        if (to - from >= (std::int64_t) (0.012 * sampleRate))
+            if (const double T = shortPeriod (from, to); T > 1.0)
+            {
+                local = T;
+                localFrom = from;
+            }
+    }
+    // a short stretch (not cut by a note's start) is a new note only if the
+    // one before held steady at another pitch: legato. A glide or a wide FM
+    // is steady over 25-35 ms too, and unsteady before — not a note.
+    if (local > 1.0 && ! young && localFrom > to - (std::int64_t) (0.075 * sampleRate))
+    {
+        const auto pEnd = localFrom - (std::int64_t) (0.015 * sampleRate), pFrom = pEnd - (std::int64_t) (0.06 * sampleRate);
+        const double before = periodBetween (pFrom, pEnd);
+        const double r = before > 1.0 ? steadiness (pFrom, pEnd, before) : 1.0;
+        if (! (before > 1.0 && r >= 0.0 && r < 0.25 * steadyLimit && std::abs (before / local - 1.0) > 0.03)) // (held: ~0.0001-0.003; a glide's start ~0.03)
+            local = 0.0;
+    }
+    lastSource = local > 1.0 ? 1 : young ? 2 : 0;
+    if (local > 1.0)
+    {
+        // another note than the one followed (> 1 %): its fundamental
+        // re-extracted at its period from where it was found, the pitch
+        // detector waiting for it
+        if (periodSamples <= 1.0 || std::abs (local / periodSamples - 1.0) > 0.01)
+        {
+            retrack (juce::jmax (localFrom, clock - (std::int64_t) (0.2 * sampleRate)), local);
+            pitchHoldNote = lastNoteStart;
+            pitchHoldUntil = clock + (std::int64_t) (0.15 * sampleRate);
+        }
+        Tm = local;
+    }
+    else if (young)
+    {
+        const auto from = juce::jmax (earliest, when - (std::int64_t) (0.1 * sampleRate));
+        if (cleanPeriod > 1.0 && differenceAt (from, to, cleanPeriod) < 0.05)
+        {
+            Tm = cleanPeriod; // the last note held steadily, if this one repeats with it (the same note again)
+            if (lastNoteStart <= when)
+            {
+                retrack (juce::jmax (lastNoteStart, clock - (std::int64_t) (0.2 * sampleRate)), Tm);
+                pitchHoldNote = lastNoteStart;
+                pitchHoldUntil = clock + (std::int64_t) (0.15 * sampleRate);
+            }
+        }
+        else
+            youngUnknown = true;
+    }
+    kickPhase = aimAtCollision ? collisionPhase (Tm) : 0.0;
+    telemetry.kickPhaseDeg.store ((float) kickPhase, std::memory_order_relaxed);
     lastTm = Tm;
     lastNoteAgeMs = (double) (when - lastNoteStart) / sampleRate * 1000.0;
     double phase = 0.0, amplitude = 0.0, conf = 0.0;
@@ -959,7 +1111,10 @@ void KickLockDsp::onKick (std::int64_t when)
         // spread over 50 ms, the cycles before on the whole bass — fooled by
         // a raw saw and stale for a note just retracked: UNSTABLE on Alan's bass)
         conf = 1.0;
-        const auto from = juce::jmax (lastNoteStart + (std::int64_t) (0.005 * sampleRate), when - (std::int64_t) std::llround (juce::jmax (3.0 * Tm, 0.08 * sampleRate)));
+        // (from where this note was found steady, when it was: the stretch
+        // before is another note — legato — not unsteadiness)
+        const auto from = local > 1.0 ? localFrom
+                                      : juce::jmax (lastNoteStart + (std::int64_t) (0.005 * sampleRate), when - (std::int64_t) std::llround (juce::jmax (3.0 * Tm, 0.08 * sampleRate)));
         const double r = steadiness (from, when + juce::jlimit (16, juce::jmax (16, measureLength()), (int) std::round (Tm)), Tm);
         lastAperiodicity = r;
         lastCoherence = r < 0.0 ? 1.0 : 1.0 - r;
@@ -975,13 +1130,13 @@ void KickLockDsp::onKick (std::int64_t when)
     // is (frozen), Transition makes none at this kick
     const bool sure = measured && (! lock || conf >= 0.7);
     if (sure || ! lock || lockMode == transition)
-        rampTo (sure ? targetPsiFor (phase, T) : targetPsiFor (targetPhase, T), when + releaseFor (when), returnFor (when)); // 5 ms, over before the kick is heard
+        rampTo (sure ? targetPsiFor (phase, T) : targetPsiFor (targetPhase + kickPhase, T), when + releaseFor (when), returnFor (when)); // 5 ms, over before the kick is heard
     prevKick = when;
     noteHz = measured ? sampleRate / T : 0.0;
     // error left at the kick, relative to the intended phase
     if (measured)
     {
-        const double intended = targetPhase - waveStart - offsetMs * 0.001 * sampleRate / T * 360.0;
+        const double intended = targetPhase + kickPhase - waveStart - offsetMs * 0.001 * sampleRate / T * 360.0;
         const double atKick = phase - psiTo;
         const double err = lock ? wrap180 (atKick - intended) : wrap180 (phase - targetPhase);
         telemetry.phaseErrorDeg.store ((float) err, std::memory_order_relaxed);
@@ -1330,6 +1485,19 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             lrRms += (0.5f * (outs[0] * outs[0] + outs[1] * outs[1]) - lrRms) * rmsCoeff * 0.2f;
         }
 
+        // the kick as heard, 1 in 8 (its shape where the sub comes back: the
+        // lock's aim, see collisionPhase)
+        if ((t % KickTelemetry::scopeDecimation) == 0)
+        {
+            float kv = kickRing[(size_t) (t & mask)];
+            if (trigger != triggerSidechain && trigger != triggerBeat && timing.isPlaying && telemetry.linkSlot.load (std::memory_order_relaxed) >= 0)
+            {
+                float lv = 0.0f;
+                if (link.waveAt (timing.beatsAt (i) - (double) latency * timing.beatsPerSample, lv))
+                    kv = lv;
+            }
+            heardKick[(size_t) ((t / KickTelemetry::scopeDecimation) & heardMask)] = kv;
+        }
         // oscilloscope (1 in 8): the sub as heard, the bass's low band, the kick
         if (++scopeCounter >= KickTelemetry::scopeDecimation && telemetry.scopeSize > 0)
         {

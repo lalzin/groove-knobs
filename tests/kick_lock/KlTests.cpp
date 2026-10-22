@@ -35,6 +35,9 @@ std::unique_ptr<KickLockProcessor> makeKl (double sr, float mix, bool lock, floa
     // most tests feed the kick through the sidechain bus: TRIGGER Sidechain
     // (Auto follows Kick Lock Send, else the tempo; tested on their own)
     setParam (p->getTriggerParameter(), (float) KickLockDsp::triggerSidechain);
+    // the lock's accuracy against a fixed aim (0 deg at the kick); the aim at
+    // the collision with the kick is tested on its own (KL 36)
+    p->getDsp().setAimAtCollision (false);
     p->prepareToPlay (sr, block);
     return p;
 }
@@ -1415,6 +1418,64 @@ TEST_CASE ("KL 34. Link in a host loop: every kick followed after each loop rest
         }
 }
 
+TEST_CASE ("KL 36. Aim: in phase with the kick where the sub comes back under it (the collision), not a fixed phase at its start", "[kl][phase]")
+{
+    // Alan: a kick is not a sine (its pitch falls): what matters is the phase
+    // where the two collide, under the ducking curve. Sum of kick + bass over
+    // the release: the collision aim must give the most (the two adding up)
+    const double sr = 48000.0, bpm = 124.0, seconds = 6.0;
+    for (double hz : { 41.2, 55.0, 65.4 })
+    {
+        const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr, true);
+        const auto k = kicks (seconds, sr, bpm, 0.1);
+        const auto times = kickTimes (seconds, bpm, 0.1);
+        auto overlap = [&] (int aim) // 0: LOCK off, 1: 0 deg at the kick, 2: the collision
+        {
+            auto p = makeKl (sr, 1.0f, aim > 0, 1.0f);
+            p->getDsp().setAimAtCollision (aim == 2);
+            p->prepareToPlay (sr, 512);
+            const auto out = run (*p, b, &k, { 512 }, bpm);
+            const int L = p->getLatencySamples();
+            double sum = 0.0;
+            for (double t : times)
+                if (t > 1.5 && t < seconds - 0.5)
+                    for (int u = 0; u < (int) (0.25 * sr); ++u)
+                    {
+                        const int i = (int) (t * sr) + u;
+                        const double v = k.getSample (0, i) + out.getSample (0, i + L);
+                        sum += v * v;
+                    }
+            return sum;
+        };
+        const double off = overlap (0), fixedAim = overlap (1), collision = overlap (2);
+        INFO (hz << " Hz: kick + bass energy over the release: LOCK off " << off << ", 0 deg at the kick " << fixedAim << ", in phase where they collide " << collision);
+        CHECK (collision >= fixedAim * 0.999);
+        CHECK (collision >= off * 0.999);
+        // and the most that any phase of the sub could give (within 1 %)
+        double best = 0.0;
+        for (int deg = 0; deg < 360; deg += 10)
+        {
+            auto p = makeKl (sr, 1.0f, true, 1.0f);
+            setParam (p->getTargetPhaseParameter(), (float) (deg > 180 ? deg - 360 : deg));
+            p->prepareToPlay (sr, 512);
+            const auto out = run (*p, b, &k, { 512 }, bpm);
+            const int L = p->getLatencySamples();
+            double sum = 0.0;
+            for (double t : times)
+                if (t > 1.5 && t < seconds - 0.5)
+                    for (int u = 0; u < (int) (0.25 * sr); ++u)
+                    {
+                        const int i = (int) (t * sr) + u;
+                        const double v = k.getSample (0, i) + out.getSample (0, i + L);
+                        sum += v * v;
+                    }
+            best = juce::jmax (best, sum);
+        }
+        INFO ("best of every fixed phase (10 deg steps): " << best);
+        CHECK (collision >= best * 0.99);
+    }
+}
+
 TEST_CASE ("KL 17. CPU: stereo bass + stereo sidechain, LOCK on, 48 kHz", "[kl][cpu]")
 {
     const double sr = 48000.0, bpm = 124.0, seconds = 8.0;
@@ -1847,4 +1908,124 @@ TEST_CASE ("KL 35. A raw saw bass (every harmonic to 18 kHz): held, repeated, a 
             CHECK (worst < 6.0);
             CHECK (unstable < 10); // (the very start only)
         }
+}
+
+TEST_CASE ("KL diag13. A plain sub melody under a four-on-the-floor kick (legato / detached, notes on / off the beat)", "[.kldiag13]")
+{
+    const double sr = 48000.0, bpm = 124.0, beat = 60.0 / bpm, seconds = 16.0;
+    const double notes[] { 55.0, 55.0, 65.4, 49.0, 41.2, 41.2, 61.7, 46.2 };
+    for (int legato : { 1, 0 })
+        for (double noteOffset : { 0.0, 0.5, -0.02 }) // note changes on the beat, on the off-beat, 20 ms before the beat
+        {
+            Buffer b (2, (int) (seconds * sr));
+            b.clear();
+            double ph = 0.0;
+            for (int i = 0; i < b.getNumSamples(); ++i)
+            {
+                const double t = i / sr;
+                const double pos = (t - 0.5) / beat - noteOffset; // in beats
+                const int n = (int) std::floor (pos);
+                const double hz = notes[(size_t) (((n % 8) + 8) % 8)];
+                const double inNote = (pos - std::floor (pos)) * beat; // seconds into the note
+                double env = 1.0;
+                if (! legato)
+                {
+                    env = juce::jmin (1.0, inNote / 0.004) * juce::jmin (1.0, (0.8 * beat - inNote) / 0.01);
+                    if (inNote > 0.8 * beat)
+                        env = 0.0;
+                    if (inNote < 1.0 / sr)
+                        ph = 0.0; // the synth restarts its wave
+                }
+                ph += hz / sr;
+                const float v = (float) (0.5 * juce::jmax (0.0, env) * std::sin (juce::MathConstants<double>::twoPi * ph));
+                b.setSample (0, i, v);
+                b.setSample (1, i, v);
+            }
+            const auto k = kicks (seconds, sr, bpm, 0.5);
+            const auto kt = kickTimes (seconds, bpm, 0.5);
+            auto p = makeKl (sr, 1.0f, true, 1.0f);
+            int seen = 0;
+            juce::String shown;
+            std::vector<std::pair<std::int64_t, double>> at;
+            const auto out = run (*p, b, &k, { 512 }, bpm, [&] (int)
+            {
+                auto& d = p->getDsp();
+                auto& tel = d.getTelemetry();
+                if (tel.kickEvents.load() != seen)
+                {
+                    seen = tel.kickEvents.load();
+                    shown << juce::String (tel.phaseErrorDeg.load(), 0) << "/" << juce::String (tel.phaseConfidence.load(), 1) << " ";
+                    at.push_back ({ tel.lastKickSample.load(), d.lastTm });
+                }
+            });
+            juce::String heard;
+            for (auto [w, T] : at)
+                if (T > 1.0 && w + p->getLatencySamples() + (int) (2.0 * T) < out.getNumSamples())
+                {
+                    // the bass's fundamental at the kick in the dry input vs the output
+                    juce::ignoreUnused (T);
+                    const double tk = (double) w / sr, posk = (tk + 0.004 - 0.5) / beat - noteOffset; // the note sounding just after the kick
+                    const double hz = notes[(size_t) ((((int) std::floor (posk)) % 8 + 8) % 8)];
+                    heard << juce::String (KickLockDsp::wrap180 (phaseAt (out.getReadPointer (0), out.getNumSamples(), (int) w + p->getLatencySamples(), hz, sr)), 0) << " ";
+                }
+            WARN ((legato ? "legato" : "detached") << ", notes " << noteOffset << " beat off: shown error/conf " << shown.substring (0, 300) << "\n heard " << heard.substring (0, 300));
+        }
+}
+
+TEST_CASE ("KL 37. Aim at the collision with Kick Lock Send: the kick's shape from the link gives the same aim as the sidechain", "[kl][link]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 4.0, hz = 55.0;
+    const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr, true);
+    const auto kickTrack = kicks (seconds, sr, bpm, 0.1);
+    double aim[2] {};
+    for (int viaLink : { 0, 1 })
+    {
+        kl::KickLink::removeBlock();
+        kls::KickSendProcessor send;
+        send.setNonRealtime (true);
+        send.prepareToPlay (sr, 512);
+        auto p = makeKl (sr, 1.0f, true, 1.0f);
+        p->getDsp().setAimAtCollision (true);
+        setParam (p->getTriggerParameter(), (float) (viaLink ? KickLockDsp::triggerLink : KickLockDsp::triggerSidechain));
+        p->prepareToPlay (sr, 512);
+        gk::OfflinePlayHead ph;
+        ph.bpm = bpm;
+        ph.sampleRate = sr;
+        ph.playing = true;
+        send.setPlayHead (&ph);
+        p->setPlayHead (&ph);
+        Buffer kickIo (kickTrack), bassIo (b);
+        Buffer sc (2, 512);
+        juce::MidiBuffer midi;
+        for (int pos = 0; pos + 512 <= b.getNumSamples(); pos += 512)
+        {
+            ph.samplePosition = pos;
+            Buffer kv (kickIo.getArrayOfWritePointers(), 2, pos, 512);
+            if (viaLink)
+            {
+                send.processBlock (kv, midi);
+                Buffer bv (bassIo.getArrayOfWritePointers(), 2, pos, 512);
+                p->processBlock (bv, midi);
+            }
+            else
+            {
+                // bass + the kick on the sidechain bus (4 channels)
+                Buffer io (4, 512);
+                for (int c = 0; c < 2; ++c)
+                {
+                    io.copyFrom (c, 0, bassIo, c, pos, 512);
+                    io.copyFrom (c + 2, 0, kickTrack, c, pos, 512);
+                }
+                p->processBlock (io, midi);
+                for (int c = 0; c < 2; ++c)
+                    bassIo.copyFrom (c, pos, io, c, 0, 512);
+            }
+        }
+        send.setPlayHead (nullptr);
+        p->setPlayHead (nullptr);
+        aim[viaLink] = p->getDsp().getTelemetry().kickPhaseDeg.load();
+    }
+    INFO ("the kick at the collision: sidechain " << aim[0] << " deg, link " << aim[1] << " deg");
+    CHECK (std::abs (aim[0]) > 1.0); // an aim was found
+    CHECK (std::abs (KickLockDsp::wrap180 (aim[0] - aim[1])) < 10.0);
 }

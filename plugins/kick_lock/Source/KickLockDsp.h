@@ -14,6 +14,7 @@ struct KickTelemetry
 {
     static constexpr int scopeDecimation = 8;
     std::atomic<float> phaseErrorDeg { 0.0f }, phaseConfidence { 0.0f }, phaseVariance { 1.0f };
+    std::atomic<float> kickPhaseDeg { 0.0f }; // the kick's own phase where it meets the sub (the lock's aim); 0 = unknown
     std::atomic<float> subLevelDb { -120.0f }, kickLevelDb { -120.0f }, monoSumLossDb { 0.0f };
     std::atomic<float> f0Hz { 0.0f }, shiftMs { 0.0f }, duckGain { 1.0f };
     std::atomic<int> kickEvents { 0 }, status { (int) Status::noKick };
@@ -135,7 +136,10 @@ public:
     double currentRotationDeg() const noexcept { return psiNow; }
     /** Tests: the last phase measurement (degrees at the kick, before correction). */
     double lastMeasuredPhase() const noexcept { return lastPhase; }
-    static double fitPeriod (const float* x, int n, double rate, double T0) noexcept;
+    /** The lock's aim: the kick's phase where the sub comes back under it (default), or a fixed
+        phase at the kick's start (TARGET alone: tests of the lock's accuracy). */
+    void setAimAtCollision (bool on) noexcept { aimAtCollision = on; }
+    static double fitPeriod (const float* x, int n, double rate, double T0, int harmonics = 0, double* residualOut = nullptr) noexcept;
 
 private:
     void onKick (std::int64_t when);
@@ -153,6 +157,7 @@ private:
     // harmonics no longer pull the period or the steadiness checks
     int lowBand (std::int64_t from, std::int64_t to, double T) const noexcept; // T: the note's period (0 = unknown)
     double refinePeriod (std::int64_t from, std::int64_t to, double T0) const noexcept;
+    double shortPeriod (std::int64_t from, std::int64_t to) const noexcept;
     double steadiness (std::int64_t from, std::int64_t to, double T) const noexcept;
     mutable std::vector<float> analysis;
     double differenceAt (std::int64_t from, std::int64_t to, double T) const noexcept;
@@ -250,6 +255,14 @@ private:
     std::vector<float> mono;                      // mono sub, for the analysis
     std::vector<float> envRing;                   // the kick envelope (to find each kick's start)
     std::vector<float> kickRing;                  // the kick itself (mono), for the scope
+    // the kick as heard (the sidechain's, or Kick Lock Send's own wave), 1 in
+    // 8, on the input's time line: the last kick's shape where the sub comes
+    // back under it
+    std::vector<float> heardKick;
+    std::int64_t heardMask = 0;
+    double kickPhase = 0.0; // degrees: the kick's phase at the note's frequency, weighted by the sub's return (0 = unknown)
+    double collisionPhase (double T) const noexcept;
+    bool aimAtCollision = true;
     using CurveTable = std::array<float, curveTableSize + 1>;
     std::array<CurveTable, 4> presetTables {};
     std::array<CurveTable, 3> customTables {};
