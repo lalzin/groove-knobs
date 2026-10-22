@@ -1,0 +1,13 @@
+{
+  "name": "Floor Pedal",
+  "engine": "analog",
+  "funk": 0.2,
+  "params": {
+    "attack": 0.2,
+    "pick": 0.4,
+    "string": 0.2,
+    "body": 0.8,
+    "tone": -0.4,
+    "drive": 0.2
+  }
+}

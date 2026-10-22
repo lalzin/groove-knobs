@@ -1,5 +1,6 @@
 {
   "name": "Ghost Groove",
+  "engine": "string",
   "funk": 0.5,
   "params": {
     "mute": 0.6,

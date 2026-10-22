@@ -72,9 +72,29 @@ Amp::Biquad Amp::lowPass (double fs, double f, double q)
     return b;
 }
 
+void Amp::Svf::set (double fc, double fs, double q)
+{
+    g = std::tan (pi * fc / fs);
+    k = 1.0 / q;
+    a1 = 1.0 / (1.0 + g * (g + k));
+    a2 = g * a1;
+    a3 = g * a2;
+}
+
+void Amp::Svf::run (double x, double& lp, double& hp) noexcept
+{
+    const double v3 = x - ic2, v1 = a1 * ic1 + a2 * v3, v2 = ic2 + a2 * ic1 + a3 * v3;
+    ic1 = 2.0 * v1 - ic1;
+    ic2 = 2.0 * v2 - ic2;
+    lp = v2;
+    hp = x - k * v1 - v2;
+}
+
 void Amp::prepare (double sampleRate)
 {
     sr = sampleRate;
+    toneLow.set (200.0, sr, 0.7071);
+    toneHigh.set (2500.0, sr, 0.7071);
     // the half-band low-pass for 2x (31 taps, Blackman-windowed sinc at fs/4)
     const int N = 31, C = N / 2;
     hb.assign ((size_t) N, 0.0f);
@@ -94,21 +114,18 @@ void Amp::prepare (double sampleRate)
     for (int i = 0; i < 4; ++i)
         cab[i] = bandPass (sr, f[i], q[i]);
     cabDirect = lowPass (sr, 5000.0, 0.7);
-    designedTone = designedSub = -9.0f;
+    designedSub = -9.0f;
     design();
     reset();
 }
 
 void Amp::design()
 {
-    if (! (designedTone < tone || designedTone > tone || designedSub < sub || designedSub > sub)) // (unchanged: no float ==)
+    if (! (designedSub < sub || designedSub > sub)) // (unchanged: no float ==)
         return;
-    designedTone = tone;
     designedSub = sub;
     // the velocity pickup tilts the low end down: a shelf under 120 Hz gives it back
     subShelf = lowShelf (sr, 110.0, 2.0 + 4.0 * sub);
-    lowS = lowShelf (sr, 200.0, -6.0 * tone);
-    highS = highShelf (sr, 2500.0, 8.0 * tone);
     mid = peak (sr, 700.0, -2.5, 0.9); // a light mid scoop: funk
     cabGain = { 0.9f + 0.9f * sub, 0.55f, 0.35f, 0.25f };
 }
@@ -118,8 +135,9 @@ void Amp::reset()
     upHist.fill (0.0f);
     downHist.fill (0.0f);
     upPos = downPos = 0;
-    for (auto* b : { &subShelf, &lowS, &highS, &mid, &cab[0], &cab[1], &cab[2], &cab[3], &cabDirect })
+    for (auto* b : { &subShelf, &mid, &cab[0], &cab[1], &cab[2], &cab[3], &cabDirect })
         b->clear();
+    toneLow.ic1 = toneLow.ic2 = toneHigh.ic1 = toneHigh.ic2 = 0.0;
 }
 
 float Amp::saturate (float x) const noexcept
@@ -134,7 +152,15 @@ float Amp::process (float x) noexcept
     design();
     // tone before the preamp (the bass's own controls), then the sub shelf
     x = subShelf.run (x);
-    x = lowS.run (highS.run (mid.run (x)));
+    x = mid.run (x);
+    {
+        // TIMBRE: -6 dB under 200 Hz and +8 dB over 2.5 kHz at +1 (the opposite at -1), per sample
+        double lp = 0.0, hp = 0.0, unused = 0.0;
+        toneLow.run (x, lp, unused);
+        toneHigh.run (x, unused, hp);
+        const double lowGain = std::exp (-6.0 * tone * 0.1151292546), highGain = std::exp (8.0 * tone * 0.1151292546); // dB -> linear
+        x = (float) (x + (lowGain - 1.0) * lp + (highGain - 1.0) * hp);
+    }
     // 2x: the input and a zero, each through the half-band, saturated, the half-band again, one kept
     const int N = (int) hb.size();
     float out = 0.0f;

@@ -4,6 +4,7 @@
 #include "FunkMap.h"
 #include "SlapperAmp.h"
 #include "SlapperVoice.h"
+#include "SynthVoice.h"
 
 namespace slapper
 {
@@ -17,7 +18,11 @@ struct Telemetry
     std::atomic<int> activeVoices { 0 };
 };
 
-/** The playing engine: MIDI -> 6 strings (mono legato or poly) -> the amp.
+/** The playing engine: MIDI -> 6 voices (mono legato or poly) -> the amp.
+    ENGINE (set by each preset, and by hand): STRING (the modelled bass) or a
+    synth (ANALOG, FM, PULSE, SynthVoice.h); a voice slot holds one of each,
+    the one not playing is let go when the engine changes (new notes only:
+    a ringing note keeps its engine).
 
     MONO (default): one string. A note played while another is held slides
     to it (no new pluck, 30-80 ms by the interval); releasing it slides back
@@ -31,7 +36,8 @@ public:
     static constexpr int numVoices = 6;
     // the small knobs, in OneKnobConfig order
     enum Knob { attackKnob, pickKnob, stringKnob, bodyKnob, muteKnob, driveKnob, toneKnob, humanKnob, levelKnob, numKnobs };
-    static constexpr int modeChoice = 0; // 0 mono, 1 poly
+    static constexpr int modeChoice = 0;   // 0 mono, 1 poly
+    static constexpr int engineChoice = 1; // Engine order: string, analog, fm, pulse
     static constexpr double maxHumanSeconds = 0.008;
 
     void setPresets (const gk::PresetManager&) override {}
@@ -39,9 +45,15 @@ public:
     void reset() override;
     int getLatencySamples() const override { return 0; }
     void setPreset (int) override {}
+    /** A preset's engine ("engine" in its JSON: string, analog, fm, pulse), as the ENGINE choice index. */
+    static int engineIndexOf (const juce::var& presetJson);
     void setMidi (const juce::MidiBuffer& midi, int start, int numSamples) override;
     void setKnobs (const float* values, int n) override;
-    void setChoices (const int* indices, int n) override { poly = n > modeChoice && indices[modeChoice] == 1; }
+    void setChoices (const int* indices, int n) override
+    {
+        poly = n > modeChoice && indices[modeChoice] == 1;
+        engine = n > engineChoice ? (Engine) juce::jlimit (0, 3, indices[engineChoice]) : Engine::string;
+    }
     void processWet (juce::AudioBuffer<float>& buffer, int numSamples, const float* amount, const gk::BlockTiming& timing) override;
 
     Telemetry& getTelemetry() noexcept { return telemetry; }
@@ -62,10 +74,20 @@ private:
     void play (int note, float velocity);
     void release (int note);
     NoteParams paramsFor (int voice, float velocity) noexcept;
+    SynthParams synthParamsFor (int voice) noexcept;
+    void start (int slot, double hz, float velocity);
+    void slide (int slot, double hz);
+    void letGo (int slot);
+    bool slotActive (int slot) const noexcept { return voices[(size_t) slot].isActive() || synths[(size_t) slot].isActive(); }
+    bool slotHeld (int slot) const noexcept { return voices[(size_t) slot].isHeld() || synths[(size_t) slot].isHeld(); }
+    double slotHz (int slot) const noexcept { return slotEngine[(size_t) slot] == Engine::string ? voices[(size_t) slot].currentHz() : synths[(size_t) slot].currentHz(); }
     float humanRandom (int voice) noexcept; // -1..1, the voice's own sequence
 
     double sr = 48000.0;
     std::array<Voice, numVoices> voices;
+    std::array<SynthVoice, numVoices> synths;
+    std::array<Engine, numVoices> slotEngine {};
+    Engine engine = Engine::string;
     std::array<int, numVoices> voiceNote {};
     std::array<std::int64_t, numVoices> voiceOrder {};
     std::array<std::uint32_t, numVoices> voiceSeed {};
@@ -83,7 +105,22 @@ private:
     float funk = 0.5f;
     double bendRatio = 1.0;
     Amp amp;
-    gk::LinearSmoother driveSmooth, toneSmooth, volume;
+    /** Two one-poles in a row (~20 ms): follows a host's block-by-block
+        automation steps without a kink in the slope (a kink is heard on a
+        bright synth as a faint crackle). */
+    struct Smooth2
+    {
+        double c = 0.0, a = 0.0, b = 0.0, target = 0.0;
+        void prepare (double rate, double seconds) { c = 1.0 - std::exp (-1.0 / (seconds * 0.5 * rate)); }
+        void snap (double v) { a = b = target = v; }
+        void setTarget (double v) { target = v; }
+        float next() noexcept
+        {
+            a += c * (target - a);
+            b += c * (a - b);
+            return (float) b;
+        }
+    } driveSmooth, toneSmooth, volume;
     float envelope = 0.0f;
     Telemetry telemetry;
 };

@@ -1,5 +1,11 @@
 # Changelog
 
+## Slapper 0.1.0-test2 — 2026-10-22 (version de test, hors suite)
+- **Plus de grésillement** quand on tourne un réglage (TONE, FUNK surtout) pendant qu'une note sonne.
+- **ENGINE** : STRING (la basse modélisée), **ANALOG** (basse mono-synthé, filtre résonant), **FM** (basse FM des années 80), **PULSE** (basse boogie / disco de polysynthé). Chaque preset choisit le sien ; sélecteur à gauche de Pluck.
+- **16 presets** sur les quatre moteurs (nouveaux : Mothership, Rubber Band, Floor Pedal, Solid FM, FM Slap, Glass Bass, Boogie Pulse, Mirrorball).
+- Interface : en anglais, façon Pew Pew (FUNK au centre ; ATTACK, MUTE, DRIVE, TONE, VOL ; MONO | POLY).
+
 ## Slapper 0.1.0-test1 — 2026-10-22 (version de test, hors suite)
 - **Slapper** (nouveau, en test) : une basse funk modélisée — une corde (une résonance par harmonique, chacune son amortissement : des aigus qui meurent vite, une fondamentale qui tient), trois attaques mélangées par ATTACK (doigt, slap du pouce avec son rebond, pop), la corde qui tape les frettes (le clac), un micro de P-bass, un sub calé sur la fondamentale, un ampli (saturation suréchantillonnée, baffle modal). FUNK, de la basse ronde au slap agressif. MONO (glissés legato, ghost notes) / POLY 6 cordes, HUMAIN, pitch bend. 12 presets. Pluck la basse en mascotte.
 

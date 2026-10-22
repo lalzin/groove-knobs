@@ -14,7 +14,7 @@ using slapper::Voice;
 
 namespace
 {
-constexpr int numPresets = 12;
+constexpr int numPresets = 16;
 
 // the fundamental's frequency over a stretch: low-passed (the stiff string's
 // upper partials are sharp, as on a real bass), then the autocorrelation peak
@@ -58,28 +58,35 @@ double rms (const Buffer& b, double from, double to, double sr = 48000.0)
     return std::sqrt (s / std::max (1, e - a));
 }
 
-// log-spaced band energies (dB) of a whole render: a spectral fingerprint
+// third-octave band energies (dB) of a render, twice: over the attacks (the
+// first 30 ms of every sixteenth, where the riff's notes start) and over the
+// rest — two basses can share a tilt and still attack nothing alike
 std::vector<double> fingerprint (const Buffer& b)
 {
     std::vector<double> bands;
-    const double sr = 48000.0;
-    for (double f = 40.0; f < 8000.0; f *= 1.26) // (third octaves)
+    const double sr = 48000.0, sixteenth = 60.0 / 100.0 / 4.0;
+    for (int part = 0; part < 2; ++part)
     {
-        // a band-pass (RBJ, constant skirt) per band
-        const double w = 2.0 * juce::MathConstants<double>::pi * f / sr, al = std::sin (w) / (2.0 * 4.3), cw = std::cos (w), a0 = 1.0 + al;
-        const double b0 = al / a0, b2 = -al / a0, a1 = -2.0 * cw / a0, a2 = (1.0 - al) / a0;
-        double x1 = 0, x2 = 0, y1 = 0, y2 = 0, e = 0;
-        for (int i = 0; i < b.getNumSamples(); ++i)
+        std::vector<double> these;
+        for (double f = 40.0; f < 8000.0; f *= 1.26)
         {
-            const double x = b.getSample (0, i), y = b0 * x + b2 * x2 - a1 * y1 - a2 * y2;
-            x2 = x1; x1 = x; y2 = y1; y1 = y;
-            e += y * y;
+            const double w = 2.0 * juce::MathConstants<double>::pi * f / sr, al = std::sin (w) / (2.0 * 4.3), cw = std::cos (w), a0 = 1.0 + al;
+            const double b0 = al / a0, b2 = -al / a0, a1 = -2.0 * cw / a0, a2 = (1.0 - al) / a0;
+            double x1 = 0, x2 = 0, y1 = 0, y2 = 0, e = 0;
+            for (int i = 0; i < b.getNumSamples(); ++i)
+            {
+                const double x = b.getSample (0, i), y = b0 * x + b2 * x2 - a1 * y1 - a2 * y2;
+                x2 = x1; x1 = x; y2 = y1; y1 = y;
+                const bool attack = std::fmod (i / sr, sixteenth) < 0.03;
+                if (attack == (part == 0))
+                    e += y * y;
+            }
+            these.push_back (10.0 * std::log10 (e + 1e-20));
         }
-        bands.push_back (10.0 * std::log10 (e + 1e-20));
+        const double mean = std::accumulate (these.begin(), these.end(), 0.0) / (double) these.size();
+        for (auto v : these)
+            bands.push_back (v - mean); // (shape only, not level)
     }
-    const double mean = std::accumulate (bands.begin(), bands.end(), 0.0) / (double) bands.size();
-    for (auto& v : bands)
-        v -= mean; // (shape only, not level)
     return bands;
 }
 } // namespace
@@ -150,6 +157,7 @@ TEST_CASE ("Stability: 60 s of random playing, every knob, both modes, no NaN, n
                 if (k != SlapperDsp::levelKnob)
                     p->getKnobParameter (k).setValueNotifyingHost (u (rng));
             gktest::setParam (p->getAmountParameter(), u (rng));
+            gktest::setParam (p->getEngineParameter(), (float) (int) (u (rng) * 3.99f));
             juce::MidiMessageSequence part;
             for (int i = 0; i < seq.getNumEvents(); ++i)
             {
@@ -172,7 +180,7 @@ TEST_CASE ("Stability: 60 s of random playing, every knob, both modes, no NaN, n
     }
 }
 
-TEST_CASE ("Presets: twelve, each sounds different", "[slapper]")
+TEST_CASE ("Presets: sixteen, each sounds different", "[slapper]")
 {
     auto probe = makeProc (0);
     REQUIRE (probe->getPresets().size() == numPresets);
@@ -290,8 +298,11 @@ TEST_CASE ("State: the saved FUNK and knobs win over the preset's", "[slapper]")
     CHECK (q->getAmountParameter().convertFrom0to1 (q->getAmountParameter().getValue()) == Catch::Approx (0.123f).margin (0.002));
     CHECK (q->getKnobParameter (SlapperDsp::toneKnob).convertFrom0to1 (q->getKnobParameter (SlapperDsp::toneKnob).getValue()) == Catch::Approx (0.77f).margin (0.002));
     // and choosing a preset sets its FUNK
-    gktest::setParam (q->getPresetParameter(), 11.0f);
+    gktest::setParam (q->getPresetParameter(), (float) q->getPresets().indexOf ("Slap Attack"));
     CHECK (q->getAmountParameter().getValue() == Catch::Approx (1.0f));
+    // and its engine
+    gktest::setParam (q->getPresetParameter(), (float) q->getPresets().indexOf ("Solid FM"));
+    CHECK (q->getEngineParameter().getIndex() == (int) slapper::Engine::fm);
 }
 
 TEST_CASE ("CPU: six strings at 48 kHz", "[slapper]")
@@ -309,4 +320,102 @@ TEST_CASE ("CPU: six strings at 48 kHz", "[slapper]")
     WARN ("Slapper, 6 voices: " << share * 100.0 << " % of one core");
     if (gktest::timingChecksEnforced())
         CHECK (share < 0.04);
+}
+
+TEST_CASE ("Moving a knob while a note rings: no crackle (automation, every block)", "[slapper]")
+{
+    // a held low note, each parameter swept 0 -> 1 -> 0 over 2 s, set every
+    // 128-sample block (as a host automates); against the same note with the
+    // parameter held at 0 (its value when the note starts)
+    const double sr = 48000.0;
+    const int block = 128, length = (int) (2.5 * sr);
+    for (int engine = 0; engine < 4; ++engine)
+    {
+    auto run = [&] (int knob, bool sweep) // knob -2: FUNK
+    {
+        auto p = makeProc (0);
+        gktest::setParam (p->getEngineParameter(), (float) engine);
+        gktest::setParam (p->getKnobParameter (SlapperDsp::humanKnob), 0.0f);
+        juce::AudioProcessor::BusesLayout layout;
+        layout.outputBuses.add (juce::AudioChannelSet::stereo());
+        p->setBusesLayout (layout);
+        p->setNonRealtime (true);
+        p->prepareToPlay (sr, block);
+        Buffer out (2, length);
+        out.clear();
+        juce::MidiBuffer midi;
+        for (int pos = 0; pos < length; pos += block)
+        {
+            midi.clear();
+            if (pos == 0)
+                midi.addEvent (juce::MidiMessage::noteOn (1, 28, (juce::uint8) 100), 0);
+            const double t = pos / sr, phase = std::clamp ((t - 0.25) / 2.0, 0.0, 1.0);
+            float v = sweep ? (float) (phase < 0.5 ? 2.0 * phase : 2.0 - 2.0 * phase) : 0.0f;
+            if (knob == SlapperDsp::levelKnob) // (VOL: from 0 dB, three quarters, not from silence)
+                v = 0.75f + 0.25f * v;
+            if (knob == -2)
+                p->getAmountParameter().setValueNotifyingHost (v);
+            else if (knob >= 0)
+                p->getKnobParameter (knob).setValueNotifyingHost (v);
+            juce::AudioBuffer<float> view (out.getArrayOfWritePointers(), 2, pos, std::min (block, length - pos));
+            p->processBlock (view, midi);
+        }
+        return out;
+    };
+    const char* names[] { "attack", "pick", "string", "body", "mute", "drive", "tone", "human", "level" };
+    for (int k = -2; k < SlapperDsp::numKnobs; ++k)
+    {
+        if (k == -1)
+            continue;
+        const auto still = run (k, false), moved = run (k, true);
+        const double ref = gktest::zipperBurstDb (still.getReadPointer (0), (int) (0.3 * sr), length, sr);
+        const double z = gktest::zipperBurstDb (moved.getReadPointer (0), (int) (0.3 * sr), length, sr);
+        INFO ("engine " << engine << ", " << (k == -2 ? "funk" : names[k]) << ": HF bursts " << z << " dB, untouched " << ref << " dB");
+        // (VOL up to +6 dB: everything 6 dB louder; under -110 dB nothing is heard —
+        // more DRIVE does add harmonics there; the crackle fixed was at -52 dB)
+        CHECK (z < std::max (ref + (k == SlapperDsp::levelKnob ? 12.0 : 6.0), -110.0));
+    }
+    }
+}
+
+TEST_CASE ("Synth engines: in tune, a slide glides, a retrigger does not click", "[slapper]")
+{
+    const double sr = 48000.0;
+    for (auto e : { slapper::Engine::analog, slapper::Engine::fm, slapper::Engine::pulse })
+    {
+        for (double hz : { 41.2, 110.0, 220.0 })
+        {
+            slapper::SynthVoice v;
+            v.prepare (sr);
+            slapper::SynthParams p;
+            p.engine = e;
+            p.body = 0.0f;
+            p.string = 0.0f; // (ANALOG's detuned saw, PULSE's moving width: a chorus on purpose)
+            v.noteOn (hz, 0.8f, p);
+            std::vector<float> x;
+            for (int i = 0; i < (int) (1.5 * sr); ++i)
+                x.push_back (v.process());
+            // (measured once the bright attack has closed: a moving filter bends the pitch a little, as on any synth)
+            const double got = measureHz (x, (int) (0.8 * sr), (int) (0.4 * sr), hz, sr);
+            INFO ("engine " << (int) e << ", " << hz << " Hz: " << got);
+            CHECK (std::fabs (1200.0 * std::log2 (got / hz)) < 2.0);
+        }
+        // MONO: A1 held, E2 over it -> slides (no new attack); then a fresh note on E1
+        auto proc = makeProc (0);
+        gktest::setParam (proc->getEngineParameter(), (float) e);
+        gktest::setParam (proc->getKnobParameter (SlapperDsp::humanKnob), 0.0f);
+        const auto out = render (*proc, sequenceOf ({ { 0.0, 0.6, 33, 100 }, { 0.5, 0.5, 40, 100 }, { 1.2, 0.5, 28, 100 } }, sr), 2.0);
+        std::vector<float> y (out.getReadPointer (0), out.getReadPointer (0) + out.getNumSamples());
+        const double after = measureHz (y, (int) (0.75 * sr), (int) (0.2 * sr), 82.4, sr);
+        INFO ("engine " << (int) e << ": after the slide " << after << " Hz");
+        CHECK (std::fabs (1200.0 * std::log2 (after / 82.41)) < 15.0);
+        // no click: the slide and the retrigger (a note still releasing) no
+        // harsher than a first attack from silence (its bright attack is the sound)
+        const double first = gktest::zipperBurstDb (y.data(), 0, (int) (0.15 * sr), sr);
+        const double slid = gktest::zipperBurstDb (y.data(), (int) (0.45 * sr), (int) (0.7 * sr), sr);
+        const double again = gktest::zipperBurstDb (y.data(), (int) (1.15 * sr), (int) (1.35 * sr), sr);
+        INFO ("engine " << (int) e << ": HF bursts, first attack " << first << " dB, slide " << slid << " dB, retrigger " << again << " dB");
+        CHECK (slid < first + 3.0);
+        CHECK (again < first + 3.0);
+    }
 }

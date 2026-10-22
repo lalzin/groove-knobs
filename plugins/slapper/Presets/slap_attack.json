@@ -1,5 +1,6 @@
 {
   "name": "Slap Attack",
+  "engine": "string",
   "funk": 1.0,
   "params": {
     "attack": 0.6,

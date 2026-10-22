@@ -1,5 +1,6 @@
 {
   "name": "Thumb Party",
+  "engine": "string",
   "funk": 0.85,
   "params": {
     "attack": 0.5,

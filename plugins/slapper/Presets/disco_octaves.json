@@ -1,5 +1,6 @@
 {
   "name": "Disco Octaves",
+  "engine": "string",
   "funk": 0.3,
   "params": {
     "attack": 0.1,

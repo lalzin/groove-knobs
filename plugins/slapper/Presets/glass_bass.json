@@ -1,0 +1,13 @@
+{
+  "name": "Glass Bass",
+  "engine": "fm",
+  "funk": 0.6,
+  "params": {
+    "attack": 0.4,
+    "pick": 0.45,
+    "string": 0.1,
+    "body": 0.3,
+    "tone": 0.2,
+    "drive": 0.15
+  }
+}

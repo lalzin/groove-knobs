@@ -1,5 +1,6 @@
 {
   "name": "Pop Shop",
+  "engine": "string",
   "funk": 0.6,
   "params": {
     "attack": 0.9,

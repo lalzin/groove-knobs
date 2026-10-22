@@ -1,5 +1,6 @@
 {
   "name": "Finger Round",
+  "engine": "string",
   "funk": 0.2,
   "params": {
     "attack": 0.05,

@@ -23,6 +23,7 @@ public:
 
     SlapperDsp& getSlapperDsp() noexcept { return static_cast<SlapperDsp&> (getEngine()); }
     juce::AudioParameterChoice& getModeParameter() noexcept { return getChoiceParameter (SlapperDsp::modeChoice); }
+    juce::AudioParameterChoice& getEngineParameter() noexcept { return getChoiceParameter (SlapperDsp::engineChoice); }
 
     /** Sets FUNK and the knobs from preset `index` (message thread). */
     void applyPreset (int index);

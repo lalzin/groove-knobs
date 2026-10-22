@@ -1,11 +1,14 @@
 {
   "name": "Rubber Band",
-  "funk": 0.7,
+  "engine": "analog",
+  "funk": 0.85,
   "params": {
-    "attack": 0.55,
-    "mute": 0.45,
+    "attack": 0.75,
+    "pick": 0.08,
     "string": 0.3,
-    "human": 0.35,
-    "tone": -0.1
+    "body": 0.4,
+    "mute": 0.35,
+    "drive": 0.3,
+    "human": 0.3
   }
 }

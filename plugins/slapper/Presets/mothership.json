@@ -1,0 +1,13 @@
+{
+  "name": "Mothership",
+  "engine": "analog",
+  "funk": 0.6,
+  "params": {
+    "attack": 0.55,
+    "pick": 0.1,
+    "string": 0.5,
+    "body": 0.5,
+    "drive": 0.35,
+    "human": 0.1
+  }
+}

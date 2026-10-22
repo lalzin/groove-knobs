@@ -36,15 +36,18 @@ gk::Palette SlapperEditor::makePalette()
     return p;
 }
 
-/** MONO | POLY: one string (legato slides, ghost notes) or six. */
-class SlapperEditor::ModeSwitch final : public juce::Component, public juce::SettableTooltipClient
+/** A row of segments for a choice parameter, its caption above: MODE
+    (MONO | POLY, a row), ENGINE (STRING | ANALOG | FM | PULSE, a column).
+    Click a segment; keys: arrows, space for the next. */
+class SlapperEditor::Segments final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    ModeSwitch (juce::AudioParameterChoice& p, const gk::Palette& pal)
-        : param (p), palette (pal), attachment (p, [this] (float) { repaint(); }, nullptr)
+    Segments (juce::AudioParameterChoice& p, const gk::Palette& pal, juce::String captionText, juce::StringArray segmentLabels, juce::String tip)
+        : param (p), palette (pal), caption (std::move (captionText)), labels (std::move (segmentLabels)),
+          attachment (p, [this] (float) { repaint(); }, nullptr)
     {
-        setTitle ("Voice mode");
-        setTooltip ("MONO: one string, overlapping notes slide. POLY: up to 6 strings");
+        setTitle (caption);
+        setTooltip (tip);
         setWantsKeyboardFocus (true);
         setMouseCursor (juce::MouseCursor::PointingHandCursor);
         attachment.sendInitialUpdate();
@@ -55,23 +58,29 @@ public:
         auto b = getLocalBounds().toFloat();
         g.setFont (gk::GrooveFonts::font (9.5f).withExtraKerningFactor (0.12f));
         g.setColour (palette (amber).withAlpha (0.85f));
-        g.drawText ("MODE", b.removeFromTop (13.0f), juce::Justification::centred);
-        const auto r = b.withSizeKeepingCentre (b.getWidth(), 22.0f).reduced (1.5f);
-        const float rad = r.getHeight() * 0.5f;
+        g.drawText (caption, b.removeFromTop (13.0f), juce::Justification::centred);
+        // a row (MODE), or a column when taller than wide (ENGINE)
+        const int n = labels.size(), on = param.getIndex();
+        const bool column = vertical();
+        const auto r = column ? b.reduced (1.5f) : b.withSizeKeepingCentre (b.getWidth(), 22.0f).reduced (1.5f);
+        const float rad = column ? 11.0f : r.getHeight() * 0.5f;
         g.setColour (palette (palette.outline));
         g.fillRoundedRectangle (r, rad);
-        const bool isPoly = param.getIndex() == 1;
-        auto lit = r.reduced (2.0f);
-        lit = isPoly ? lit.removeFromRight (lit.getWidth() * 0.5f) : lit.removeFromLeft (lit.getWidth() * 0.5f);
-        g.setColour (palette (isPoly ? wine : amber).withMultipliedBrightness (over ? 1.15f : 1.0f));
-        g.fillRoundedRectangle (lit, lit.getHeight() * 0.5f);
-        g.setFont (gk::GrooveFonts::font (10.5f).withExtraKerningFactor (0.05f));
-        auto halves = r;
-        const auto left = halves.removeFromLeft (halves.getWidth() * 0.5f);
-        g.setColour (palette (isPoly ? palette.text : palette.outline).withAlpha (isPoly ? 0.55f : 1.0f));
-        g.drawText ("MONO", left, juce::Justification::centred);
-        g.setColour (palette (isPoly ? palette.text : palette.text).withAlpha (isPoly ? 1.0f : 0.55f));
-        g.drawText ("POLY", halves, juce::Justification::centred);
+        const float w = ((column ? r.getHeight() : r.getWidth()) - 4.0f) / (float) n;
+        g.setFont (gk::GrooveFonts::font (n > 2 && ! column ? 9.5f : 10.5f).withExtraKerningFactor (0.04f));
+        for (int i = 0; i < n; ++i)
+        {
+            const auto seg = column ? juce::Rectangle<float> (r.getX() + 2.0f, r.getY() + 2.0f + w * (float) i, r.getWidth() - 4.0f, w)
+                                    : juce::Rectangle<float> (r.getX() + 2.0f + w * (float) i, r.getY() + 2.0f, w, r.getHeight() - 4.0f);
+            if (i == on)
+            {
+                // the first segment amber, the others wine (POLY, the synths)
+                g.setColour (palette (i == 0 ? amber : wine).withMultipliedBrightness (over ? 1.15f : 1.0f));
+                g.fillRoundedRectangle (seg, seg.getHeight() * 0.5f);
+            }
+            g.setColour (palette (i == on ? (i == 0 ? palette.outline : palette.text) : palette.text).withAlpha (i == on ? 1.0f : 0.55f));
+            g.drawText (labels[i], seg, juce::Justification::centred);
+        }
         g.setColour (palette (palette.outline));
         g.drawRoundedRectangle (r, rad, 2.0f);
     }
@@ -81,20 +90,35 @@ public:
     void mouseUp (const juce::MouseEvent& e) override
     {
         if (contains (e.getPosition()))
-            attachment.setValueAsCompleteGesture (e.position.x < (float) getWidth() * 0.5f ? 0.0f : 1.0f);
+            choose (vertical() ? (int) ((e.position.y - 13.0f) / (float) (getHeight() - 13) * (float) labels.size())
+                               : (int) (e.position.x / (float) getWidth() * (float) labels.size()));
     }
     bool keyPressed (const juce::KeyPress& k) override
     {
+        const int i = param.getIndex(), n = labels.size();
         if (k == juce::KeyPress::returnKey || k == juce::KeyPress::spaceKey)
-            attachment.setValueAsCompleteGesture (param.getIndex() == 1 ? 0.0f : 1.0f);
+            choose ((i + 1) % n);
+        else if (k == juce::KeyPress::leftKey || k == juce::KeyPress::upKey)
+            choose (i - 1);
+        else if (k == juce::KeyPress::rightKey || k == juce::KeyPress::downKey)
+            choose (i + 1);
         else
             return false;
         return true;
     }
 
 private:
+    bool vertical() const noexcept { return getHeight() > getWidth(); }
+    void choose (int i)
+    {
+        i = juce::jlimit (0, labels.size() - 1, i);
+        attachment.setValueAsCompleteGesture ((float) i);
+    }
+
     juce::AudioParameterChoice& param;
     const gk::Palette& palette;
+    juce::String caption;
+    juce::StringArray labels;
     juce::ParameterAttachment attachment;
     bool over = false;
 };
@@ -103,7 +127,8 @@ SlapperEditor::SlapperEditor (SlapperProcessor& p)
     : OneKnobEditor (p, makePalette(), "Slapper",
                      [&p] (gk::AudioFeatures&, const gk::Palette& palette) { return std::make_unique<PluckMascot> (p, palette); })
 {
-    getMascot().setBounds (80, 50, 260, 190); // Pluck is tall: the whole band above the knob
+    // Pluck is tall: the whole band above the knob (no preset tags under the knob)
+    placeMascotAndKnob ({ 80, 50, 260, 190 }, juce::Rectangle<int> (262, 262).withCentre ({ 210, 345 }));
     // the knobs a player reaches for, around FUNK (Pew Pew's places)
     struct Place { int knob; juce::Rectangle<int> bounds; float along; };
     const Place places[] { { SlapperDsp::attackKnob, { 10, 296, 64, 68 }, 0.0f },
@@ -117,8 +142,14 @@ SlapperEditor::SlapperEditor (SlapperProcessor& p)
                                                           p.getConfig().knobs[(size_t) pl.knob].caption, getPalette().arcColour (pl.along)));
         addToCanvas (*knobs.back(), pl.bounds);
     }
-    mode = std::make_unique<ModeSwitch> (p.getModeParameter(), getPalette());
+    mode = std::make_unique<Segments> (p.getModeParameter(), getPalette(), "MODE", juce::StringArray { "MONO", "POLY" },
+                                       "MONO: one voice, overlapping notes slide. POLY: up to 6 voices");
     addToCanvas (*mode, { 330, 414, 86, 38 }); // bottom right, under TONE
+    // ENGINE: a column left of Pluck
+    engineSwitch = std::make_unique<Segments> (p.getEngineParameter(), getPalette(), "ENGINE", juce::StringArray { "STRING", "ANALOG", "FM", "PULSE" },
+                                               "STRING: the modelled bass guitar. ANALOG: a mono-synth bass (saws, resonant filter). "
+                                               "FM: an 80s FM bass. PULSE: a boogie polysynth bass. Each preset picks one");
+    addToCanvas (*engineSwitch, { 8, 66, 74, 132 });
 }
 
 SlapperEditor::~SlapperEditor() = default;

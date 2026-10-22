@@ -1,5 +1,6 @@
 {
   "name": "Dusty Wood",
+  "engine": "string",
   "funk": 0.35,
   "params": {
     "string": 0.8,

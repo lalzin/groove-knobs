@@ -1,5 +1,5 @@
 // SLAPPER — the amp. Preamp (asymmetric saturation, 2x oversampled),
-// tone (two shelves and a peak), a cabinet of four modal resonators (no IR),
+// tone (two shelves, free to move at audio rate, and a peak), a cabinet of four modal resonators (no IR),
 // a soft limiter. Plus the low end the velocity pickup takes away (the sub).
 #pragma once
 #include <array>
@@ -38,12 +38,20 @@ private:
     void design();
 
     double sr = 48000.0;
-    float designedTone = -9.0f, designedSub = -9.0f;
+    float designedSub = -9.0f;
     // 2x oversampling around the saturation: a half-band FIR up and down
     std::vector<float> hb; // its taps
     std::array<float, 64> upHist {}, downHist {};
     int upPos = 0, downPos = 0;
-    Biquad subShelf, lowS, highS, mid, cab[4], cabDirect;
+    Biquad subShelf, mid, cab[4], cabDirect;
+    // TIMBRE: shelves made of a fixed filter mixed back with a moving gain
+    // (x + (A - 1) LP(x), x + (A - 1) HP(x)): turning it never steps a filter
+    struct Svf
+    {
+        double g = 0.1, k = 1.414, a1 = 0, a2 = 0, a3 = 0, ic1 = 0, ic2 = 0;
+        void set (double fc, double fs, double q);
+        void run (double x, double& lp, double& hp) noexcept;
+    } toneLow, toneHigh;
     std::array<float, 4> cabGain {};
     float saturate (float x) const noexcept;
 };

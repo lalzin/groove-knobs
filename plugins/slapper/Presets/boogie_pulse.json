@@ -1,0 +1,14 @@
+{
+  "name": "Boogie Pulse",
+  "engine": "pulse",
+  "funk": 0.7,
+  "params": {
+    "attack": 0.65,
+    "pick": 0.3,
+    "string": 0.3,
+    "body": 0.85,
+    "mute": 0.5,
+    "tone": 0.25,
+    "drive": 0.3
+  }
+}

@@ -43,7 +43,7 @@ int main (int argc, char** argv)
     }
     {
         // disco: eighths, octave up on the off-beats, 120 BPM, four bars E E A B
-        auto p = makeProc (5);
+        auto p = makeProc (probe->getPresets().indexOf ("Disco Octaves"));
         std::vector<Note> v;
         const int roots[] { 28, 28, 33, 35 };
         const double e = 0.25;
@@ -54,13 +54,13 @@ int main (int argc, char** argv)
     }
     {
         // slides: each target note starts before the last one ends
-        auto p = makeProc (7); // Rubber Band
+        auto p = makeProc (probe->getPresets().indexOf ("Rubber Band"));
         std::vector<Note> v { { 0.0, 0.62, 28, 110 }, { 0.6, 0.5, 40, 100 }, { 1.2, 0.62, 31, 110 }, { 1.8, 0.62, 33, 100 },
                               { 2.4, 0.3, 35, 100 }, { 2.4 + 0.29, 0.6, 36, 100 }, { 3.6, 1.2, 28, 120 }, { 4.2, 0.9, 40, 105 } };
         write (render (*p, sequenceOf (v, sr), 6.5), out.getChildFile ("slapper_slides.wav"));
     }
     {
-        auto p = makeProc (4); // Dusty Wood
+        auto p = makeProc (probe->getPresets().indexOf ("Dusty Wood"));
         gktest::setParam (p->getModeParameter(), 1.0f);
         std::vector<Note> v { { 0.0, 1.0, 28, 100 }, { 0.0, 1.0, 35, 90 }, { 1.2, 1.0, 33, 100 }, { 1.2, 1.0, 40, 90 },
                               { 2.4, 2.0, 40, 90 }, { 2.45, 2.0, 47, 85 }, { 2.5, 2.0, 52, 80 }, { 2.55, 2.0, 56, 80 } };

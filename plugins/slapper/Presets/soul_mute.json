@@ -1,5 +1,6 @@
 {
   "name": "Soul Mute",
+  "engine": "string",
   "funk": 0.15,
   "params": {
     "attack": 0.0,

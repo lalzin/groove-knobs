@@ -1,0 +1,13 @@
+{
+  "name": "FM Slap",
+  "engine": "fm",
+  "funk": 0.85,
+  "params": {
+    "attack": 0.9,
+    "pick": 0.3,
+    "string": 0.5,
+    "mute": 0.4,
+    "tone": 0.3,
+    "drive": 0.3
+  }
+}

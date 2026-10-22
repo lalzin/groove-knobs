@@ -7,12 +7,19 @@ namespace
 double noteHz (int note) { return 440.0 * std::pow (2.0, (note - 69) / 12.0); }
 } // namespace
 
+int SlapperDsp::engineIndexOf (const juce::var& json)
+{
+    const auto e = json.getProperty ("engine", "string").toString();
+    return (int) (e == "analog" ? Engine::analog : e == "fm" ? Engine::fm : e == "pulse" ? Engine::pulse : Engine::string);
+}
+
 void SlapperDsp::prepare (double sampleRate, int, int)
 {
     sr = sampleRate;
     for (int i = 0; i < numVoices; ++i)
     {
         voices[(size_t) i].prepare (sr);
+        synths[(size_t) i].prepare (sr);
         voiceSeed[(size_t) i] = 0x9e3779b9u * (std::uint32_t) (i + 1);
     }
     amp.prepare (sr);
@@ -25,6 +32,8 @@ void SlapperDsp::prepare (double sampleRate, int, int)
 void SlapperDsp::reset()
 {
     for (auto& v : voices)
+        v.reset();
+    for (auto& v : synths)
         v.reset();
     voiceNote.fill (-1);
     for (auto& e : pending)
@@ -56,6 +65,53 @@ float SlapperDsp::humanRandom (int voice) noexcept
     auto& s = voiceSeed[(size_t) voice];
     s = s * 1664525u + 1013904223u;
     return (float) (s >> 8) / 8388608.0f - 1.0f;
+}
+
+SynthParams SlapperDsp::synthParamsFor (int voice) noexcept
+{
+    const float human = std::clamp (knobs[humanKnob], 0.0f, 1.0f);
+    SynthParams p;
+    p.engine = engine;
+    p.attack = knobs[attackKnob];
+    p.pick = knobs[pickKnob] * (1.0f + 0.03f * human * humanRandom (voice));
+    p.string = knobs[stringKnob];
+    p.body = knobs[bodyKnob];
+    p.mute = knobs[muteKnob];
+    p.funk = funk;
+    return p;
+}
+
+void SlapperDsp::start (int slot, double hz, float velocity)
+{
+    // the other kind of voice in this slot, if it still sounds, is let go
+    if (engine == Engine::string)
+    {
+        if (synths[(size_t) slot].isActive())
+            synths[(size_t) slot].noteOff();
+        voices[(size_t) slot].noteOn (hz, velocity, paramsFor (slot, velocity));
+    }
+    else
+    {
+        if (voices[(size_t) slot].isActive())
+            voices[(size_t) slot].noteOff();
+        synths[(size_t) slot].noteOn (hz, velocity, synthParamsFor (slot));
+    }
+    slotEngine[(size_t) slot] = engine;
+}
+
+void SlapperDsp::slide (int slot, double hz)
+{
+    const double semis = 12.0 * std::log2 (hz / slotHz (slot));
+    if (slotEngine[(size_t) slot] == Engine::string)
+        voices[(size_t) slot].glideTo (hz, glideSeconds (semis));
+    else
+        synths[(size_t) slot].glideTo (hz, glideSeconds (semis));
+}
+
+void SlapperDsp::letGo (int slot)
+{
+    voices[(size_t) slot].noteOff();
+    synths[(size_t) slot].noteOff();
 }
 
 NoteParams SlapperDsp::paramsFor (int voice, float velocity) noexcept
@@ -116,11 +172,13 @@ void SlapperDsp::handle (const juce::MidiMessage& m, float)
         bendRatio = std::pow (2.0, (m.getPitchWheelValue() - 8192) / 8192.0 * 2.0 / 12.0);
         for (auto& v : voices)
             v.setBend (bendRatio);
+        for (auto& v : synths)
+            v.setBend (bendRatio);
     }
     else if (m.isAllNotesOff() || m.isAllSoundOff())
     {
-        for (auto& v : voices)
-            v.noteOff();
+        for (int i = 0; i < numVoices; ++i)
+            letGo (i);
         numHeld = 0;
         for (auto& e : pending)
             e.used = false;
@@ -133,10 +191,10 @@ void SlapperDsp::play (int note, float velocity)
     ++order;
     if (! poly)
     {
-        auto& v = voices[0];
         // HUMAIN: the velocity ±6 %
         const float vel = std::clamp (velocity * (1.0f + 0.06f * knobs[humanKnob] * humanRandom (0)), 0.01f, 1.0f);
-        const bool legato = numHeld > 0 && v.isHeld() && velocity >= Voice::ghostVelocity;
+        // (a slide stays on the engine that is sounding; a new preset's engine starts with the next pluck)
+        const bool legato = numHeld > 0 && slotHeld (0) && velocity >= Voice::ghostVelocity && slotEngine[0] == engine;
         // the held keys: this one on top (moved there if already held)
         for (int i = 0; i < numHeld; ++i)
             if (heldKeys[(size_t) i] == note)
@@ -149,9 +207,9 @@ void SlapperDsp::play (int note, float velocity)
         if (numHeld < (int) heldKeys.size())
             heldKeys[(size_t) numHeld++] = note;
         if (legato)
-            v.glideTo (hz, glideSeconds (12.0 * std::log2 (hz / v.currentHz())));
+            slide (0, hz);
         else
-            v.noteOn (hz, vel, paramsFor (0, vel));
+            start (0, hz, vel);
         voiceNote[0] = note;
     }
     else
@@ -160,24 +218,24 @@ void SlapperDsp::play (int note, float velocity)
         // released one, else the oldest
         int best = -1;
         for (int i = 0; i < numVoices && best < 0; ++i)
-            if (voiceNote[(size_t) i] == note && voices[(size_t) i].isActive())
+            if (voiceNote[(size_t) i] == note && slotActive (i))
                 best = i;
         for (int i = 0; i < numVoices && best < 0; ++i)
-            if (! voices[(size_t) i].isActive())
+            if (! slotActive (i))
                 best = i;
         if (best < 0)
         {
             std::int64_t oldest = std::numeric_limits<std::int64_t>::max();
             for (int pass = 0; pass < 2 && best < 0; ++pass)
                 for (int i = 0; i < numVoices; ++i)
-                    if ((pass == 1 || ! voices[(size_t) i].isHeld()) && voiceOrder[(size_t) i] < oldest)
+                    if ((pass == 1 || ! slotHeld (i)) && voiceOrder[(size_t) i] < oldest)
                     {
                         oldest = voiceOrder[(size_t) i];
                         best = i;
                     }
         }
         const float vel = std::clamp (velocity * (1.0f + 0.06f * knobs[humanKnob] * humanRandom (best)), 0.01f, 1.0f);
-        voices[(size_t) best].noteOn (hz, vel, paramsFor (best, vel));
+        start (best, hz, vel);
         voiceNote[(size_t) best] = note;
         voiceOrder[(size_t) best] = order;
     }
@@ -204,23 +262,21 @@ void SlapperDsp::release (int note)
         --numHeld;
         if (! wasTop)
             return;
-        auto& v = voices[0];
-        if (numHeld > 0 && v.isHeld())
+        if (numHeld > 0 && slotHeld (0))
         {
             // back to the key still held (a trill, a hammer-on / pull-off)
             const int back = heldKeys[(size_t) numHeld - 1];
-            const double hz = noteHz (back);
-            v.glideTo (hz, glideSeconds (12.0 * std::log2 (hz / v.currentHz())));
+            slide (0, noteHz (back));
             voiceNote[0] = back;
         }
         else
-            v.noteOff();
+            letGo (0);
     }
     else
     {
         for (int i = 0; i < numVoices; ++i)
-            if (voiceNote[(size_t) i] == note && voices[(size_t) i].isHeld())
-                voices[(size_t) i].noteOff();
+            if (voiceNote[(size_t) i] == note && slotHeld (i))
+                letGo (i);
     }
 }
 
@@ -259,25 +315,26 @@ void SlapperDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, c
                 e.velocity > 0.0f ? play (e.note, e.velocity) : release (e.note);
             }
         float y = 0.0f;
-        for (auto& v : voices)
-            if (v.isActive())
-                y += v.process();
-        // (the amp's filters redesigned every 32 samples while TIMBRE moves, not every sample)
-        const float d = driveSmooth.next(), t = toneSmooth.next();
-        if ((clock & 31) == 0)
+        for (int v = 0; v < numVoices; ++v)
         {
-            amp.drive = d;
-            amp.tone = t;
+            if (voices[(size_t) v].isActive())
+                y += voices[(size_t) v].process();
+            if (synths[(size_t) v].isActive())
+                y += synths[(size_t) v].process();
         }
-        const float out = amp.process (1.5f * y) * volume.next();
+        // (both move every sample: the amp is built for it)
+        amp.drive = driveSmooth.next();
+        amp.tone = toneSmooth.next();
+        // (the amp's soft limiter tops out near 0.95: -6 dB after it, VOL +6 dB stays under the safety clip)
+        const float out = 0.5f * amp.process (1.5f * y) * volume.next();
         left[i] = out;
         if (right != nullptr)
             right[i] = out;
         envelope = std::max (std::fabs (out), envelope * 0.9995f);
         ++clock;
     }
-    for (auto& v : voices)
-        active += v.isActive() ? 1 : 0;
+    for (int v = 0; v < numVoices; ++v)
+        active += slotActive (v) ? 1 : 0;
     telemetry.activeVoices.store (active);
     telemetry.level.store (envelope);
     for (int ch = 2; ch < buffer.getNumChannels(); ++ch)
