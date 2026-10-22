@@ -9,3 +9,9 @@ dist/
 *.log
 web-assets/**/*.png
 web-assets/*.png
+
+# SLAPPER prototype: builds and renders
+prototypes/slapper/render
+prototypes/slapper/metrics
+prototypes/slapper/scan
+renders/
