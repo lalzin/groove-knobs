@@ -79,6 +79,7 @@ int PhazeMascot::chooseFrame (float macro, float bypass, bool musicOn)
             return calm[cycle (2.0) % 4];
         }
         case Status::ok:
+        case Status::ducking:
         default:
             // a foot tap per kick; every fourth kick, a cheer (held ~a beat)
             if (kicksInMood % 4 == 3 && (snapshot || s.time - kickTime < 0.45))

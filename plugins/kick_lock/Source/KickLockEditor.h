@@ -45,8 +45,8 @@ private:
     std::unique_ptr<PhaseGauge> gauge;
     std::unique_ptr<Scope> scope;
     std::unique_ptr<MetricsBar> metrics;
-    std::unique_ptr<LockButton> lockButton;
-    std::unique_ptr<juce::ButtonParameterAttachment> lockAttachment;
+    std::unique_ptr<LockButton> lockButton, phaseButton;
+    std::unique_ptr<juce::ButtonParameterAttachment> lockAttachment, phaseAttachment;
     std::unique_ptr<gk::ChoiceSelector> shape, release, mode, trigger, linkSel, monoSel;
     std::vector<std::unique_ptr<gk::SmallKnob>> knobs;
     std::unique_ptr<juce::Component> panelsHolder;

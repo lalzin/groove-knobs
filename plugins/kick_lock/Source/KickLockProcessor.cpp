@@ -28,7 +28,9 @@ namespace
         // the engine does the dry / wet itself (MIX is that knob); the generic
         // crossfade only keeps 0 % bit-exact (the dry path)
         cfg.transparencyZone = 0.001f;
-        cfg.switches = { { "lock", "Lock", "LOCK", false } };
+        // PHASE: the phase analysis (off: the ducking alone — a pad, a synth;
+        // no CPU spent on it); LOCK: the sub turned in phase with the kick
+        cfg.switches = { { "lock", "Lock", "LOCK", false }, { "phase", "Phase analysis", "PHASE", true } };
         cfg.knobs = { { "targetPhase", "Target phase", "TARGET", 0.0f, 0.0f, 360.0f, 1.0f, juce::String::fromUTF8 ("\xc2\xb0") },
                       { "offsetMs", "Offset", "OFFSET", 0.0f, -20.0f, 20.0f, 1.0f, "ms" },
                       { "subCutoff", "Sub cutoff", "SUB CUT", 120.0f, 80.0f, 150.0f, 1.0f, "Hz" },

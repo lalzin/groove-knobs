@@ -6,7 +6,7 @@
 namespace kl
 {
 /** Status of the phase indicator (computed on the audio thread). */
-enum class Status { ok, shifted, unstable, weakSub, noKick, monoLoss };
+enum class Status { ok, shifted, unstable, weakSub, noKick, monoLoss, ducking }; // ducking: the sidechain alone, no phase analysis (see analysisReason)
 
 /** UI telemetry: lock-free (atomics; the scope rings are read racily, which
     only ever shows a sample from the previous frame). */
@@ -15,6 +15,9 @@ struct KickTelemetry
     static constexpr int scopeDecimation = 8;
     std::atomic<float> phaseErrorDeg { 0.0f }, phaseConfidence { 0.0f }, phaseVariance { 1.0f };
     std::atomic<float> kickPhaseDeg { 0.0f }; // the kick's own phase where it meets the sub (the lock's aim); 0 = unknown
+    // why no phase analysis at the last kick: 0 analysed, 1 PHASE off, 2 no kick heard (the tempo's beats),
+    // 3 no bass on the track (nothing under SUB CUT: a pad, a synth — sidechained, not phased)
+    std::atomic<int> analysisReason { 0 };
     std::atomic<float> subLevelDb { -120.0f }, kickLevelDb { -120.0f }, monoSumLossDb { 0.0f };
     std::atomic<float> f0Hz { 0.0f }, shiftMs { 0.0f }, duckGain { 1.0f };
     std::atomic<int> kickEvents { 0 }, status { (int) Status::noKick };
@@ -50,7 +53,7 @@ struct KickTelemetry
 class KickLockDsp final : public gk::OneKnobEngine
 {
 public:
-    static constexpr int lockSwitch = 0;
+    static constexpr int lockSwitch = 0, phaseSwitch = 1;
     static constexpr int targetKnob = 0, offsetKnob = 1, subCutKnob = 2, depthKnob = 3, waveStartKnob = 4, thresholdKnob = 5;
     static constexpr int shapeChoice = 0, releaseChoice = 1, modeChoice = 2, triggerChoice = 3, linkChoice = 4, monoChoice = 5;
     // MONO BELOW: Off, then these frequencies (the low band made mono)
@@ -98,7 +101,7 @@ public:
         lowest note measured (40 Hz), then the 5 ms crossfade, before the kick
         is heard. */
     static constexpr double measureFloorHz = 40.0;
-    static constexpr double steadyLimit = 0.04; // the low band one period later: further than this, not lockable
+    static constexpr double steadyLimit = 0.04; // the fundamental's phase drift (degrees / 600: 24 deg): further, not lockable
     static int baseLatencyFor (double sampleRate) noexcept
     {
         const int legacy = (int) std::round (firSeconds * sampleRate) + (int) std::round (advanceSeconds * sampleRate);
@@ -121,7 +124,11 @@ public:
     void reset() override;
     int getLatencySamples() const override { return latency; }
     void setPreset (int) override {}
-    void setSwitches (const bool* on, int n) override { lock = n > lockSwitch && on[lockSwitch]; }
+    void setSwitches (const bool* on, int n) override
+    {
+        lock = n > lockSwitch && on[lockSwitch];
+        phaseOn = n <= phaseSwitch || on[phaseSwitch];
+    }
     void setKnobs (const float* v, int n) override;
     void setChoices (const int* idx, int n) override;
     void setSidechain (const float* const* channels, int numChannels, int numSamples) override;
@@ -145,7 +152,7 @@ public:
     static double fitPeriod (const float* x, int n, double rate, double T0, int harmonics = 0, double* residualOut = nullptr) noexcept;
 
 private:
-    void onKick (std::int64_t when, int extra = 0);
+    void onKick (std::int64_t when, int extra = 0, int source = 1);
     void updatePitch() noexcept;
     /** The phase (degrees, 0 = rising zero crossing) and amplitude of the
         fundamental at `at`, from the `length` samples of the bass that follow
@@ -178,13 +185,13 @@ private:
     std::int64_t clock = 0, mask = 0;
 
     // parameters
-    bool lock = false;
+    bool lock = false, phaseOn = true;
     float targetPhase = 0.0f, offsetMs = 0.0f, subCutoff = 120.0f, depth = 1.0f, waveStart = 0.0f, thresholdDb = -18.0f;
     int shape = exponential, release = 2, lockMode = continuous, trigger = triggerAuto, linkChannel = 1;
     std::int64_t lastSidechainKick = -1000000; // the last kick on the sidechain (Auto: the beats take over 2 s after)
     double lastBeatFloor = 0.0;
     bool beatValid = false;
-    void addTrigger (std::int64_t onset);
+    void addTrigger (std::int64_t onset, int source);
 
     // the link (Kick Lock Send): its kicks on the song's grid, placed on ours
     KickLinkReceiver link;
@@ -246,6 +253,7 @@ private:
     float fir (int channel, int kernel) const noexcept;
     std::array<std::int64_t, 4> pendingKicks {};
     std::array<int, 4> pendingExtra {}; // samples more of the bass waited for (a note changed on the kick)
+    std::array<int, 4> pendingSource {}; // what triggered it (telemetry.triggerSource's codes)
     int pendingCount = 0;
     std::array<std::vector<float>, 2> input, sub; // rings (absolute time & mask)
     // the fundamental alone, the only part that is shifted: the bass projected
@@ -269,7 +277,7 @@ private:
     // tracking changes, then the rotation goes where the kick wants it
     void requestRetrack (std::int64_t from, double T) noexcept;
     bool rotationIdle() const noexcept { return fadeStart < 0 && std::abs (wrap180 (psiNow)) < 1.0e-3 && std::abs (wrap180 (psiTo)) < 1.0e-3; } // (whole turns: none)
-    double trackPeriod = 0.0;
+    double trackPeriod = 0.0, heldPeriod = 0.0; // heldPeriod: the note the held correction was set for
     bool retrackPending = false, rampPending = false;
     std::int64_t retrackFrom = 0, pendingHold = 0;
     double retrackT = 0.0, pendingPsi = 0.0, pendingReturn = 1.0;
@@ -318,7 +326,7 @@ private:
     int fadeLength = 240;
     double lastPhase = 0.0, lastConfidence = 0.0;
     float subPeak = 0.0f, subPeakDecay = 0.99999f;
-    float subRms = 0.0f, rmsCoeff = 0.001f, midRms = 0.0f, sideRms = 0.0f, lrRms = 0.0f;
+    float subRms = 0.0f, bassRms = 0.0f, rmsCoeff = 0.001f, midRms = 0.0f, sideRms = 0.0f, lrRms = 0.0f;
 
     KickTelemetry telemetry;
     int scopeCounter = 0;

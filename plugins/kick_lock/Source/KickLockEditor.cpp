@@ -21,7 +21,8 @@ namespace
     {
         switch ((Status) st)
         {
-            case Status::ok: return green;
+            case Status::ok:
+            case Status::ducking: return green;
             case Status::shifted: return amber;
             case Status::unstable:
             case Status::monoLoss: return red;
@@ -41,6 +42,7 @@ namespace
             case Status::unstable: return "UNSTABLE";
             case Status::weakSub: return "LOW SUB";
             case Status::monoLoss: return "MONO LOSS";
+            case Status::ducking: return "DUCKING";
             case Status::noKick:
             default: return "NO KICK";
         }
@@ -58,6 +60,7 @@ namespace
             case Status::unstable: return "Unstable phase: the sub moves too much to be locked (glide, FM, noise)";
             case Status::weakSub: return "The sub is too quiet to measure its phase";
             case Status::monoLoss: return "Mono sum: cancellation detected (the sides are out of phase)";
+            case Status::ducking: return "Ducking only, no phase analysis";
             case Status::noKick:
             default: return "Nothing to follow: press play (TRIGGER Auto or Beat follow the tempo); for the kick itself, put Kick Lock Send "
                             "on the kick's track (or route it to the sidechain)";
@@ -107,7 +110,8 @@ public:
         const int st = preview >= 0 ? preview : proc.getDsp().getTelemetry().status.load (std::memory_order_relaxed);
         const bool lock = proc.getLockParameter().get();
         const bool bypassed = proc.getBypassParameterObject().get();
-        const int key = (bypassed ? 100 : st) + 1000 * proc.getDsp().getTelemetry().triggerSource.load (std::memory_order_relaxed);
+        const int key = (bypassed ? 100 : st) + 1000 * proc.getDsp().getTelemetry().triggerSource.load (std::memory_order_relaxed)
+                        + 10000 * proc.getDsp().getTelemetry().analysisReason.load (std::memory_order_relaxed);
         if (key != shownKey || lock != shownLock)
         {
             shownKey = key;
@@ -115,7 +119,11 @@ public:
             shownLock = lock;
             const int source = proc.getDsp().getTelemetry().triggerSource.load (std::memory_order_relaxed);
             text = bypassed ? juce::String ("BYPASS") : statusWord (st, lock) + (st != (int) Status::noKick ? sourceSuffix (source) : juce::String());
+            const int reason = proc.getDsp().getTelemetry().analysisReason.load (std::memory_order_relaxed);
+            static const char* why[] { "", ": PHASE is off", ": no kick heard (the host's beats: put Kick Lock Send on the kick's track, or use the sidechain)",
+                                       ": no bass on this track (nothing under SUB CUT) - the sidechain works on anything" };
             setTooltip (bypassed ? juce::String ("Bypassed")
+                                 : st == (int) Status::ducking ? statusSentence (st, lock) + why[juce::jlimit (0, 3, reason)]
                                  : statusSentence (st, lock) + (st == (int) Status::noKick ? juce::String()
                                                                : source == 2 ? juce::String (" (on the host's beats: no kick on the sidechain)")
                                                                : source == 3 ? " (the kicks of " + proc.getDsp().linkName() + ", through Kick Lock Send)"
@@ -185,7 +193,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto b = getLocalBounds().toFloat();
-        const bool measuring = status != (int) Status::noKick && status != (int) Status::weakSub;
+        const bool measuring = status != (int) Status::noKick && status != (int) Status::weakSub && status != (int) Status::ducking;
         g.setColour (palette (cream).withAlpha (0.55f));
         g.setFont (gk::GrooveFonts::font (11.0f).withExtraKerningFactor (0.12f));
         g.drawText ("PHASE ON KICK", b.withHeight (14.0f), juce::Justification::centred);
@@ -868,7 +876,7 @@ public:
     {
         auto& tel = proc.getDsp().getTelemetry();
         const int st = tel.status.load (std::memory_order_relaxed);
-        const bool measuring = st != (int) Status::noKick && st != (int) Status::weakSub;
+        const bool measuring = st != (int) Status::noKick && st != (int) Status::weakSub && st != (int) Status::ducking;
         const double sr = juce::jmax (1.0, 4.0 * tel.scopeSize); // the rings hold 2 s at 1 in 8
         const float f0 = tel.f0Hz.load (std::memory_order_relaxed);
         const auto dot = fr ("  \xc2\xb7  ");
@@ -935,11 +943,13 @@ private:
 class KickLockEditor::LockButton final : public juce::Button
 {
 public:
-    explicit LockButton (const gk::Palette& p) : juce::Button ("Lock"), palette (p)
+    explicit LockButton (const gk::Palette& p, bool phaseIcon = false) : juce::Button (phaseIcon ? "Phase" : "Lock"), palette (p), phase (phaseIcon)
     {
         setClickingTogglesState (true);
-        setTitle ("Lock");
-        setTooltip ("LOCK: puts the sub in phase with every kick");
+        setTitle (phaseIcon ? "Phase analysis" : "Lock");
+        setTooltip (phaseIcon ? "PHASE: analyses the sub's phase at each kick (needed by LOCK). Off: the ducking alone, no analysis "
+                                "(for a pad, a synth...). Off by itself when there is no bass or no kick heard."
+                              : "LOCK: puts the sub in phase with every kick");
         setWantsKeyboardFocus (true);
         setMouseCursor (juce::MouseCursor::PointingHandCursor);
     }
@@ -960,6 +970,28 @@ public:
         }
         g.setColour (palette (palette.outline));
         g.drawRoundedRectangle (b, b.getHeight() * 0.5f, 2.0f);
+        const float alpha = isEnabled() ? 1.0f : 0.35f;
+        if (phase)
+        {
+            // a sine
+            const auto ink = on ? palette (palette.outline) : palette (cream).withAlpha (0.6f * alpha);
+            const float cx = b.getX() + b.getHeight() * 0.62f, cy = b.getCentreY(), w = b.getHeight() * 0.5f, h = b.getHeight() * 0.18f;
+            juce::Path sine;
+            for (int i = 0; i <= 24; ++i)
+            {
+                const float x = cx - w * 0.5f + w * (float) i / 24.0f, y = cy - h * std::sin (juce::MathConstants<float>::twoPi * (float) i / 24.0f);
+                if (i == 0)
+                    sine.startNewSubPath (x, y);
+                else
+                    sine.lineTo (x, y);
+            }
+            g.setColour (ink);
+            g.strokePath (sine, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            g.setColour (on ? palette (palette.outline) : palette (cream).withAlpha (0.75f * alpha));
+            g.setFont (gk::GrooveFonts::font (16.0f).withExtraKerningFactor (0.08f));
+            g.drawText ("PHASE", b.withTrimmedLeft (b.getHeight() * 1.05f), juce::Justification::centredLeft);
+            return;
+        }
         // padlock: body + shackle (open when off)
         const float s = b.getHeight() * 0.42f;
         const auto body = juce::Rectangle<float> (s, s * 0.78f).withCentre ({ b.getX() + b.getHeight() * 0.62f, b.getCentreY() + s * 0.22f });
@@ -967,17 +999,18 @@ public:
         const float lift = on ? 0.0f : s * 0.22f;
         shackle.addCentredArc (body.getCentreX(), body.getY() - lift, s * 0.3f, s * 0.36f, 0.0f, -juce::MathConstants<float>::halfPi,
                                juce::MathConstants<float>::halfPi, true);
-        const auto ink = on ? palette (palette.outline) : palette (cream).withAlpha (0.6f);
+        const auto ink = on ? palette (palette.outline) : palette (cream).withAlpha (0.6f * alpha);
         g.setColour (ink);
         g.strokePath (shackle, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         g.fillRoundedRectangle (body, 2.0f);
-        g.setColour (on ? palette (palette.outline) : palette (cream).withAlpha (0.75f));
+        g.setColour (on ? palette (palette.outline) : palette (cream).withAlpha (0.75f * alpha));
         g.setFont (gk::GrooveFonts::font (16.0f).withExtraKerningFactor (0.08f));
         g.drawText ("LOCK", b.withTrimmedLeft (b.getHeight() * 1.05f), juce::Justification::centredLeft);
     }
 
 private:
     const gk::Palette& palette;
+    bool phase = false;
 };
 
 //==============================================================================
@@ -1031,10 +1064,13 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
     // next to MIX: the kick threshold (left), LOCK and its MODE (right)
     lockButton = std::make_unique<LockButton> (pal);
     lockAttachment = std::make_unique<juce::ButtonParameterAttachment> (proc.getLockParameter(), *lockButton);
-    addToCanvas (*lockButton, { 488, 284, 86, 36 });
+    addToCanvas (*lockButton, { 488, 326, 86, 36 });
+    phaseButton = std::make_unique<LockButton> (pal, true);
+    phaseAttachment = std::make_unique<juce::ButtonParameterAttachment> (proc.getPhaseParameter(), *phaseButton);
+    addToCanvas (*phaseButton, { 488, 284, 86, 36 });
     mode = std::make_unique<gk::ChoiceSelector> (p.getLockModeParameter(), "MODE", lime, pal);
     mode->setTooltip ("Hold: the correction holds from one kick to the next. Transition: only around the kick, then back to the original bass.");
-    addToCanvas (*mode, { 492, 332, 80, 38 });
+    addToCanvas (*mode, { 492, 372, 80, 38 });
 
     trigger = std::make_unique<gk::ChoiceSelector> (p.getTriggerParameter(), "TRIGGER", orange, pal);
     trigger->setTooltip ("Auto: the kicks of Kick Lock Send on the same LINK number (put it on the kick's track), else the host's beats. "
@@ -1097,6 +1133,12 @@ void KickLockEditor::editorTick (double dt)
         return;
     status->update (previewStatus);
     gauge->update (previewStatus, snap);
+    // LOCK needs the phase analysis
+    if (const bool phaseOn = proc.getPhaseParameter().get(); lockButton->isEnabled() != phaseOn)
+    {
+        lockButton->setEnabled (phaseOn);
+        mode->setEnabled (phaseOn);
+    }
     // TARGET, OFFSET, SUB CUT, WAVE START (knobs 0..3): touched, hovered or
     // automated, the scope explains what it does (Alan: "trop obscur")
     {

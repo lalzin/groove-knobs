@@ -256,6 +256,8 @@ void KickLockDsp::reset()
     periodSamples = cleanPeriod = 0.0;
     pitchHoldUntil = pitchHoldNote = -1;
     trackPeriod = 0.0;
+    bassRms = 0.0f;
+    heldPeriod = 0.0;
     retrackPending = rampPending = false;
     yinAperiodicity = 1.0f;
     psiNow = psiFrom = psiTo = 0.0;
@@ -746,33 +748,49 @@ double KickLockDsp::refinePeriod (std::int64_t from, std::int64_t to, double T0)
 
 double KickLockDsp::steadiness (std::int64_t from, std::int64_t to, double T) const noexcept
 {
-    // the low band against itself one period later (0 = the same cycle over
-    // and over; a glide, a wide FM, a noise sub: far from it)
-    const int n = lowBand (from, to, T), lag = (int) std::round (T / lowStep), m = n - lag; // (1 in 4)
-    if (lag < 2 || m < lag / 4)
-        return -1.0; // too short to tell
-    // (a correlation: a note fading out, or ending in the window, still
-    // repeats its cycle — lockable; only its shape against itself counts)
-    double xy = 0.0, xx = 0.0, yy = 0.0;
-    for (int i = 0; i < m; ++i)
+    // How far the fundamental's phase drifts over the stretch: its phase over
+    // one period, every half period, against the first (all at 1 / T, from
+    // one origin): a held note stays put — whatever its timbre does (a
+    // filter closing over the note changed its shape: the old measure, the
+    // low band against itself one period later, called it unsteady); a glide,
+    // a wide FM, a noise sub drift. Returned as degrees / 600 (the limits:
+    // 0.04 = 24 deg, 0.01 = 6 deg); -1 when too short to tell (1.5 periods)
+    const int n = lowBand (from, to, T), W = (int) std::round (T / lowStep);
+    if (W < 4 || n < W + W / 2)
+        return -1.0;
+    const double w = juce::MathConstants<double>::twoPi * lowStep / T, cw = std::cos (w), sw = std::sin (w);
+    auto phaseAt = [&] (int offset)
     {
-        const double x = analysis[(size_t) i], y = analysis[(size_t) (i + lag)];
-        xy += x * y;
-        xx += x * x;
-        yy += y * y;
-    }
-    return xx > 1.0e-12 && yy > 1.0e-12 ? 1.0 - xy / std::sqrt (xx * yy) : -1.0;
+        double c = std::cos (w * offset), sn = std::sin (w * offset), I = 0.0, Q = 0.0;
+        for (int k = 0; k < W; ++k)
+        {
+            const double x = analysis[(size_t) (offset + k)];
+            I += x * c;
+            Q += x * sn;
+            const double nc = c * cw - sn * sw;
+            sn = sn * cw + c * sw;
+            c = nc;
+        }
+        return std::atan2 (I, Q) * 180.0 / juce::MathConstants<double>::pi;
+    };
+    const double first = phaseAt (0);
+    double drift = 0.0;
+    for (int offset = juce::jmax (1, W / 2); offset + W <= n; offset += juce::jmax (1, W / 2))
+        drift = juce::jmax (drift, std::abs (wrap180 (phaseAt (offset) - first)));
+    return drift / 600.0;
 }
 
 double KickLockDsp::periodBetween (std::int64_t from, std::int64_t to) const noexcept
 {
     // on the low band (a saw's harmonics made the third one look like the note)
-    constexpr int D = 2 * lowStep; // (~6 kHz)
+    // (the coarse search at ~3 kHz, plenty under 160 Hz: the refinement after
+    // it gives the precision — a kick's analysis must stay cheap)
+    constexpr int D = 4 * lowStep;
     std::array<float, 2048> x {};
     const int all = lowBand (from, to, 0.0);
-    const int n = juce::jmin (all / 2, (int) x.size());
+    const int n = juce::jmin (all / 4, (int) x.size());
     for (int i = 0; i < n; ++i)
-        x[(size_t) i] = 0.5f * (analysis[(size_t) (2 * i)] + analysis[(size_t) (2 * i + 1)]);
+        x[(size_t) i] = 0.25f * (analysis[(size_t) (4 * i)] + analysis[(size_t) (4 * i + 1)] + analysis[(size_t) (4 * i + 2)] + analysis[(size_t) (4 * i + 3)]);
     const double rate = sampleRate / D;
     // a young note: as long a lag as the data allows (a fifth of it left to
     // compare: enough for a clean synth note, not a guess)
@@ -999,7 +1017,7 @@ void KickLockDsp::pollLink (const gk::BlockTiming& timing, int numSamples)
     telemetry.linkSlot.store (slot, std::memory_order_relaxed);
 }
 
-void KickLockDsp::addTrigger (std::int64_t onset)
+void KickLockDsp::addTrigger (std::int64_t onset, int source)
 {
     // the ducking knows it now; its phase is measured once the sub is known
     // there (8 ms later)
@@ -1009,11 +1027,12 @@ void KickLockDsp::addTrigger (std::int64_t onset)
     if (pendingCount < (int) pendingKicks.size())
     {
         pendingExtra[(size_t) pendingCount] = 0;
+        pendingSource[(size_t) pendingCount] = source;
         pendingKicks[(size_t) pendingCount++] = onset;
     }
 }
 
-void KickLockDsp::onKick (std::int64_t when, int extra)
+void KickLockDsp::onKick (std::int64_t when, int extra, int source)
 {
     if (extra == 0)
     {
@@ -1021,6 +1040,29 @@ void KickLockDsp::onKick (std::int64_t when, int extra)
         telemetry.recentKicks[(size_t) (count % 4)].store (when, std::memory_order_relaxed);
         telemetry.lastKickSample.store (when, std::memory_order_relaxed);
         telemetry.kickEvents.store (count, std::memory_order_release);
+    }
+    // No phase analysis (the ducking alone, nothing turned): PHASE off; no
+    // kick heard (the tempo's beats: Auto without Kick Lock Send nor the
+    // sidechain, or Beat — the kick's own time is not known); or no bass on
+    // the track (a pad, a synth sidechained: under SUB CUT less than a
+    // quarter of its level, or under -50 dB). Alan: "le but est de
+    // sidechainer aussi d'autre chose que des subs"
+    {
+        const bool bass = subRms > 1.0e-5f && subRms >= 0.25f * bassRms;
+        const int reason = ! phaseOn ? 1 : source == 2 ? 2 : ! bass ? 3 : 0;
+        telemetry.analysisReason.store (reason, std::memory_order_relaxed);
+        if (reason != 0)
+        {
+            rampTo (0.0, when + releaseFor (when), returnFor (when));
+            rampPending = false;
+            kickPhase = 0.0;
+            prevKick = when;
+            lastConfidence = 1.0;
+            telemetry.phaseConfidence.store (1.0f, std::memory_order_relaxed);
+            telemetry.phaseErrorDeg.store (0.0f, std::memory_order_relaxed);
+            telemetry.kickPhaseDeg.store (0.0f, std::memory_order_relaxed);
+            return;
+        }
     }
     // the bass known after the kick: the room before it is heard (+ what was
     // waited for, see below)
@@ -1045,7 +1087,7 @@ void KickLockDsp::onKick (std::int64_t when, int extra)
     const auto earliest = young ? lastNoteStart + (std::int64_t) (0.005 * sampleRate) : to - (std::int64_t) (0.08 * sampleRate);
     double local = 0.0;
     std::int64_t localFrom = to;
-    const int waitMax = (int) (0.02 * sampleRate);
+    const int waitMax = (int) (0.025 * sampleRate);
     const bool lastChance = extra >= waitMax;
     // 1. a note held across the kick: the long stretch before it (80, 60 ms)
     // (not again on a second look at a held note: it did not hold the first
@@ -1101,7 +1143,7 @@ void KickLockDsp::onKick (std::int64_t when, int extra)
             }
         }
     }
-    // not yet: wait for more of the bass — up to 20 ms: the sub is ducked
+    // not yet: wait for more of the bass — up to 25 ms: the sub is ducked
     // under the kick there, the rotation (5 ms) still comes before it is back
     if (local <= 1.0 && ! lastChance && pendingCount < (int) pendingKicks.size())
     {
@@ -1110,8 +1152,10 @@ void KickLockDsp::onKick (std::int64_t when, int extra)
         {
             pendingKicks[(size_t) n] = pendingKicks[(size_t) n - 1];
             pendingExtra[(size_t) n] = pendingExtra[(size_t) n - 1];
+            pendingSource[(size_t) n] = pendingSource[(size_t) n - 1];
         }
         pendingKicks[0] = when;
+        pendingSource[0] = source;
         pendingExtra[0] = waitMax; // (one more look, not one every 5 ms: each look costs)
         ++pendingCount;
         return;
@@ -1242,6 +1286,16 @@ void KickLockDsp::onKick (std::int64_t when, int extra)
     // an unsure measurement with LOCK: Continu keeps the correction where it
     // is (frozen), Transition makes none at this kick
     const bool sure = measured && (! lock || conf >= 0.7);
+    // Hold, unsure, on another note than the one the correction was set for
+    // (a bass melody: Alan saw it off): not that note's correction — none
+    if (! sure && lock && lockMode == continuous && heldPeriod > 1.0 && T > 1.0 && std::abs (T / heldPeriod - 1.0) > 0.01)
+    {
+        rampPending = false;
+        rampTo (0.0, when + releaseFor (when), returnFor (when));
+        heldPeriod = 0.0;
+    }
+    if (sure && lock)
+        heldPeriod = T;
     if (sure || ! lock || lockMode == transition)
     {
         const double psi = sure ? targetPsiFor (phase, T) : targetPsiFor (targetPhase + kickPhase, T);
@@ -1448,6 +1502,12 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         }
         mono[(size_t) (aligned & mask)] = monoSub;
         subRms += (monoSub * monoSub - subRms) * rmsCoeff;
+        {
+            float raw = 0.0f; // the whole bass, aligned with the sub (its share under SUB CUT: is there a bass at all?)
+            for (int c = 0; c < nch; ++c)
+                raw += input[(size_t) c][(size_t) (aligned & mask)] / (float) nch;
+            bassRms += (raw * raw - bassRms) * rmsCoeff;
+        }
         subPeak = juce::jmax (subRms, subPeak * subPeakDecay); // the bass's recent level (mean square), ~1 s memory
         // pitch: decimated (box average, the sub is far below its Nyquist)
         if (++decCounter >= decimation)
@@ -1461,7 +1521,8 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             if (++yinHop >= 32)
             {
                 yinHop = 0;
-                updatePitch();
+                if (phaseOn)
+                    updatePitch(); // (PHASE off: no pitch to follow)
             }
         }
 
@@ -1503,7 +1564,7 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             {
                 lastSidechainKick = onset;
                 telemetry.triggerSource.store (1, std::memory_order_relaxed);
-                addTrigger (onset);
+                addTrigger (onset, 1);
             }
         }
         // the link's kicks, at their own time (the sidechain leads in Auto)
@@ -1516,7 +1577,7 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
                 {
                     lastLinkKick = onset;
                     telemetry.triggerSource.store (3, std::memory_order_relaxed);
-                    addTrigger (onset);
+                    addTrigger (onset, 3);
                 }
             }
             else
@@ -1544,7 +1605,7 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
                 if (useBeats && b - lastBeatFloor < 2.0 * timing.beatsPerSample + 1.0e-9)
                 {
                     telemetry.triggerSource.store (2, std::memory_order_relaxed);
-                    addTrigger (clock);
+                    addTrigger (clock, 2);
                 }
             }
             else if (std::floor (b) > lastBeatFloor)
@@ -1555,21 +1616,22 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
                 if (useBeats)
                 {
                     telemetry.triggerSource.store (2, std::memory_order_relaxed);
-                    addTrigger (clock);
+                    addTrigger (clock, 2);
                 }
             }
         }
         if (pendingCount > 0 && clock >= pendingKicks[0] + measureLength() + pendingExtra[0] + (std::int64_t) (0.001 * sampleRate))
         {
             const auto when = pendingKicks[0];
-            const int extra = pendingExtra[0];
+            const int extra = pendingExtra[0], source = pendingSource[0];
             for (int n = 1; n < pendingCount; ++n)
             {
                 pendingKicks[(size_t) n - 1] = pendingKicks[(size_t) n];
                 pendingExtra[(size_t) n - 1] = pendingExtra[(size_t) n];
+                pendingSource[(size_t) n - 1] = pendingSource[(size_t) n];
             }
             --pendingCount;
-            onKick (when, extra);
+            onKick (when, extra, source);
         }
         // a retrack waiting for the rotation at 0 (see requestRetrack) — here,
         // after this sample's tracking: retrack recomputes up to it included
@@ -1733,6 +1795,8 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
     const float err = std::abs (telemetry.phaseErrorDeg.load (std::memory_order_relaxed));
     if (clock - lastKick > noKickSamples)
         st = Status::noKick; // no trigger at all: no kick, and no beat (the host is stopped)
+    else if (telemetry.analysisReason.load (std::memory_order_relaxed) != 0)
+        st = Status::ducking; // the sidechain alone (PHASE off, no kick heard, no bass)
     else if (lossDb > 3.0f)
         st = Status::monoLoss;
     else if (subDb < -50.0f)

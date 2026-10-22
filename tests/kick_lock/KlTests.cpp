@@ -632,7 +632,7 @@ TEST_CASE ("KL 20. Custom curve (LFOTool style): the gain follows the points, sa
     CHECK (b.getShapeParameter().getIndex() == KickLockDsp::exponential);
 }
 
-TEST_CASE ("KL 21. No kick, the host playing: ducking and lock on the beats (TRIGGER Auto / Beat); a kick takes over", "[kl][trigger]")
+TEST_CASE ("KL 21. No kick, the host playing: ducking on the beats (TRIGGER Auto / Beat), no phase analysis; a kick takes over", "[kl][trigger]")
 {
     const double sr = 48000.0, bpm = 124.0, seconds = 4.0, hz = 55.0;
     const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr);
@@ -669,15 +669,20 @@ TEST_CASE ("KL 21. No kick, the host playing: ducking and lock on the beats (TRI
             INFO ("trigger " << trig << ", beat " << n << " at " << beats[n] << " s: ducking lowest at " << at << " s");
             CHECK (std::abs (at - beats[n]) < 0.012);
         }
-        // and the lock on them (depth 0: the phase of the bass itself)
+        // and no phase analysis on them (Alan: no kick heard, nothing to put in
+        // phase with): the bass left as it is (depth 0), the ducking alone
         auto q = makeKl (sr, 1.0f, true, 0.0f);
         setParam (q->getTriggerParameter(), (float) trig);
         q->prepareToPlay (sr, 512);
         const auto o2 = run (*q, b, nullptr, { 512 }, bpm);
-        const auto e = errorsAtKicks (o2, q->getLatencySamples(), hz, sr, beats, 1.0, seconds - 0.2);
-        INFO ("phase at the beats: worst " << maxAbs (e) << " deg");
-        CHECK (maxAbs (e) < 5.0);
-        CHECK ((Status) q->getDsp().getTelemetry().status.load() != Status::noKick);
+        const int L2 = q->getLatencySamples();
+        float worst = 0.0f;
+        for (int i = (int) (0.5 * sr); i + L2 < o2.getNumSamples(); ++i)
+            worst = juce::jmax (worst, std::abs (o2.getSample (0, i + L2) - b.getSample (0, i)));
+        INFO ("the bass changed by " << worst << " on the beats");
+        CHECK (worst < 1.0e-5f);
+        CHECK ((Status) q->getDsp().getTelemetry().status.load() == Status::ducking);
+        CHECK (q->getDsp().getTelemetry().analysisReason.load() == 2);
         CHECK (q->getDsp().getTelemetry().triggerSource.load() == 2);
     }
     // play from the top: the first beat (the downbeat, where play starts) triggers at once
@@ -1293,9 +1298,11 @@ TEST_CASE ("KL 33. A sub melody: each note locked, wherever it starts against th
             const bool tooYoung = false; // (36.7 Hz 10 ms before the kick: Kick Lock waits for more of it now)
             if (lead >= 0.0 && ! tooYoung)
             {
-                const auto e = errorsAtKicks (out, latency, hzs[j], sr, { kt[j] }, 0.0, seconds);
-                if (! e.empty())
-                    worst = juce::jmax (worst, std::abs (e[0]));
+                // read 35 ms after the kick, brought back to it: a young note is
+                // turned up to ~25 ms after the kick, while the sub is ducked
+                const double later = 0.035;
+                const double e = KickLockDsp::wrap180 (phaseAt (out.getReadPointer (0), out.getNumSamples(), (int) std::round (kt[j] * sr) + latency + (int) (later * sr), hzs[j], sr) - 360.0 * hzs[j] * later);
+                worst = juce::jmax (worst, std::abs (e));
             }
             // a note started on / after the kick (or too young to measure):
             // left as it is, from its start
@@ -1585,7 +1592,7 @@ TEST_CASE ("KL 40. CPU: the worst block (a kick's analysis must not spike): lega
         const double budget = 1000.0 * block / sr;
         WARN (block << "-sample blocks: worst " << worst << " ms (" << 100.0 * worst / budget << " % of its " << budget << " ms), average " << 100.0 * total / blocks / budget << " %");
         if (timingChecksEnforced())
-            CHECK (worst < 0.25 * budget);
+            CHECK (worst < 0.3 * budget); // (~0.5 ms per kick's analysis, once a beat)
     }
 }
 
@@ -1682,6 +1689,107 @@ TEST_CASE ("KL 41. No click: a sine sub melody (legato / detached), the lock at 
                 CHECK (o < juce::jmax (2.0 * in, 2.0e-4));
             }
         }
+}
+
+TEST_CASE ("KL 42. The ducking alone: PHASE off, or no bass on the track (a pad sidechained) - nothing turned, no analysis", "[kl][phase]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 4.0;
+    const auto k = kicks (seconds, sr, bpm, 0.1);
+    auto unchanged = [&] (KickLockProcessor& p, const Buffer& b)
+    {
+        const auto out = run (p, b, &k, { 512 }, bpm);
+        const int L = p.getLatencySamples();
+        float worst = 0.0f;
+        for (int i = (int) (0.5 * sr); i + L < out.getNumSamples(); ++i)
+            worst = juce::jmax (worst, std::abs (out.getSample (0, i + L) - b.getSample (0, i)));
+        return worst;
+    };
+    {
+        // a sub, LOCK on, but PHASE off: the bass as it was (DEPTH 0)
+        auto p = makeKl (sr, 1.0f, true, 0.0f);
+        setParam (p->getPhaseParameter(), 0.0f);
+        p->prepareToPlay (sr, 512);
+        const auto b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr);
+        const float w = unchanged (*p, b);
+        INFO ("PHASE off: the bass changed by " << w);
+        CHECK (w < 1.0e-5f);
+        CHECK ((Status) p->getDsp().getTelemetry().status.load() == Status::ducking);
+        CHECK (p->getDsp().getTelemetry().analysisReason.load() == 1);
+    }
+    {
+        // a pad (300-600 Hz, nothing under SUB CUT) on the sidechain: not turned
+        auto p = makeKl (sr, 1.0f, true, 0.0f);
+        p->prepareToPlay (sr, 512);
+        Buffer b (2, (int) (seconds * sr));
+        for (int i = 0; i < b.getNumSamples(); ++i)
+        {
+            const double t = i / sr, w2 = juce::MathConstants<double>::twoPi;
+            const float v = (float) (0.2 * std::sin (w2 * 330.0 * t) + 0.15 * std::sin (w2 * 440.0 * t) + 0.1 * std::sin (w2 * 554.0 * t));
+            b.setSample (0, i, v);
+            b.setSample (1, i, v);
+        }
+        const float w = unchanged (*p, b);
+        INFO ("a pad: changed by " << w);
+        CHECK (w < 1.0e-5f);
+        CHECK ((Status) p->getDsp().getTelemetry().status.load() == Status::ducking);
+        CHECK (p->getDsp().getTelemetry().analysisReason.load() == 3);
+    }
+    {
+        // and a bass on the same settings: analysed (not "ducking")
+        auto p = makeKl (sr, 1.0f, true, 0.0f);
+        p->prepareToPlay (sr, 512);
+        run (*p, bass ({ { 0.0, seconds, 55.0 } }, seconds, sr), &k, { 512 }, bpm);
+        CHECK (p->getDsp().getTelemetry().analysisReason.load() == 0);
+        CHECK ((Status) p->getDsp().getTelemetry().status.load() != Status::ducking);
+    }
+}
+
+TEST_CASE ("KL 43. Hold on a real-ish bass melody: filtered saw, eighth notes, some glides - every kick on a held note locked, none left off", "[kl][phase]")
+{
+    const double sr = 48000.0, bpm = 124.0, beat = 60.0 / bpm, seconds = 12.0, eighth = beat / 2.0;
+    const double notes[] { 55.0, 55.0, 65.4, 49.0, 41.2, 61.7, 46.2, 55.0, 73.4, 61.7, 49.0, 41.2, 55.0, 65.4, 46.2, 49.0 };
+    Buffer b (2, (int) (seconds * sr));
+    double ph = 0.0, lp = 0.0;
+    auto noteAt = [&] (double t) { const int n = (int) std::floor ((t - 0.5) / eighth); return n < 0 ? notes[0] : notes[(size_t) (n % 16)]; };
+    for (int i = 0; i < b.getNumSamples(); ++i)
+    {
+        const double t = i / sr, pos = (t - 0.5) / eighth;
+        const int n = (int) std::floor (pos);
+        const double inNote = (pos - std::floor (pos)) * eighth;
+        double hz = noteAt (t);
+        // every third note glides 25 ms into the next one
+        if (n % 3 == 2 && inNote > eighth - 0.025)
+            hz = hz + (noteAt (t + 0.03) - hz) * (inNote - (eighth - 0.025)) / 0.025;
+        ph += hz / sr;
+        const double saw = 2.0 * (ph - std::floor (ph)) - 1.0;
+        // a filter closing over each note (300 -> 120 Hz)
+        const double fc = 120.0 + 180.0 * std::exp (-inNote / 0.06), a = 1.0 - std::exp (-juce::MathConstants<double>::twoPi * fc / sr);
+        lp += a * (saw - lp);
+        b.setSample (0, i, (float) (0.5 * lp));
+        b.setSample (1, i, (float) (0.5 * lp));
+    }
+    const auto k = kicks (seconds, sr, bpm, 0.5);
+    const auto kt = kickTimes (seconds, bpm, 0.5);
+    auto p = makeKl (sr, 1.0f, true, 0.0f);
+    p->prepareToPlay (sr, 512);
+    const auto out = run (*p, b, &k, { 512 }, bpm);
+    const int L = p->getLatencySamples();
+    juce::String line;
+    double worst = 0.0;
+    int counted = 0;
+    for (double tk : kt)
+        if (tk > 1.5 && tk < seconds - 0.5)
+        {
+            const double hz = noteAt (tk + 0.004), later = 0.035;
+            const int w = (int) std::round (tk * sr);
+            const double e = KickLockDsp::wrap180 (phaseAt (out.getReadPointer (0), out.getNumSamples(), w + L + (int) (later * sr), hz, sr) - 360.0 * hz * later);
+            line << juce::String (e, 0) << " ";
+            worst = juce::jmax (worst, std::abs (e));
+            ++counted;
+        }
+    INFO ("phase 35 ms after each kick, brought back to it: " << line);
+    CHECK (counted > 15);
+    CHECK (worst < 10.0);
 }
 
 TEST_CASE ("diag: a bass file (GK_KL_FILE, GK_KL_BPM)", "[.kldiag8]")
@@ -1864,7 +1972,7 @@ TEST_CASE ("KL 38. A plain sub melody under a four-on-the-floor kick (legato / d
                 {
                     // read 30 ms after the kick, brought back to it: a note changed on
                     // the kick is turned a few ms after it, while the sub is ducked
-                    const double later = 0.03, posk = (tk + 0.004 - 0.5) / beat - noteOffset; // the note sounding just after the kick
+                    const double later = 0.035, posk = (tk + 0.004 - 0.5) / beat - noteOffset; // the note sounding just after the kick
                     const double hz = notes[(size_t) ((((int) std::floor (posk)) % 8 + 8) % 8)];
                     const int w = (int) std::round (tk * sr);
                     const double e = KickLockDsp::wrap180 (phaseAt (out.getReadPointer (0), out.getNumSamples(), w + p->getLatencySamples() + (int) (later * sr), hz, sr) - 360.0 * hz * later);

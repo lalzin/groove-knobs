@@ -16,6 +16,7 @@ public:
     KickLockDsp& getDsp() noexcept { return static_cast<KickLockDsp&> (getEngine()); }
     juce::RangedAudioParameter& getMixParameter() noexcept { return getAmountParameter(); }
     juce::AudioParameterBool& getLockParameter() noexcept { return getSwitchParameter (KickLockDsp::lockSwitch); }
+    juce::AudioParameterBool& getPhaseParameter() noexcept { return getSwitchParameter (KickLockDsp::phaseSwitch); }
     juce::RangedAudioParameter& getTargetPhaseParameter() noexcept { return getKnobParameter (KickLockDsp::targetKnob); }
     juce::RangedAudioParameter& getOffsetParameter() noexcept { return getKnobParameter (KickLockDsp::offsetKnob); }
     juce::RangedAudioParameter& getSubCutoffParameter() noexcept { return getKnobParameter (KickLockDsp::subCutKnob); }
