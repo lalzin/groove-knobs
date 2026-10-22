@@ -1,0 +1,9 @@
+{
+  "name": "Finger Round",
+  "funk": 0.2,
+  "params": {
+    "attack": 0.05,
+    "pick": 0.25,
+    "drive": 0.15
+  }
+}

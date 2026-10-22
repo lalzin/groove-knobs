@@ -1,0 +1,11 @@
+{
+  "name": "Deep Thumb",
+  "funk": 0.4,
+  "params": {
+    "attack": 0.45,
+    "pick": 0.2,
+    "mute": 0.3,
+    "tone": -0.45,
+    "drive": 0.2
+  }
+}

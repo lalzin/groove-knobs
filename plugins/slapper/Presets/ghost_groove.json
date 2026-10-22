@@ -1,0 +1,9 @@
+{
+  "name": "Ghost Groove",
+  "funk": 0.5,
+  "params": {
+    "mute": 0.6,
+    "attack": 0.6,
+    "human": 0.4
+  }
+}

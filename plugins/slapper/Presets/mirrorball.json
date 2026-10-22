@@ -1,0 +1,11 @@
+{
+  "name": "Mirrorball",
+  "funk": 0.45,
+  "params": {
+    "attack": 0.3,
+    "pick": 0.14,
+    "drive": 0.25,
+    "tone": 0.2,
+    "body": 0.35
+  }
+}

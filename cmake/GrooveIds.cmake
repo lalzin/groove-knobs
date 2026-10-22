@@ -59,3 +59,10 @@ set(KLS_PLUGIN_CODE        "KkLs")
 set(KLS_AU_TYPE            "aufx")          # kAudioUnitType_Effect
 set(KLS_BUNDLE_ID          "${GK_BUNDLE_ID_PREFIX}.kicklocksend")
 set(KLS_VERSION            "${KL_VERSION}")  # ships with Kick Lock
+
+# Slapper (physical-modelling funk bass instrument) — in test, not in the suite yet
+set(SL_PRODUCT_NAME        "Slapper")
+set(SL_PLUGIN_CODE         "Slpr")
+set(SL_AU_TYPE             "aumu")          # kAudioUnitType_MusicDevice
+set(SL_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.slapper")
+set(SL_VERSION             "0.1.0")

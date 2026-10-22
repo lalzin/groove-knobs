@@ -1,5 +1,8 @@
 # Changelog
 
+## Slapper 0.1.0-test1 — 2026-10-22 (version de test, hors suite)
+- **Slapper** (nouveau, en test) : une basse funk modélisée — une corde (une résonance par harmonique, chacune son amortissement : des aigus qui meurent vite, une fondamentale qui tient), trois attaques mélangées par ATTACK (doigt, slap du pouce avec son rebond, pop), la corde qui tape les frettes (le clac), un micro de P-bass, un sub calé sur la fondamentale, un ampli (saturation suréchantillonnée, baffle modal). FUNK, de la basse ronde au slap agressif. MONO (glissés legato, ghost notes) / POLY 6 cordes, HUMAIN, pitch bend. 12 presets. Pluck la basse en mascotte.
+
 ## 0.1.5 — 2026-10-22 (toute la suite, six plugins)
 - Toute la suite en 0.1.5 (la 0.1.3 n'était jamais sortie) : **Kick Lock** + Kick Lock Send (voir Kick Lock 0.1.5 et 0.1.4 ci-dessous), **Sing It Back** en chœur (voir 0.1.3), la pastille de valeur du grand knob à la largeur de son texte. L'installateur de la suite (macOS et Windows) contient les six plugins, Kick Lock avec Kick Lock Send.
 

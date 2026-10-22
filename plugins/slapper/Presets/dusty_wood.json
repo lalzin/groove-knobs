@@ -1,0 +1,9 @@
+{
+  "name": "Dusty Wood",
+  "funk": 0.35,
+  "params": {
+    "string": 0.8,
+    "body": 0.7,
+    "tone": -0.3
+  }
+}

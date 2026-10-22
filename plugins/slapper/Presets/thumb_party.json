@@ -1,0 +1,9 @@
+{
+  "name": "Thumb Party",
+  "funk": 0.85,
+  "params": {
+    "attack": 0.5,
+    "drive": 0.5,
+    "human": 0.3
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Disco Octaves",
+  "funk": 0.3,
+  "params": {
+    "attack": 0.1,
+    "pick": 0.12,
+    "string": 0.5,
+    "mute": 0.15,
+    "tone": 0.1,
+    "human": 0.15
+  }
+}

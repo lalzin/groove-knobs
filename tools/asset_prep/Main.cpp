@@ -8,7 +8,9 @@
 // numbers then follow the detected characters, row by row.
 // A sheet may give a region, its own grid and a size factor:
 //   <sheet>#<x>,<y>,<w>,<h>@<cols>x<rows>*<factor>^<inset>:<cells>   (inset: see --inset, this sheet only)
-// (e.g. a single big drawing: big.png@1x1*1.1:0). --scale-to-first: every sheet
+// (e.g. a single big drawing: big.png@1x1*1.1:0). <sheet>~<x>,<y>,<w>,<h>[;...] (before
+// any # region, in the sheet's own pixels) paints a rectangle with the
+// background first: an effect drawn on the sheet (a "Zzz") goes away. --scale-to-first: every sheet
 // is brought to the first sheet's character size (default: to the largest).
 // Cells are numbered row by row. Frames are written in the order given
 // (mascot_0.png, mascot_1.png, ...); a sheet may appear several times.
@@ -557,11 +559,28 @@ int main (int argc, char** argv)
             if (r.size() == 4)
                 region = { r[0].getIntValue(), r[1].getIntValue(), r[2].getIntValue(), r[3].getIntValue() };
         }
+        std::vector<juce::Rectangle<int>> erase; // several: x,y,w,h;x,y,w,h
+        if (path.contains ("~"))
+        {
+            for (const auto& one : juce::StringArray::fromTokens (path.fromLastOccurrenceOf ("~", false, false), ";", ""))
+                if (const auto r = juce::StringArray::fromTokens (one, ",", ""); r.size() == 4)
+                    erase.push_back ({ r[0].getIntValue(), r[1].getIntValue(), r[2].getIntValue(), r[3].getIntValue() });
+            path = path.upToLastOccurrenceOf ("~", false, false);
+        }
         auto sheet = juce::ImageFileFormat::loadFrom (cwd.getChildFile (path));
         if (! sheet.isValid())
         {
             std::cerr << "cannot load " << path << "\n";
             return 1;
+        }
+        if (! erase.empty() && sheet.isValid())
+        {
+            sheet = sheet.convertedToFormat (juce::Image::ARGB);
+            const auto bg = sampleBackground (sheet);
+            juce::Graphics g (sheet);
+            g.setColour (bg);
+            for (const auto& r : erase)
+                g.fillRect (r);
         }
         if (! region.isEmpty())
             sheet = sheet.getClippedImage (region.getIntersection (sheet.getBounds())).createCopy();

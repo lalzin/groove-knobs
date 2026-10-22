@@ -1,0 +1,12 @@
+{
+  "name": "Soul Mute",
+  "funk": 0.15,
+  "params": {
+    "attack": 0.0,
+    "pick": 0.35,
+    "mute": 0.7,
+    "tone": -0.4,
+    "drive": 0.2,
+    "human": 0.25
+  }
+}

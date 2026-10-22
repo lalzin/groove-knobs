@@ -1,0 +1,11 @@
+{
+  "name": "Slap Attack",
+  "funk": 1.0,
+  "params": {
+    "attack": 0.6,
+    "drive": 0.7,
+    "tone": 0.5,
+    "human": 0.2,
+    "string": 0.5
+  }
+}

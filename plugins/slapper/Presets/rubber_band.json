@@ -1,0 +1,11 @@
+{
+  "name": "Rubber Band",
+  "funk": 0.7,
+  "params": {
+    "attack": 0.55,
+    "mute": 0.45,
+    "string": 0.3,
+    "human": 0.35,
+    "tone": -0.1
+  }
+}

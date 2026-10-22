@@ -1,0 +1,9 @@
+{
+  "name": "Pop Shop",
+  "funk": 0.6,
+  "params": {
+    "attack": 0.9,
+    "pick": 0.2,
+    "body": 0.4
+  }
+}

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Builds dist/<Plugin>-<version>-macOS.pkg (universal VST3 + AU + app).
 #
-#   scripts/make_installer_mac.sh [--skip-build] [FF|BT|BW|PP|SIB|KL]
+#   scripts/make_installer_mac.sh [--skip-build] [FF|BT|BW|PP|SIB|KL|SL]
 #   FF = French Filter (default), BT = Boogie Trio, BW = Backwash, PP = Pew Pew,
-#   SIB = Sing It Back, KL = Kick Lock
+#   SIB = Sing It Back, KL = Kick Lock, SL = Slapper
 #
 # Signing: the "Developer ID Application" and "Developer ID Installer"
 # certificates are found in the keychain automatically (or set DEV_ID_APP /
@@ -38,7 +38,7 @@ SKIP_BUILD=0; P=FF
 for a in "$@"; do
   case "$a" in
     --skip-build) SKIP_BUILD=1 ;;
-    FF|BT|BW|PP|SIB|KL) P="$a" ;;
+    FF|BT|BW|PP|SIB|KL|SL) P="$a" ;;
     *) echo "unknown argument: $a"; exit 2 ;;
   esac
 done
@@ -53,6 +53,7 @@ case "$P" in
   PP) DIR=pew_pew;       TARGET=PewPew;       RES="$ROOT/installer/mac/pew_pew" ;;
   SIB) DIR=sing_it_back; TARGET=SingItBack;   RES="$ROOT/installer/mac/sing_it_back" ;;
   KL) DIR=kick_lock;     TARGET=KickLock;     RES="$ROOT/installer/mac/kick_lock" ;;
+  SL) DIR=slapper;       TARGET=Slapper;      RES="$ROOT/installer/mac/slapper" ;;
 esac
 FILE_NAME="${PRODUCT// /}"   # "French Filter" -> FrenchFilter
 
