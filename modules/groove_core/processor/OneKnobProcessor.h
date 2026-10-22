@@ -78,6 +78,9 @@ struct OneKnobConfig
         still holds one entry, the internal defaults). The editor then shows no
         preset bar (the plugin draws its own bottom bar). */
     bool hasPresetParameter = true;
+    /** The plugin sets other parameters when the preset changes (Slapper:
+        FUNK and its knobs): "preset" is then a meta parameter (auval). */
+    bool presetSetsParameters = false;
 
     /** Small global knobs, after the switches (before the choices); the
         engine gets their values every block (OneKnobEngine::setKnobs). */

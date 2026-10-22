@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ids="$ROOT/cmake/GrooveIds.cmake"
 get() { sed -nE "s/^set\($1 +\"([^\"]*)\".*/\1/p" "$ids"; }
-# scripts/run_auval.sh [FF|BT|BW|PP|SIB] [build-dir]   (default FF = French Filter, BT = Boogie Trio, BW = Backwash, PP = Pew Pew)
+# scripts/run_auval.sh [FF|BT|BW|PP|SIB|KL|KLS|SL] [build-dir]   (default FF = French Filter, BT = Boogie Trio, BW = Backwash, PP = Pew Pew, SL = Slapper)
 P="${1:-FF}"
 TYPE="$(get ${P}_AU_TYPE)"; SUB="$(get ${P}_PLUGIN_CODE)"; MANU="$(get GK_MANUFACTURER_CODE)"
 echo "auval -v $TYPE $SUB $MANU"
@@ -21,6 +21,7 @@ case "$P" in
   SIB) ART="$BUILD/plugins/sing_it_back/SingItBack_artefacts/Release" ;;
   KL) ART="$BUILD/plugins/kick_lock/KickLock_artefacts/Release" ;;
   KLS) ART="$BUILD/plugins/kick_lock_send/KickLockSend_artefacts/Release" ;;
+  SL) ART="$BUILD/plugins/slapper/Slapper_artefacts/Release" ;;
 esac
 COMP="$(ls -d "$ART"/AU/*.component 2>/dev/null | head -1 || true)"
 TMP=""

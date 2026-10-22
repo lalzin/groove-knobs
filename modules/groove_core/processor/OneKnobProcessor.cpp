@@ -174,7 +174,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
     // is a "meta" parameter (AU validation checks this).
     if (cfg.hasPresetParameter)
         layout.add (std::make_unique<juce::AudioParameterChoice> (presetId, "Preset", cfg.presets.getNames(), 0,
-                                                                  juce::AudioParameterChoiceAttributes().withMeta (! cfg.toggles.empty())));
+                                                                  juce::AudioParameterChoiceAttributes().withMeta (! cfg.toggles.empty() || cfg.presetSetsParameters)));
     for (const auto& t : cfg.toggles)
     {
         const bool def = cfg.presets.size() > 0 && (bool) cfg.presets[0].json.getProperty ("toggles", {}).getProperty (t.id, false);

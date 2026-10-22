@@ -33,6 +33,7 @@ namespace
                       { "level", "Volume", "VOL", 0.0f, -60.0f, 6.0f, 3.02f, "dB" } };
         cfg.choices = { { "mode", "Mode", "MODE", { "Mono", "Poly" }, 0, true } };
         cfg.editorBuildsControls = false;
+        cfg.presetSetsParameters = true; // a preset sets FUNK and the knobs (auval: a meta parameter)
         cfg.engineAlwaysRuns = true;   // the strings ring at any knob position
         cfg.featuresFromOutput = true; // no input: the UI follows the output
         cfg.tailSeconds = 5.0;         // a low E rings ~5 s
