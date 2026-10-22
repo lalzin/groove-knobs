@@ -140,6 +140,13 @@ void KickLockDsp::prepare (double sr, int maxBlock, int nch)
     designKernel (kernels[0], subCutoff, sr);
     kernelCutoff = { subCutoff, -1.0f };
     activeKernel = 0;
+    for (int m = 1; m < monoOptions; ++m)
+    {
+        monoKernels[(size_t) m].assign ((size_t) firLength, 0.0f);
+        designKernel (monoKernels[(size_t) m], monoHz (m), sr);
+    }
+    sideHistory.assign ((size_t) (2 * firLength), 0.0f);
+    monoFadeLength = juce::jmax (1, (int) std::round (0.03 * sr));
     kernelFadeLength = juce::jmax (1, (int) std::round (kernelFadeSeconds * sr));
     std::int64_t size = 1;
     while (size < (std::int64_t) ((maxDelaySeconds + 0.6) * sr))
@@ -165,6 +172,7 @@ void KickLockDsp::prepare (double sr, int maxBlock, int nch)
     mono.assign ((size_t) size, 0.0f);
     envRing.assign ((size_t) size, 0.0f);
     kickRing.assign ((size_t) size, 0.0f);
+    sideLow.assign ((size_t) size, 0.0f);
     {
         std::int64_t n = 1;
         while (n < (std::int64_t) (2.0 * sr / KickTelemetry::scopeDecimation))
@@ -190,6 +198,10 @@ void KickLockDsp::prepare (double sr, int maxBlock, int nch)
 
 void KickLockDsp::reset()
 {
+    std::fill (sideHistory.begin(), sideHistory.end(), 0.0f);
+    std::fill (sideLow.begin(), sideLow.end(), 0.0f);
+    monoFrom = monoTo = monoBelow;
+    monoFade = 0;
     for (auto& h : firHistory)
         std::fill (h.begin(), h.end(), 0.0f);
     firPos = 0;
@@ -276,6 +288,7 @@ void KickLockDsp::setChoices (const int* idx, int n)
     lockMode = n > modeChoice ? juce::jlimit (0, 1, idx[modeChoice]) : continuous;
     trigger = n > triggerChoice ? juce::jlimit (0, 3, idx[triggerChoice]) : triggerAuto;
     linkChannel = n > linkChoice ? juce::jlimit (0, KickLinkMemory::channels - 1, idx[linkChoice]) : 1;
+    monoBelow = n > monoChoice ? juce::jlimit (0, monoOptions - 1, idx[monoChoice]) : 0;
 }
 
 void KickLockDsp::setSidechain (const float* const* channels, int n, int)
@@ -1191,7 +1204,49 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             h[(size_t) (firPos + firLength)] = x;
             input[(size_t) c][(size_t) (clock & mask)] = x;
         }
+        if (nch == 2)
+        {
+            const float side = 0.5f * (buffer.getSample (0, i) - buffer.getSample (1, i));
+            sideHistory[(size_t) firPos] = side;
+            sideHistory[(size_t) (firPos + firLength)] = side;
+        }
         firPos = firPos + 1 == firLength ? 0 : firPos + 1;
+        // MONO BELOW: the side's low band (aligned like the sub); a new
+        // setting crossfades over 30 ms
+        if (nch == 2)
+        {
+            if (monoBelow != monoTo && monoFade == 0)
+            {
+                monoFrom = monoTo;
+                monoTo = monoBelow;
+                monoFade = monoFadeLength;
+            }
+            auto low = [&] (int m)
+            {
+                if (m <= 0)
+                    return 0.0f;
+                const float* h = sideHistory.data() + firPos;
+                const float* k = monoKernels[(size_t) m].data();
+                float a0 = 0.0f, a1 = 0.0f;
+                int j = 0;
+                for (; j + 2 <= firLength; j += 2)
+                {
+                    a0 += h[j] * k[j];
+                    a1 += h[j + 1] * k[j + 1];
+                }
+                for (; j < firLength; ++j)
+                    a0 += h[j] * k[j];
+                return a0 + a1;
+            };
+            float lowSide = monoTo > 0 || monoFade > 0 ? low (monoTo) : 0.0f;
+            if (monoFade > 0)
+            {
+                const float a = (float) monoFade / (float) monoFadeLength;
+                lowSide = a * low (monoFrom) + (1.0f - a) * lowSide;
+                --monoFade;
+            }
+            sideLow[(size_t) (aligned & mask)] = lowSide;
+        }
         // a bass note starting (a jump of the level against the last ~50 ms):
         // the rotation back to 0 before it reaches the output (L later; the
         // fundamental's window starts T/2 before it, so within L - T/2)
@@ -1477,13 +1532,21 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         const float cr = rotate ? (float) std::cos (psi) : 1.0f, sr = rotate ? (float) std::sin (psi) : 0.0f;
         float outs[2] {};
         float scopeSub = 0.0f, scopeLow = 0.0f;
+        // MONO BELOW: the side's low band out (L - it, R + it); the
+        // fundamental's rotation the same on both sides (it is under it)
+        const bool monoLow = nch == 2 && (monoTo > 0 || monoFade > 0);
+        const float lowSide = monoLow ? sideLow[(size_t) (t & mask)] : 0.0f;
+        float rotMono = 0.0f;
+        if (monoLow && rotate)
+            for (int c = 0; c < 2; ++c)
+                rotMono += 0.5f * ((cr - 1.0f) * fund[(size_t) c][(size_t) (t & mask)] + sr * fundQ[(size_t) c][(size_t) (t & mask)]);
         for (int c = 0; c < nch; ++c)
         {
             const auto ti = (size_t) (t & mask);
-            const float x = input[(size_t) c][ti];
+            const float x = input[(size_t) c][ti] + (monoLow ? (c == 0 ? -lowSide : lowSide) : 0.0f);
             const float e = fund[(size_t) c][ti], q = fundQ[(size_t) c][ti];
             // the fundamental rotated by psi (cos psi e + sin psi q) instead of itself
-            outs[c] = duck * (rotate ? x + (cr - 1.0f) * e + sr * q : x);
+            outs[c] = duck * (rotate ? x + (monoLow ? rotMono : (cr - 1.0f) * e + sr * q) : x);
             scopeSub += (cr * e + sr * q) / (float) nch;
             // the output's low band (under SUB CUT: the sub, its rotation included)
             scopeLow += duck * (sub[(size_t) c][ti] + (rotate ? (cr - 1.0f) * e + sr * q : 0.0f)) / (float) nch;

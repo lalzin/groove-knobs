@@ -37,7 +37,6 @@ private:
     class StatusPill;
     class PhaseGauge;
     class Scope;
-    class SubWave;
     class MetricsBar;
     class LockButton;
 
@@ -45,11 +44,10 @@ private:
     std::unique_ptr<StatusPill> status;
     std::unique_ptr<PhaseGauge> gauge;
     std::unique_ptr<Scope> scope;
-    std::unique_ptr<SubWave> wave;
     std::unique_ptr<MetricsBar> metrics;
     std::unique_ptr<LockButton> lockButton;
     std::unique_ptr<juce::ButtonParameterAttachment> lockAttachment;
-    std::unique_ptr<gk::ChoiceSelector> shape, release, mode, trigger, linkSel;
+    std::unique_ptr<gk::ChoiceSelector> shape, release, mode, trigger, linkSel, monoSel;
     std::vector<std::unique_ptr<gk::SmallKnob>> knobs;
     std::unique_ptr<juce::Component> panelsHolder;
     int previewStatus = -1, frameCount = 0;

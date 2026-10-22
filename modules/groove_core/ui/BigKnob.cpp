@@ -322,13 +322,17 @@ void BigKnob::paint (juce::Graphics& g)
     // Value badge while hovering / dragging / focused
     if (hovering || dragging || hasKeyboardFocus (false))
     {
-        const auto badge = juce::Rectangle<float> (64.0f, 34.0f).withCentre (centre);
+        // as wide as its text (French Filter's "HP 100 %" ended in "..." in 64 px)
+        const auto text = param.getCurrentValueAsText();
+        const auto font = GrooveFonts::font (21.0f);
+        const float width = juce::jmax (64.0f, juce::GlyphArrangement::getStringWidth (font, text) + 22.0f);
+        const auto badge = juce::Rectangle<float> (width, 34.0f).withCentre (centre);
         g.setColour (pal (palette.plaque));
         g.fillRoundedRectangle (badge, 17.0f);
         g.setColour (pal (palette.outline));
         g.drawRoundedRectangle (badge, 17.0f, 3.0f);
-        g.setFont (GrooveFonts::font (21.0f));
-        g.drawText (param.getCurrentValueAsText(), badge, juce::Justification::centred);
+        g.setFont (font);
+        g.drawText (text, badge, juce::Justification::centred);
     }
 }
 

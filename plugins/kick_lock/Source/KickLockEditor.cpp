@@ -853,99 +853,6 @@ private:
 };
 
 //==============================================================================
-/** Phaze's wave: the sub under its feet. Its crest passes the drum (the
-    centre) on each kick when the phase is right; it lags by the measured
-    error otherwise, wobbles when unstable, splits in two on a mono loss, and
-    lies flat asleep (no kick, bypass). */
-class KickLockEditor::SubWave final : public juce::Component
-{
-public:
-    SubWave (KickLockProcessor& p, const gk::Palette& pal) : proc (p), palette (pal) { path.preallocateSpace (1024); }
-
-    void update (double dt, int preview, bool snap)
-    {
-        auto& tel = proc.getDsp().getTelemetry();
-        status = preview >= 0 ? preview : tel.status.load (std::memory_order_relaxed);
-        const float e = preview >= 0 ? (preview == (int) Status::ok ? 0.0f : 60.0f) : tel.phaseErrorDeg.load (std::memory_order_relaxed);
-        error += (e - error) * (snap ? 1.0f : 0.2f);
-        const int events = tel.kickEvents.load (std::memory_order_relaxed);
-        if (events != kicks)
-        {
-            kicks = events;
-            sinceKick = 0.0;
-        }
-        else
-            sinceKick += dt;
-        time += dt;
-        const bool asleep = proc.getBypassParameterObject().get() || status == (int) Status::noKick;
-        const float target = asleep ? 0.0f : 1.0f;
-        awake += (target - awake) * (snap ? 1.0f : 0.08f);
-        repaint();
-    }
-
-    void paint (juce::Graphics& g) override
-    {
-        const auto b = getLocalBounds().toFloat().reduced (4.0f, 6.0f);
-        const double bpm = juce::jmax (40.0, (double) proc.getFeatures().bpm.load (std::memory_order_relaxed));
-        const double beat = 60.0 / bpm;
-        // phase of the wave at the centre: the crest (90°) on the kick, a
-        // cycle per beat, minus the error measured at the kick
-        const double phase0 = juce::MathConstants<double>::twoPi * (0.25 + sinceKick / beat) - error * juce::MathConstants<double>::pi / 180.0;
-        const float amp = b.getHeight() * 0.42f * awake;
-        const bool unstable = status == (int) Status::unstable, split = status == (int) Status::monoLoss;
-        auto drawWave = [&] (double offset, juce::Colour c, float width)
-        {
-            path.clear();
-            const int n = juce::jmax (2, (int) b.getWidth() / 2);
-            for (int i = 0; i <= n; ++i)
-            {
-                const float x = b.getX() + b.getWidth() * (float) i / (float) n;
-                // 1.5 cycles across, the centre being the drum
-                double ph = phase0 + offset + juce::MathConstants<double>::twoPi * 1.5 * ((double) i / n - 0.5);
-                float a = amp;
-                if (unstable)
-                {
-                    ph += 0.9 * std::sin (time * 7.3 + i * 0.21);
-                    a *= 0.75f + 0.25f * (float) std::sin (time * 5.1 + i * 0.13);
-                }
-                const float y = b.getCentreY() - a * (float) std::sin (ph);
-                if (i == 0)
-                    path.startNewSubPath (x, y);
-                else
-                    path.lineTo (x, y);
-            }
-            g.setColour (palette (c));
-            g.strokePath (path, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        };
-        g.setColour (palette (juce::Colours::black).withAlpha (0.25f));
-        g.fillRoundedRectangle (b.expanded (2.0f, 4.0f), 8.0f);
-        if (split)
-        {
-            drawWave (0.0, lime.withAlpha (0.9f), 2.5f);
-            drawWave (juce::MathConstants<double>::pi, cream.withAlpha (0.85f), 2.5f);
-        }
-        else
-            drawWave (0.0, lime, 3.0f);
-        // the drum's spot: flashes orange on each kick
-        const float flash = (float) juce::jmax (0.0, 1.0 - sinceKick / 0.15) * awake;
-        g.setColour (palette (orange).withAlpha (0.35f + 0.65f * flash));
-        g.fillEllipse (juce::Rectangle<float> (6.0f + 4.0f * flash, 6.0f + 4.0f * flash).withCentre ({ b.getCentreX(), b.getY() + 2.0f }));
-        g.setColour (palette (cream).withAlpha (0.4f));
-        g.setFont (gk::GrooveFonts::font (9.0f));
-        g.drawText ("SUB", b.withTrimmedLeft (2.0f), juce::Justification::topLeft);
-    }
-
-private:
-    KickLockProcessor& proc;
-    const gk::Palette& palette;
-    juce::Path path;
-    int status = (int) Status::noKick, kicks = -1;
-    double sinceKick = 10.0, time = 0.0;
-    float error = 0.0f, awake = 0.0f;
-};
-
-//==============================================================================
-/** The bottom band: the numbers, and the reset button. */
 class KickLockEditor::MetricsBar final : public juce::Component
 {
 public:
@@ -1116,8 +1023,6 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
     addToCanvas (*status, { 576, 17, 132, 28 });
     gauge = std::make_unique<PhaseGauge> (p, pal);
     addToCanvas (*gauge, { 10, 70, 182, 104 });
-    wave = std::make_unique<SubWave> (p, pal);
-    addToCanvas (*wave, { 10, 378, 182, 54 });
     scope = std::make_unique<Scope> (p, pal);
     addToCanvas (*scope, { 204, 66, 374, 202 });
     metrics = std::make_unique<MetricsBar> (p, pal);
@@ -1138,6 +1043,13 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
     linkSel = std::make_unique<gk::ChoiceSelector> (p.getLinkChannelParameter(), "LINK", lime, pal);
     linkSel->setTooltip ("The Kick Lock Send this one listens to: the same LINK number on the kick's track (0 to 10).");
     addToCanvas (*linkSel, { 210, 322, 84, 38 });
+
+    // under Phaze: the bass's low end made mono (the bottom bar measures the
+    // loss in mono; this cures it)
+    monoSel = std::make_unique<gk::ChoiceSelector> (p.getMonoBelowParameter(), "MONO BELOW", lime, pal);
+    monoSel->setTooltip ("Makes the bass mono under this frequency (fully below it, gently up to ~180 Hz above), with no phase shift: "
+                         "the stereo of the highs untouched. Clubs and phones play the low end in mono.");
+    addToCanvas (*monoSel, { 51, 386, 100, 38 });
 
     // the right column: ducking shape, release, the lock's settings, depth
     shape = std::make_unique<gk::ChoiceSelector> (p.getShapeParameter(), "SHAPE", orange, pal);
@@ -1185,7 +1097,6 @@ void KickLockEditor::editorTick (double dt)
         return;
     status->update (previewStatus);
     gauge->update (previewStatus, snap);
-    wave->update (snap ? 0.0 : dt, previewStatus, snap);
     // TARGET, OFFSET, SUB CUT, WAVE START (knobs 0..3): touched, hovered or
     // automated, the scope explains what it does (Alan: "trop obscur")
     {

@@ -23,8 +23,12 @@ namespace
         cfg.amountParamId = "punch";
         cfg.amountParamName = "Punch";
         cfg.bipolar = true;
-        cfg.lowSideLabel = "SOFT";
-        cfg.highSideLabel = "PUNCH";
+        // the value as "S 35 %" / "P 35 %" (Alan: "PUNCH 35 %" did not fit the
+        // knob's badge); the words stay under the knob
+        cfg.lowSideLabel = "S";
+        cfg.highSideLabel = "P";
+        cfg.knobLowLabel = "SOFT";
+        cfg.knobHighLabel = "PUNCH";
         cfg.knobs = { { "sustain", "Sustain", "SUSTAIN", 0.0f, -1.0f, 1.0f },
                       { "sensitivity", "Sensitivity", "SENS", 0.5f } }; // the kick detector (what is sent to Kick Lock)
         // LINK 0..10: the Kick Locks set to the same number receive this track's kicks

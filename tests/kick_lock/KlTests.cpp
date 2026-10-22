@@ -1476,6 +1476,57 @@ TEST_CASE ("KL 36. Aim: in phase with the kick where the sub comes back under it
     }
 }
 
+TEST_CASE ("KL 39. MONO BELOW: the low end mono under the setting, the stereo above untouched, Off bit-exact", "[kl][mono]")
+{
+    // a wide bass: its 55 Hz half out of phase between L and R (a stereo
+    // detune / chorus), and a 400 Hz part wide as well
+    const double sr = 48000.0, bpm = 124.0, seconds = 3.0;
+    Buffer b (2, (int) (seconds * sr));
+    for (int i = 0; i < b.getNumSamples(); ++i)
+    {
+        const double t = i / sr, w = juce::MathConstants<double>::twoPi;
+        b.setSample (0, i, (float) (0.4 * std::sin (w * 55.0 * t) + 0.1 * std::sin (w * 400.0 * t)));
+        b.setSample (1, i, (float) (0.4 * std::sin (w * 55.0 * t + 1.6) + 0.1 * std::sin (w * 400.0 * t + 2.0)));
+    }
+    auto level = [&] (const Buffer& x, bool side, double hz, int from, int len)
+    {
+        double I = 0.0, Q = 0.0;
+        for (int k = 0; k < len; ++k)
+        {
+            const double v = side ? 0.5 * (x.getSample (0, from + k) - x.getSample (1, from + k)) : 0.5 * (x.getSample (0, from + k) + x.getSample (1, from + k));
+            I += v * std::cos (juce::MathConstants<double>::twoPi * hz * k / sr);
+            Q += v * std::sin (juce::MathConstants<double>::twoPi * hz * k / sr);
+        }
+        return 2.0 * std::hypot (I, Q) / len;
+    };
+    for (int setting : { 0, 1, 4, 6 })
+    {
+        auto p = makeKl (sr, 1.0f, false, 0.0f); // no ducking (DEPTH 0), no LOCK: only MONO BELOW at work
+        setParam (p->getMonoBelowParameter(), (float) setting);
+        p->prepareToPlay (sr, 512);
+        const auto out = run (*p, b, nullptr, { 512 }, bpm);
+        const int L = p->getLatencySamples(), from = (int) (1.0 * sr), len = (int) (1.0 * sr);
+        const double side55 = level (out, true, 55.0, from + L, len) / level (b, true, 55.0, from, len);
+        const double side400 = level (out, true, 400.0, from + L, len) / level (b, true, 400.0, from, len);
+        const double mid55 = level (out, false, 55.0, from + L, len) / level (b, false, 55.0, from, len);
+        INFO ("MONO BELOW " << KickLockDsp::monoHz (setting) << " Hz: side at 55 Hz x" << side55 << ", side at 400 Hz x" << side400 << ", mid at 55 Hz x" << mid55);
+        if (setting == 0)
+        {
+            float worst = 0.0f;
+            for (int i = 0; i < b.getNumSamples() - L; ++i)
+                for (int c = 0; c < 2; ++c)
+                    worst = juce::jmax (worst, std::abs (out.getSample (c, i + L) - b.getSample (c, i)));
+            CHECK (worst < 1.0e-6f); // Off: the bass as it was
+        }
+        else
+        {
+            CHECK (side55 < 0.01);                      // mono at 55 Hz (-40 dB of side)
+            CHECK (std::abs (side400 - 1.0) < 0.06);    // the stereo above, untouched (0.5 dB)
+        }
+        CHECK (std::abs (mid55 - 1.0) < 0.01);          // the mono part never touched
+    }
+}
+
 TEST_CASE ("KL 17. CPU: stereo bass + stereo sidechain, LOCK on, 48 kHz", "[kl][cpu]")
 {
     const double sr = 48000.0, bpm = 124.0, seconds = 8.0;

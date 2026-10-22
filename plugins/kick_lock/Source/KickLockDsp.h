@@ -52,7 +52,10 @@ class KickLockDsp final : public gk::OneKnobEngine
 public:
     static constexpr int lockSwitch = 0;
     static constexpr int targetKnob = 0, offsetKnob = 1, subCutKnob = 2, depthKnob = 3, waveStartKnob = 4, thresholdKnob = 5;
-    static constexpr int shapeChoice = 0, releaseChoice = 1, modeChoice = 2, triggerChoice = 3, linkChoice = 4;
+    static constexpr int shapeChoice = 0, releaseChoice = 1, modeChoice = 2, triggerChoice = 3, linkChoice = 4, monoChoice = 5;
+    // MONO BELOW: Off, then these frequencies (the low band made mono)
+    static constexpr int monoOptions = 7;
+    static float monoHz (int index) noexcept { constexpr float hz[monoOptions] { 0.0f, 60.0f, 80.0f, 100.0f, 120.0f, 150.0f, 200.0f }; return hz[juce::jlimit (0, monoOptions - 1, index)]; }
     /** TRIGGER: Auto = Kick Lock Send's kicks (the link) when a Send is on its LINK number, else the
         host's beats; Link (only); Beat (only); Sidechain (the host's sidechain routing, only when chosen:
         Alan's Live did not route it, and anything on it must not hijack the link). */
@@ -231,6 +234,11 @@ private:
     std::array<float, 2> kernelCutoff { -1.0f, -1.0f };
     int activeKernel = 0, kernelFade = 0, kernelFadeLength = 960;
     std::array<std::vector<float>, 2> firHistory; // 2 x length (contiguous window)
+    // MONO BELOW: the side (L - R) / 2 through a linear-phase low-pass (the
+    // sub's kind), taken out of L and put into R at the output
+    std::array<std::vector<float>, monoOptions> monoKernels;
+    std::vector<float> sideHistory, sideLow;
+    int monoBelow = 0, monoFrom = 0, monoTo = 0, monoFade = 0, monoFadeLength = 1;
     int firPos = 0;
     float fir (int channel, int kernel) const noexcept;
     std::array<std::int64_t, 4> pendingKicks {};

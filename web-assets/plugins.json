@@ -330,8 +330,8 @@
         "en": "A crowd singing along with your voice, in one knob"
       },
       "description": {
-        "fr": "De SOLO (ta voix seule) à CROWD (jusqu'à 12 voix) : une foule qui chante avec toi, dans le ton et la gamme, à l'unisson, en harmonie ou à l'octave, chaque voix avec son timing, son vibrato et son timbre — naturelle, pas robotique. 7 styles (Club, Gospel, Stade, Chorale, Enfants, Géants, Robots) et RÉPONSE : la foule te renvoie ta phrase une demi-mesure ou une mesure plus tard. Pour une voix seule (stem, a cappella).",
-        "en": "From SOLO (just your voice) to CROWD (up to 12 voices): a crowd singing with you, in key and in scale, in unison, harmony or an octave apart, each voice with its own timing, vibrato and tone — natural, not robotic. 7 styles (Club, Gospel, Stadium, Choir, Kids, Giants, Robots) and RESPONSE: the crowd sings your phrase back half a bar or a bar later. For a solo voice (stem, a cappella)."
+        "fr": "Tu montes le knob et jusqu'à douze voix reprennent la tienne. Elles tiennent ton ton et ta gamme, à l'unisson, en harmonie ou une octave plus bas, chacune avec son léger décalage, son vibrato et sa couleur, comme une bande de potes qui tombe sur le refrain. Sept ambiances, du club au gospel, du stade à la chorale d'enfants. RÉPONSE te renvoie ta phrase une demi-mesure ou une mesure plus tard, en call and response. À poser sur une voix seule, stem ou a cappella.",
+        "en": "Push the knob and up to twelve voices pick yours up. They hold your key and scale, in unison, in harmony or an octave down, each with its own slight timing, vibrato and colour, the way a room of friends lands on a chorus. Seven moods, from club to gospel, stadium to kids' choir. RESPONSE throws your phrase back half a bar or a bar later, call and response style. Goes on a solo vocal, stem or a cappella."
       },
       "features": {
         "fr": [
@@ -399,8 +399,8 @@
         "en": "The sidechain that locks the sub on every kick"
       },
       "description": {
-        "fr": "Sur la piste de basse : le ducking de sidechain (courbe à dessiner sur l'oscilloscope, comme LFOTool) et LOCK, qui fait tourner la phase de la fondamentale de la basse pour qu'elle reparte en phase avec le kick à chaque coup — plus de creux ni d'annulation entre le kick et le sub, sans toucher au reste de la basse. Le kick arrive par Kick Lock Send (fourni) posé sur la piste du kick : aucun routage, LINK 0 à 10 pour plusieurs paires ; sans kick, Kick Lock suit le tempo. Kick Lock Send a aussi un transient shaper (PUNCH, SUSTAIN) pour le kick.",
-        "en": "On the bass track: sidechain ducking (draw the curve on the scope, LFOTool style) and LOCK, which turns the phase of the bass's fundamental so it starts back in phase with the kick on every hit — no more dip or cancellation between kick and sub, the rest of the bass untouched. The kick comes from Kick Lock Send (included) on the kick's track: no routing, LINK 0 to 10 for several pairs; without a kick, Kick Lock follows the tempo. Kick Lock Send also shapes the kick (PUNCH, SUSTAIN)."
+        "fr": "Sur la piste de basse : le ducking de sidechain (courbe à dessiner sur l'oscilloscope, comme LFOTool) et LOCK, qui fait tourner la phase de la fondamentale de la basse pour qu'elle reparte en phase avec le kick à chaque coup. Plus de creux ni d'annulation entre le kick et le sub, sans toucher au reste de la basse. Le kick arrive par Kick Lock Send (fourni) posé sur la piste du kick : aucun routage, LINK 0 à 10 pour plusieurs paires ; sans kick, Kick Lock suit le tempo. Kick Lock Send a aussi un transient shaper (PUNCH, SUSTAIN) pour le kick.",
+        "en": "On the bass track: sidechain ducking (draw the curve on the scope, LFOTool style) and LOCK, which turns the phase of the bass's fundamental so it starts back in phase with the kick on every hit. No more dip or cancellation between kick and sub, the rest of the bass untouched. The kick comes from Kick Lock Send (included) on the kick's track: no routing, LINK 0 to 10 for several pairs; without a kick, Kick Lock follows the tempo. Kick Lock Send also shapes the kick (PUNCH, SUSTAIN)."
       },
       "features": {
         "fr": [
@@ -427,7 +427,7 @@
       "downloads": {
         "macos": {
           "file": "KickLock-0.1.4-macOS.pkg",
-          "bytes": 74019274,
+          "bytes": 74019366,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
