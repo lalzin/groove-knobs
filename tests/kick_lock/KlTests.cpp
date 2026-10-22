@@ -1290,7 +1290,7 @@ TEST_CASE ("KL 33. A sub melody: each note locked, wherever it starts against th
         double worst = 0.0, worstIntact = 0.0;
         for (size_t j = 1; j < kt.size(); ++j)
         {
-            const bool tooYoung = lead > 0.0 && lead < 0.02 && juce::exactlyEqual (hzs[j], 36.7); // under 1.2 periods before the end of the measured cycle
+            const bool tooYoung = false; // (36.7 Hz 10 ms before the kick: Kick Lock waits for more of it now)
             if (lead >= 0.0 && ! tooYoung)
             {
                 const auto e = errorsAtKicks (out, latency, hzs[j], sr, { kt[j] }, 0.0, seconds);
@@ -1910,7 +1910,7 @@ TEST_CASE ("KL 35. A raw saw bass (every harmonic to 18 kHz): held, repeated, a 
         }
 }
 
-TEST_CASE ("KL diag13. A plain sub melody under a four-on-the-floor kick (legato / detached, notes on / off the beat)", "[.kldiag13]")
+TEST_CASE ("KL 38. A plain sub melody under a four-on-the-floor kick (legato / detached, notes on / off the beat / 20 ms before): every kick locked", "[kl][phase]")
 {
     const double sr = 48000.0, bpm = 124.0, beat = 60.0 / bpm, seconds = 16.0;
     const double notes[] { 55.0, 55.0, 65.4, 49.0, 41.2, 41.2, 61.7, 46.2 };
@@ -1959,16 +1959,24 @@ TEST_CASE ("KL diag13. A plain sub melody under a four-on-the-floor kick (legato
                 }
             });
             juce::String heard;
-            for (auto [w, T] : at)
-                if (T > 1.0 && w + p->getLatencySamples() + (int) (2.0 * T) < out.getNumSamples())
+            double worst = 0.0;
+            int counted = 0;
+            for (double tk : kt)
+                if (tk > 1.0 && tk < seconds - 0.5)
                 {
-                    // the bass's fundamental at the kick in the dry input vs the output
-                    juce::ignoreUnused (T);
-                    const double tk = (double) w / sr, posk = (tk + 0.004 - 0.5) / beat - noteOffset; // the note sounding just after the kick
+                    // read 30 ms after the kick, brought back to it: a note changed on
+                    // the kick is turned a few ms after it, while the sub is ducked
+                    const double later = 0.03, posk = (tk + 0.004 - 0.5) / beat - noteOffset; // the note sounding just after the kick
                     const double hz = notes[(size_t) ((((int) std::floor (posk)) % 8 + 8) % 8)];
-                    heard << juce::String (KickLockDsp::wrap180 (phaseAt (out.getReadPointer (0), out.getNumSamples(), (int) w + p->getLatencySamples(), hz, sr)), 0) << " ";
+                    const int w = (int) std::round (tk * sr);
+                    const double e = KickLockDsp::wrap180 (phaseAt (out.getReadPointer (0), out.getNumSamples(), w + p->getLatencySamples() + (int) (later * sr), hz, sr) - 360.0 * hz * later);
+                    heard << juce::String (e, 0) << " ";
+                    worst = juce::jmax (worst, std::abs (e));
+                    ++counted;
                 }
-            WARN ((legato ? "legato" : "detached") << ", notes " << noteOffset << " beat off: shown error/conf " << shown.substring (0, 300) << "\n heard " << heard.substring (0, 300));
+            INFO ((legato ? "legato" : "detached") << ", notes " << noteOffset << " beat off: shown error/conf " << shown.substring (0, 300) << "\n heard " << heard.substring (0, 300));
+            CHECK (counted > 20);
+            CHECK (worst < 5.0);
         }
 }
 
@@ -2029,3 +2037,4 @@ TEST_CASE ("KL 37. Aim at the collision with Kick Lock Send: the kick's shape fr
     CHECK (std::abs (aim[0]) > 1.0); // an aim was found
     CHECK (std::abs (KickLockDsp::wrap180 (aim[0] - aim[1])) < 10.0);
 }
+

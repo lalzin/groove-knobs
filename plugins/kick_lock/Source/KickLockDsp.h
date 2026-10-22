@@ -142,7 +142,7 @@ public:
     static double fitPeriod (const float* x, int n, double rate, double T0, int harmonics = 0, double* residualOut = nullptr) noexcept;
 
 private:
-    void onKick (std::int64_t when);
+    void onKick (std::int64_t when, int extra = 0);
     void updatePitch() noexcept;
     /** The phase (degrees, 0 = rising zero crossing) and amplitude of the
         fundamental at `at`, from the `length` samples of the bass that follow
@@ -157,7 +157,6 @@ private:
     // harmonics no longer pull the period or the steadiness checks
     int lowBand (std::int64_t from, std::int64_t to, double T) const noexcept; // T: the note's period (0 = unknown)
     double refinePeriod (std::int64_t from, std::int64_t to, double T0) const noexcept;
-    double shortPeriod (std::int64_t from, std::int64_t to) const noexcept;
     double steadiness (std::int64_t from, std::int64_t to, double T) const noexcept;
     mutable std::vector<float> analysis;
     double differenceAt (std::int64_t from, std::int64_t to, double T) const noexcept;
@@ -235,6 +234,7 @@ private:
     int firPos = 0;
     float fir (int channel, int kernel) const noexcept;
     std::array<std::int64_t, 4> pendingKicks {};
+    std::array<int, 4> pendingExtra {}; // samples more of the bass waited for (a note changed on the kick)
     int pendingCount = 0;
     std::array<std::vector<float>, 2> input, sub; // rings (absolute time & mask)
     // the fundamental alone, the only part that is shifted: the bass projected

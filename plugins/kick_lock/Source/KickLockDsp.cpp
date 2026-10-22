@@ -585,51 +585,6 @@ double KickLockDsp::fitPeriod (const float* x, int n, double rate, double T0, in
     return 0.5 * (lo + hi);
 }
 
-double KickLockDsp::shortPeriod (std::int64_t from, std::int64_t to) const noexcept
-{
-    // A note heard over about one period only (it changed on the kick: the
-    // cycle after it is all there is): its low band fitted as one sinusoid,
-    // frequency searched over 35-160 Hz (7 % steps, each refined), then again
-    // with the tail continued at the period found. A clean fit or nothing.
-    constexpr int D = 4;
-    const double rate = sampleRate / D;
-    double best = 0.0;
-    for (int pass = 0; pass < 2; ++pass)
-    {
-        const int n = lowBand (from, to, best) / D;
-        if (n < 16)
-            return 0.0;
-        double energy = 0.0;
-        for (int i = 0; i < n; ++i)
-        {
-            float acc = 0.0f;
-            for (int j = 0; j < D; ++j)
-                acc += analysis[(size_t) (i * D + j)];
-            analysis[(size_t) i] = acc / (float) D;
-            energy += (double) analysis[(size_t) i] * analysis[(size_t) i];
-        }
-        double bestResidual = 1.0e300;
-        if (pass == 0)
-        {
-            for (double T0 = rate / 160.0; T0 <= rate / 35.0; T0 *= 1.07)
-            {
-                double res = 0.0;
-                const double T = fitPeriod (analysis.data(), n, rate, T0, 1, &res);
-                if (res < bestResidual)
-                {
-                    bestResidual = res;
-                    best = T * D;
-                }
-            }
-        }
-        else
-            best = fitPeriod (analysis.data(), n, rate, best / D, 1, &bestResidual) * D;
-        if (energy <= 1.0e-12 || bestResidual > 0.02 * energy || (double) n * D < 0.8 * best)
-            return 0.0;
-    }
-    return best;
-}
-
 int KickLockDsp::lowBand (std::int64_t from, std::int64_t to, double T) const noexcept
 {
     // mono, with ~12 ms before (the filter settles) and a mirrored tail after
@@ -959,15 +914,24 @@ void KickLockDsp::addTrigger (std::int64_t onset)
     ++kickCount;
     lastKick = onset;
     if (pendingCount < (int) pendingKicks.size())
+    {
+        pendingExtra[(size_t) pendingCount] = 0;
         pendingKicks[(size_t) pendingCount++] = onset;
+    }
 }
 
-void KickLockDsp::onKick (std::int64_t when)
+void KickLockDsp::onKick (std::int64_t when, int extra)
 {
-    const int count = telemetry.kickEvents.load (std::memory_order_relaxed) + 1;
-    telemetry.recentKicks[(size_t) (count % 4)].store (when, std::memory_order_relaxed);
-    telemetry.lastKickSample.store (when, std::memory_order_relaxed);
-    telemetry.kickEvents.store (count, std::memory_order_release);
+    if (extra == 0)
+    {
+        const int count = telemetry.kickEvents.load (std::memory_order_relaxed) + 1;
+        telemetry.recentKicks[(size_t) (count % 4)].store (when, std::memory_order_relaxed);
+        telemetry.lastKickSample.store (when, std::memory_order_relaxed);
+        telemetry.kickEvents.store (count, std::memory_order_release);
+    }
+    // the bass known after the kick: the room before it is heard (+ what was
+    // waited for, see below)
+    const int room = measureLength() + extra;
 
     // The phase of the fundamental at the kick, measured on the cycle that
     // follows it: what is heard with the kick, wherever the note started (the
@@ -982,40 +946,84 @@ void KickLockDsp::onKick (std::int64_t when)
     // lags ~50-100 ms: a note started just before the kick — after a gap, or
     // legato (no level jump: Alan's sub melody, 30-80 deg off) — was measured
     // at the note before's period.
-    const auto to = when + measureLength();
+    const auto to = when + room;
     const bool young = when - lastNoteStart < (std::int64_t) (0.1 * sampleRate);
     // (a note's attack left out: a growing note pulls the estimate 1-3 % short)
     const auto earliest = young ? lastNoteStart + (std::int64_t) (0.005 * sampleRate) : to - (std::int64_t) (0.08 * sampleRate);
     double local = 0.0;
     std::int64_t localFrom = to;
-    for (double span : { 0.08, 0.06, 0.045, 0.035 })
+    const int waitStep = (int) (0.005 * sampleRate), waitMax = (int) (0.02 * sampleRate);
+    const bool lastChance = extra + waitStep > waitMax;
+    // 1. a note held across the kick: the long stretch before it (80, 60 ms)
+    for (double span : { 0.08, 0.06 })
     {
         const auto from = juce::jmax (earliest, to - (std::int64_t) (span * sampleRate));
-        if (from >= localFrom)
-            continue; // the same stretch (cut by the note's start)
+        if (from == localFrom)
+            continue;
         localFrom = from;
         const double T = periodBetween (from, to);
-        if (T <= 1.0)
-            continue;
-        const double r = steadiness (from, to, T);
-        if (r < steadyLimit) // (r < 0: too short to tell — a young note, trusted)
+        // (as steady as a held note is — 0.0001-0.003; a stretch over two
+        // legato notes passed 0.04; < 0: too short to tell — a young note, trusted)
+        if (T > 1.0 && steadiness (from, to, T) < (young ? steadyLimit : 0.25 * steadyLimit))
         {
             local = T;
             break;
         }
     }
-    // none steady: the note may have changed on the kick (or just before):
-    // the cycle after the kick alone, fitted as a sinusoid
+    // 2. a note changed near the kick: the note heard after the kick (what the
+    // lock is for), at least 1.6 of its periods — waited for if need be, see
+    // below — then as far back as the same note goes (60, 40, 20, 10 ms)
     if (local <= 1.0)
     {
-        const auto from = juce::jmax (earliest, when);
-        if (to - from >= (std::int64_t) (0.012 * sampleRate))
-            if (const double T = shortPeriod (from, to); T > 1.0)
+        // (6 ms in: the low band's filter, both ways, smears a legato note
+        // before into the first ms of this one — 0.5-1 % on its period)
+        const auto postFrom = juce::jmax (earliest, when + (young ? 0 : (std::int64_t) (0.006 * sampleRate)));
+        const double post = periodBetween (postFrom, to);
+        if (post > 1.0 && (double) (to - postFrom) >= 1.6 * post) // (less: 1-4 % off, 100 deg at 41 Hz)
+        {
+            const double r = steadiness (postFrom, to, post);
+            const bool held = ! young && postFrom > to - (std::int64_t) (0.075 * sampleRate);
+            if (r < (held ? 0.25 * steadyLimit : steadyLimit))
             {
-                local = T;
-                localFrom = from;
+                local = post;
+                localFrom = postFrom;
+                for (double back : { 0.06, 0.04, 0.02, 0.01 })
+                {
+                    const auto from = juce::jmax (earliest, when - (std::int64_t) (back * sampleRate));
+                    if (from >= postFrom)
+                        continue;
+                    const double T = periodBetween (from, to);
+                    if (T > 1.0 && std::abs (T / post - 1.0) < 0.01 && steadiness (from, to, T) < 0.25 * steadyLimit)
+                    {
+                        local = T;
+                        localFrom = from;
+                        break;
+                    }
+                }
             }
+        }
     }
+    // not yet: wait for more of the bass — up to 20 ms: the sub is ducked
+    // under the kick there, the rotation (5 ms) still comes before it is back
+    if (local <= 1.0 && ! lastChance && pendingCount < (int) pendingKicks.size())
+    {
+        // (kept in order: the next kicks are later)
+        for (int n = pendingCount; n > 0; --n)
+        {
+            pendingKicks[(size_t) n] = pendingKicks[(size_t) n - 1];
+            pendingExtra[(size_t) n] = pendingExtra[(size_t) n - 1];
+        }
+        pendingKicks[0] = when;
+        pendingExtra[0] = extra + waitStep;
+        ++pendingCount;
+        return;
+    }
+    // 3. still nothing (a note changed on the kick, too low to be measured in
+    // the time there is, or no steady note at all): see below — left as it
+    // is, or the pitch detector's period if the note is held
+    const bool changedUnknown = local <= 1.0 && ! young && lastChance
+                                && steadiness (when - (std::int64_t) (0.04 * sampleRate), when + (std::int64_t) (0.02 * sampleRate), Tm) > steadyLimit
+                                && steadiness (when - (std::int64_t) (0.06 * sampleRate), when - (std::int64_t) (0.005 * sampleRate), Tm) < 0.25 * steadyLimit;
     // a short stretch (not cut by a note's start) is a new note only if the
     // one before held steady at another pitch: legato. A glide or a wide FM
     // is steady over 25-35 ms too, and unsteady before — not a note.
@@ -1057,17 +1065,19 @@ void KickLockDsp::onKick (std::int64_t when)
         else
             youngUnknown = true;
     }
+    else if (changedUnknown)
+        youngUnknown = true; // (the note held before the kick, another one after it: left as it is)
     kickPhase = aimAtCollision ? collisionPhase (Tm) : 0.0;
     telemetry.kickPhaseDeg.store ((float) kickPhase, std::memory_order_relaxed);
     lastTm = Tm;
     lastNoteAgeMs = (double) (when - lastNoteStart) / sampleRate * 1000.0;
     double phase = 0.0, amplitude = 0.0, conf = 0.0;
-    measureForward (when, Tm, juce::jlimit (16, juce::jmax (16, measureLength()), (int) std::round (Tm)), phase, amplitude);
+    measureForward (when, Tm, juce::jlimit (16, juce::jmax (16, room), (int) std::round (Tm)), phase, amplitude);
     {
         // the phase itself on the low band (zero-phase: the same phase; a raw
         // saw's harmonics left out); its level stays the whole bass's
         double lowPhase = 0.0, lowAmplitude = 0.0;
-        measureForward (when, Tm, juce::jlimit (16, juce::jmax (16, measureLength()), (int) std::round (Tm)), lowPhase, lowAmplitude, true);
+        measureForward (when, Tm, juce::jlimit (16, juce::jmax (16, room), (int) std::round (Tm)), lowPhase, lowAmplitude, true);
         if (lowAmplitude > 1.0e-6)
             phase = lowPhase;
     }
@@ -1078,7 +1088,7 @@ void KickLockDsp::onKick (std::int64_t when)
     // part dips by chance)
     double rawPower = 0.0;
     {
-        const int len = juce::jlimit (16, juce::jmax (16, measureLength()), (int) std::round (Tm));
+        const int len = juce::jlimit (16, juce::jmax (16, room), (int) std::round (Tm));
         for (int k = 0; k < len; ++k)
             for (int c = 0; c < numChannels; ++c)
             {
@@ -1115,7 +1125,7 @@ void KickLockDsp::onKick (std::int64_t when)
         // before is another note — legato — not unsteadiness)
         const auto from = local > 1.0 ? localFrom
                                       : juce::jmax (lastNoteStart + (std::int64_t) (0.005 * sampleRate), when - (std::int64_t) std::llround (juce::jmax (3.0 * Tm, 0.08 * sampleRate)));
-        const double r = steadiness (from, when + juce::jlimit (16, juce::jmax (16, measureLength()), (int) std::round (Tm)), Tm);
+        const double r = steadiness (from, when + juce::jlimit (16, juce::jmax (16, room), (int) std::round (Tm)), Tm);
         lastAperiodicity = r;
         lastCoherence = r < 0.0 ? 1.0 : 1.0 - r;
         if (r > steadyLimit)
@@ -1389,13 +1399,17 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
                 }
             }
         }
-        if (pendingCount > 0 && clock >= pendingKicks[0] + measureLength() + (std::int64_t) (0.001 * sampleRate))
+        if (pendingCount > 0 && clock >= pendingKicks[0] + measureLength() + pendingExtra[0] + (std::int64_t) (0.001 * sampleRate))
         {
             const auto when = pendingKicks[0];
+            const int extra = pendingExtra[0];
             for (int n = 1; n < pendingCount; ++n)
+            {
                 pendingKicks[(size_t) n - 1] = pendingKicks[(size_t) n];
+                pendingExtra[(size_t) n - 1] = pendingExtra[(size_t) n];
+            }
             --pendingCount;
-            onKick (when);
+            onKick (when, extra);
         }
 
         // a new note between two kicks (the fundamental moved > 3 %): its
