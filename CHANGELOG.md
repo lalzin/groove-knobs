@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.5 — 2026-10-22 (toute la suite, six plugins)
+- Toute la suite en 0.1.5 (la 0.1.3 n'était jamais sortie) : **Kick Lock** + Kick Lock Send (voir Kick Lock 0.1.5 et 0.1.4 ci-dessous), **Sing It Back** en chœur (voir 0.1.3), la pastille de valeur du grand knob à la largeur de son texte. L'installateur de la suite (macOS et Windows) contient les six plugins, Kick Lock avec Kick Lock Send.
+
 ## Kick Lock 0.1.5 — 2026-10-22 (Kick Lock seul) : PRECISE, en phase là où le kick et le sub se rencontrent
 - **L'oscilloscope** montre tout le signal de la piste quand il n'y a pas d'analyse de phase (PHASE éteint, pas de basse, pas de kick entendu : un sidechain simple) ; le sub sinon. L'en-tête le dit (« sub » / « full signal »).
 - **PRECISE par défaut** (Alan : « le résultat est vraiment satisfaisant ») ; le choix LIVE / PRECISE prend la place de MODE, sous LOCK (Hold / Transition retiré : tout est en Hold ; le paramètre reste pour les anciennes sessions). En PRECISE avec LOCK, la jauge montre la **correction** faite à chaque kick (« CORRECTION ON KICK » ; l'écart restant est nul par construction) et l'oscilloscope le bas de la basse tourné, tel qu'on l'entend.

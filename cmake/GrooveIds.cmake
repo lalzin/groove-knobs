@@ -7,7 +7,7 @@
 
 # Suite-wide
 set(GK_SUITE_NAME          "Groove Knobs")
-set(GK_SUITE_VERSION       "0.1.3")          # the suite installer (= every plug-in's version for a release)
+set(GK_SUITE_VERSION       "0.1.5")          # the suite installer (= every plug-in's version for a release)
 set(GK_COMPANY_NAME        "LALZIN")
 set(GK_MANUFACTURER_CODE   "Lalz")
 set(GK_BUNDLE_ID_PREFIX    "com.lalzin.grooveknobs")
@@ -17,35 +17,35 @@ set(FF_PRODUCT_NAME        "French Filter")
 set(FF_PLUGIN_CODE         "FrFl")
 set(FF_AU_TYPE             "aufx")          # kAudioUnitType_Effect
 set(FF_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.frenchfilter")
-set(FF_VERSION             "0.1.3")
+set(FF_VERSION             "0.1.5")
 
 # Boogie Trio
 set(BT_PRODUCT_NAME        "Boogie Trio")
 set(BT_PLUGIN_CODE         "BgTr")
 set(BT_AU_TYPE             "aufx")          # kAudioUnitType_Effect
 set(BT_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.boogietrio")
-set(BT_VERSION             "0.1.3")
+set(BT_VERSION             "0.1.5")
 
 # Backwash
 set(BW_PRODUCT_NAME        "Backwash")
 set(BW_PLUGIN_CODE         "Bkws")
 set(BW_AU_TYPE             "aufx")          # kAudioUnitType_Effect
 set(BW_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.backwash")
-set(BW_VERSION             "0.1.3")
+set(BW_VERSION             "0.1.5")
 
 # Pew Pew (instrument)
 set(PP_PRODUCT_NAME        "Pew Pew")
 set(PP_PLUGIN_CODE         "PwPw")
 set(PP_AU_TYPE             "aumu")          # kAudioUnitType_MusicDevice
 set(PP_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.pewpew")
-set(PP_VERSION             "0.1.3")
+set(PP_VERSION             "0.1.5")
 
 # Sing It Back (vocal effect)
 set(SIB_PRODUCT_NAME       "Sing It Back")
 set(SIB_PLUGIN_CODE        "SItB")
 set(SIB_AU_TYPE            "aufx")          # kAudioUnitType_Effect
 set(SIB_BUNDLE_ID          "${GK_BUNDLE_ID_PREFIX}.singitback")
-set(SIB_VERSION            "0.1.3")
+set(SIB_VERSION            "0.1.5")
 
 # Kick Lock (sidechain ducking + sub phase lock) — working name
 set(KL_PRODUCT_NAME        "Kick Lock")

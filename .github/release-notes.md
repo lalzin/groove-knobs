@@ -6,14 +6,15 @@
 | **French Filter** | le filtre French Touch, en un knob — *the French Touch filter* |
 | **Boogie Trio** | le chorus triple des string machines 70s — *a 70s string-machine triple chorus* |
 | **Backwash** | la reverb inversée calée sur le tempo — *tempo-synced reverse reverb* |
-| **Pew Pew** *(nouveau, instrument)* | le pew disco, en instrument MIDI — *the disco pew, as a MIDI instrument* |
+| **Pew Pew** *(instrument)* | le pew disco, en instrument MIDI — *the disco pew, as a MIDI instrument* |
 | **Sing It Back** | un chœur qui chante avec ta voix — *a choir singing along with your voice* |
-| **Kick Lock** *(nouveau, + Kick Lock Send)* | le sidechain qui cale le sub sur chaque kick — *the sidechain that locks the sub on every kick* |
+| **Kick Lock** *(nouveau, + Kick Lock Send)* | le sidechain qui remet le sub en phase avec le kick — *the sidechain that puts the sub in phase with the kick* |
 
-### Nouveau dans la 0.1.3 / *What's new in 0.1.3*
-- **Kick Lock** : ducking de sidechain (courbe à dessiner) + LOCK, la phase du sub calée sur chaque kick. Le kick arrive par **Kick Lock Send** (fourni) posé sur la piste du kick : aucun routage. Sans kick, il suit le tempo.
+### Nouveau dans la 0.1.5 / *What's new in 0.1.5*
+- **Kick Lock** (nouveau, avec **Kick Lock Send**) : sur la basse, le ducking de sidechain (courbe à dessiner sur l'oscilloscope) et LOCK, qui remet le sub en phase avec le kick là où ils se rencontrent. Mode **PRECISE** par défaut : aucune détection de note, toute la collision vue à l'avance (latence ~360 ms compensée par le DAW) ; **LIVE** (32 ms) pour jouer. **PHASE** off : un sidechain simple pour n'importe quelle piste. **MONO BELOW** : le bas en mono sans déphasage. Le kick arrive par Kick Lock Send posé sur la piste du kick : aucun routage.
 - **Sing It Back** : un vrai chœur à l'unisson par défaut (les harmonies restent au choix), plus de grésillement sur les voix aiguës.
-- *Kick Lock: sidechain ducking (draw the curve) + LOCK, the sub's phase locked on every kick; the kick comes from Kick Lock Send (included) on the kick's track, no routing. Sing It Back: a real unison choir by default, no more grit on high voices.*
+- La valeur du grand knob se lit en entier (« HP 100 % »…).
+- *Kick Lock (new, with Kick Lock Send): sidechain ducking (draw the curve) and LOCK, the sub put in phase with the kick where they meet. PRECISE by default: no note detection, the whole collision seen ahead (~360 ms latency, compensated by your DAW); LIVE (32 ms) to play; PHASE off for a plain sidechain; MONO BELOW. Sing It Back: a real unison choir by default, no more grit on high voices.*
 
 ### Windows (10 / 11, 64 bits)
 **Toute la suite d'un coup** : `GrooveKnobs-…-Windows-Setup.exe` (les six plugins, chacun décochable). *The whole suite at once: `GrooveKnobs-…-Windows-Setup.exe`.*

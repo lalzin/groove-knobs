@@ -1,13 +1,13 @@
 ﻿; Groove Knobs — Windows installer for the whole suite (Inno Setup 6).
 ; Built by scripts/make_installer_win.ps1 (-Plugin All or Suite), or:
-;   iscc /DMyAppVersion=0.1.3 /DBuildRoot=<...>\build-win\plugins installer\windows\GrooveKnobsSuite.iss
+;   iscc /DMyAppVersion=0.1.5 /DBuildRoot=<...>\build-win\plugins installer\windows\GrooveKnobsSuite.iss
 ; One component per plug-in (VST3 + standalone), all selected; the same files
 ; and folders as the single installers, so either can update the other.
 
 #define MyAppName "Groove Knobs"
 #define MyPublisher "LALZIN"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.3"
+  #define MyAppVersion "0.1.5"
 #endif
 #ifndef BuildRoot
   #define BuildRoot "..\..\build-win\plugins"

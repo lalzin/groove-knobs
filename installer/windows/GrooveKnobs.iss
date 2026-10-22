@@ -42,7 +42,7 @@
 #endif
 #define MyPublisher "LALZIN"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.3"
+  #define MyAppVersion "0.1.5"
 #endif
 #ifndef BuildDir
   #define BuildDir "..\..\build-win\plugins\" + MyBuildFolder + "\Release"
