@@ -2032,6 +2032,10 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
                 for (int c = 0; c < nch; ++c)
                     shown += duck * (cr * lowAt (c, t) + sr * hilbertAt (c, t)) / (float) nch;
             }
+            // no phase analysis (PHASE off, no bass, no kick heard: a plain
+            // sidechain): the whole signal as heard, not its low band (Alan)
+            if (! phaseOn || telemetry.analysisReason.load (std::memory_order_relaxed) != 0)
+                shown = nch == 2 ? 0.5f * (outs[0] + outs[1]) : outs[0];
             telemetry.scopeBass[(size_t) w].store (shown, std::memory_order_relaxed);
             // the kick as heard (L later): Kick Lock Send's own wave when it leads, else the sidechain's
             float kv = kickRing[(size_t) (t & mask)];

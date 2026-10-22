@@ -1733,6 +1733,13 @@ TEST_CASE ("KL 42. The ducking alone: PHASE off, or no bass on the track (a pad 
         const float w = unchanged (*p, b);
         INFO ("a pad: changed by " << w);
         CHECK (w < 1.0e-5f);
+        // and the scope shows it whole (its sub is next to nothing: a pad)
+        float scopePeak = 0.0f;
+        auto& tel = p->getDsp().getTelemetry();
+        for (int i = 0; i < tel.scopeSize; ++i)
+            scopePeak = juce::jmax (scopePeak, std::abs (tel.scopeBass[(size_t) i].load()));
+        INFO ("the scope's wave peaks at " << scopePeak);
+        CHECK (scopePeak > 0.1f);
         CHECK ((Status) p->getDsp().getTelemetry().status.load() == Status::ducking);
         CHECK (p->getDsp().getTelemetry().analysisReason.load() == 3);
     }

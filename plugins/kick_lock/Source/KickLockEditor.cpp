@@ -258,7 +258,8 @@ private:
 
 //==============================================================================
 /** The oscilloscope, one beat from the last kick: the kick (orange) and the
-    bass as heard, its low band only (lime: under SUB CUT, where the phase is), and over them the ducking curve, editable like
+    bass as heard — its low band (lime: under SUB CUT, where the phase is), or the whole
+    signal when there is no phase analysis (a plain sidechain) — and over them the ducking curve, editable like
     LFOTool's: drag a point; double-click to add one (or remove it); drag the
     small ring in the middle of a segment to bend it; right-click for the
     presets. */
@@ -779,7 +780,12 @@ private:
     juce::Rectangle<float> mainArea() const { return getLocalBounds().toFloat().reduced (10.0f, 0.0f).withTrimmedTop (22.0f).withTrimmedBottom (14.0f); }
     double bpmNow() const { return juce::jmax (40.0, (double) proc.getFeatures().bpm.load (std::memory_order_relaxed)); }
     double windowBeats() const { return juce::jmax (1.0, KickLockDsp::releaseBeats (proc.getReleaseParameter().getIndex())); }
-    juce::String beatsLabel() const { return fr ("1 beat \xc2\xb7 curve = RELEASE ") + proc.getReleaseParameter().getCurrentChoiceName(); }
+    juce::String beatsLabel() const
+    {
+        // what the lime wave is: the sub (phase analysis on) or the whole track (a plain sidechain)
+        const bool whole = ! proc.getPhaseParameter().get() || proc.getDsp().getTelemetry().analysisReason.load (std::memory_order_relaxed) != 0;
+        return fr ("1 beat \xc2\xb7 curve = RELEASE ") + proc.getReleaseParameter().getCurrentChoiceName() + (whole ? fr (" \xc2\xb7 full signal") : fr (" \xc2\xb7 sub"));
+    }
 
     float curveX (juce::Rectangle<float> m, float x) const
     {
