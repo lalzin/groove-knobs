@@ -384,7 +384,7 @@
     {
       "slug": "kick-lock",
       "name": "Kick Lock",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "type": "effect",
       "mascot": "Phaze, le tambour de kick",
       "colors": {
@@ -399,21 +399,21 @@
         "en": "The sidechain that locks the sub on every kick"
       },
       "description": {
-        "fr": "Sur la piste de basse : le ducking de sidechain (courbe à dessiner sur l'oscilloscope, comme LFOTool) et LOCK, qui fait tourner la phase de la fondamentale de la basse pour qu'elle reparte en phase avec le kick à chaque coup. Plus de creux ni d'annulation entre le kick et le sub, sans toucher au reste de la basse. Le kick arrive par Kick Lock Send (fourni) posé sur la piste du kick : aucun routage, LINK 0 à 10 pour plusieurs paires ; sans kick, Kick Lock suit le tempo. Kick Lock Send a aussi un transient shaper (PUNCH, SUSTAIN) pour le kick.",
-        "en": "On the bass track: sidechain ducking (draw the curve on the scope, LFOTool style) and LOCK, which turns the phase of the bass's fundamental so it starts back in phase with the kick on every hit. No more dip or cancellation between kick and sub, the rest of the bass untouched. The kick comes from Kick Lock Send (included) on the kick's track: no routing, LINK 0 to 10 for several pairs; without a kick, Kick Lock follows the tempo. Kick Lock Send also shapes the kick (PUNCH, SUSTAIN)."
+        "fr": "Sur la piste de basse : le ducking de sidechain (courbe à dessiner sur l'oscilloscope, comme LFOTool) et LOCK, qui tourne la phase du bas de la basse pour qu'il s'additionne au kick au lieu de s'annuler. En PRECISE, aucune détection de note : Kick Lock compare le kick au sub qui arrive, sur toute la collision, et choisit la meilleure rotation (legato, glissés, saw, notes graves). Le kick arrive par Kick Lock Send (fourni) posé sur la piste du kick : aucun routage, LINK 0 à 10 ; PHASE éteint, c'est un sidechain simple pour n'importe quelle piste. MONO BELOW met le bas en mono sans déphasage.",
+        "en": "On the bass track: sidechain ducking (draw the curve on the scope, LFOTool style) and LOCK, which turns the phase of the bass's low end so it adds up with the kick instead of cancelling. In PRECISE there is no note detection: Kick Lock compares the kick with the incoming sub over the whole collision and picks the best rotation (legato, glides, saws, deep notes). The kick comes from Kick Lock Send (included) on the kick's track: no routing, LINK 0 to 10; with PHASE off it is a plain sidechain for any track. MONO BELOW makes the low end mono with no phase shift."
       },
       "features": {
         "fr": [
-          "Phase du sub calée sur le kick (< 2°)",
+          "Sub et kick en phase sur toute la collision (PRECISE, sans détection de note)",
           "Courbe de ducking éditable sur l'oscilloscope",
           "Kick Lock Send : le kick sans routage + transient shaper",
-          "Phaze réagit au verrouillage, l'écran explique chaque réglage"
+          "PHASE off : sidechain simple ; MONO BELOW sans déphasage"
         ],
         "en": [
-          "Sub phase locked on the kick (< 2°)",
+          "Sub and kick in phase over the whole collision (PRECISE, no note detection)",
           "Editable ducking curve on the scope",
           "Kick Lock Send: the kick without routing + a transient shaper",
-          "Phaze reacts to the lock, the screen explains every setting"
+          "PHASE off: a plain sidechain; MONO BELOW with no phase shift"
         ]
       },
       "presets": [
@@ -423,11 +423,11 @@
         "Bounce",
         "Custom"
       ],
-      "latency_ms": 31.5,
+      "latency_ms": 361.0,
       "downloads": {
         "macos": {
-          "file": "KickLock-0.1.4-macOS.pkg",
-          "bytes": 74019366,
+          "file": "KickLock-0.1.5-macOS.pkg",
+          "bytes": null,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -441,21 +441,25 @@
           ]
         },
         "windows": {
-          "file": "KickLock-0.1.4-Windows-Setup.exe",
-          "bytes": 23625790,
+          "file": "KickLock-0.1.5-Windows-Setup.exe",
+          "bytes": null,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
             "Standalone"
           ],
-          "url": "https://github.com/lalzin/groove-knobs/releases/download/kick-lock-v0.1.4/KickLock-0.1.4-Windows-Setup.exe",
+          "url": "https://github.com/lalzin/groove-knobs/releases/download/kick-lock-v0.1.5/KickLock-0.1.5-Windows-Setup.exe",
           "includes": [
             "Kick Lock",
             "Kick Lock Send"
           ]
         }
       },
-      "images_note": "the window is 760 x 480: ui-hero.webp is 1520 x 960, ui-hero@3x.webp 2280 x 1440"
+      "images_note": "the window is 760 x 480: ui-hero.webp is 1520 x 960, ui-hero@3x.webp 2280 x 1440",
+      "latency_note": {
+        "fr": "PRECISE (par défaut) ~360 ms, compensée par le DAW ; LIVE 32 ms pour jouer",
+        "en": "PRECISE (default) ~360 ms, compensated by the DAW; LIVE 32 ms to play"
+      }
     }
   ],
   "images_per_plugin": {
