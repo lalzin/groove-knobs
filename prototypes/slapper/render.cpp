@@ -1,5 +1,6 @@
 // Renders SLAPPER step-1 demos (WAV, 48 kHz, 24-bit mono) and checks the tuning.
 #include "SlapperVoice.h"
+#include "SlapperAmp.h"
 #include <cmath>
 #include <cstdio>
 #include <fstream>
@@ -71,10 +72,42 @@ int main (int argc, char** argv)
                 peak = std::fmax (peak, std::fabs (x.back()));
             }
         }
-        std::printf ("%s: peak %.3f\n", names[a], peak);
+        // step 2: through the amp (the string's level into it fixed: 3x)
+        Amp amp;
+        amp.prepare (sr);
+        std::vector<float> y (x.size());
+        float peakAmp = 0.0f;
+        for (size_t i = 0; i < x.size(); ++i)
+        {
+            y[i] = amp.process (3.0f * x[i]);
+            peakAmp = std::fmax (peakAmp, std::fabs (y[i]));
+        }
+        auto subShare = [&] (const std::vector<float>& z)
+        {
+            // energy under ~100 Hz (two one-pole low-passes) against the whole, over the notes' first 300 ms
+            double lo = 0.0, all = 0.0;
+            float l1 = 0.0f, l2 = 0.0f;
+            const float c = 1.0f - std::exp (-2.0f * 3.14159265f * 100.0f / sr);
+            for (size_t i = 0; i < z.size(); ++i)
+            {
+                l1 += c * (z[i] - l1);
+                l2 += c * (l1 - l2);
+                const size_t note = i / (size_t) (1.2 * sr);
+                if (note < 2 && (int) (i % (size_t) (1.2 * sr)) < (int) (0.3 * sr)) // (E1 and A1 only: above 100 Hz there is no sub to measure)
+                {
+                    lo += (double) l2 * l2;
+                    all += (double) z[i] * z[i];
+                }
+            }
+            return 100.0 * lo / (all + 1e-30);
+        };
+        std::printf ("%s: peak %.3f, sub share (<100 Hz, E1 / A1, first 300 ms): string %.0f %%, amp %.0f %%\n", names[a], peak, subShare (x), subShare (y));
         for (auto& s : x)
             s *= 0.7f / peak;
         writeWav (out + "/slapper_step1_" + names[a] + ".wav", x, sr);
+        for (auto& s : y)
+            s *= 0.8f / peakAmp;
+        writeWav (out + "/slapper_step2_" + names[a] + ".wav", y, sr);
     }
     // tuning: 40, 110, 220 Hz, each attack, measured 0.3-0.8 s after the note
     double worst = 0.0;
@@ -123,9 +156,21 @@ int main (int argc, char** argv)
             peak = std::fmax (peak, std::fabs (x[pos]));
             ++pos;
         }
+        Amp amp;
+        amp.prepare (sr);
+        std::vector<float> y (x.size());
+        float peakAmp = 0.0f;
+        for (size_t i = 0; i < x.size(); ++i)
+        {
+            y[i] = amp.process (3.0f * x[i]);
+            peakAmp = std::fmax (peakAmp, std::fabs (y[i]));
+        }
         for (auto& s : x)
             s *= 0.7f / peak;
         writeWav (out + "/slapper_step1_groove.wav", x, sr);
+        for (auto& s : y)
+            s *= 0.8f / peakAmp;
+        writeWav (out + "/slapper_step2_groove.wav", y, sr);
     }
     return worst <= 2.0 ? 0 : 1;
 }

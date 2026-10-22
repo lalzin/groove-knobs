@@ -41,6 +41,7 @@ private:
         void set (int d, float x) noexcept { buf[(size_t) ((w - d) & mask)] = x; }
     };
     void tune (double hz);
+    void displace (float A, int width);
     float displacementAt (int fromNut) const noexcept { return right.at (fromNut) + left.at (M - 1 - fromNut); }
     void inject (int fromNut, float dy) noexcept
     {

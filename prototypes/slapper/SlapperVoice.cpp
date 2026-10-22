@@ -72,6 +72,34 @@ void Voice::tune (double hz)
     pickupPoint = std::clamp (M - 1 - (int) std::lround (0.22 * M), 1, M - 2); // the pickup, not at the pluck point
 }
 
+void Voice::displace (float A, int width)
+{
+    // the string held at the excitation point by A (a triangle), its corner
+    // rounded over +-width samples, then let go (no initial speed): added on
+    // what the string already does
+    const int p = excitePoint;
+    std::vector<float> shape ((size_t) M, 0.0f), smooth ((size_t) M, 0.0f);
+    for (int d = 0; d < M; ++d)
+        shape[(size_t) d] = d <= p ? A * (float) d / (float) p : A * (float) (M - 1 - d) / (float) (M - 1 - p);
+    for (int d = 0; d < M; ++d)
+    {
+        float acc = 0.0f;
+        int n = 0;
+        for (int j = -width; j <= width; ++j)
+            if (d + j >= 0 && d + j < M)
+            {
+                acc += shape[(size_t) (d + j)];
+                ++n;
+            }
+        smooth[(size_t) d] = acc / (float) n;
+    }
+    for (int d = 0; d < M; ++d)
+    {
+        right.add (d, 0.5f * smooth[(size_t) d]);
+        left.add (M - 1 - d, 0.5f * smooth[(size_t) d]);
+    }
+}
+
 void Voice::noteOn (double hz, float velocity, Attack attack)
 {
     // a new note on the same string: the old vibration is cut by the new
@@ -81,7 +109,14 @@ void Voice::noteOn (double hz, float velocity, Attack attack)
     lpZ = dispX = dispY = thX = thY = 0.0f;
     tune (hz);
     const float vel = std::clamp (velocity, 0.0f, 1.0f);
-    attackGain = attack == Attack::finger ? 2.0f : attack == Attack::pop ? 1.1f : 1.0f;
+    // where the string is struck: the thumb slaps at the end of the neck (~1/3
+    // of the string from the bridge: a strong fundamental — the sub), the pop
+    // pulls a little closer to the bridge, the fingers play at PINCEMENT
+    {
+        const float from = attack == Attack::slap ? 0.33f + (pickPosition - 0.15f) : attack == Attack::pop ? 0.27f + (pickPosition - 0.15f) : pickPosition;
+        excitePoint = std::clamp (M - 1 - (int) std::lround (std::clamp (from, 0.05f, 0.5f) * M), 1, M - 2);
+    }
+    attackGain = attack == Attack::finger ? 1.0f : attack == Attack::pop ? 1.1f : 1.0f;
     hammer = {};
     rebound = {};
     contactSamples = 0;
@@ -90,8 +125,11 @@ void Voice::noteOn (double hz, float velocity, Attack attack)
     switch (attack)
     {
         case Attack::slap:
-            // the thumb: light, very stiff, fast — a short contact (~0.7 ms)
-            hammer = { true, 0.0, 0.0, 15.0, 3.0, 2.3, 0, (int) (0.008 * sr) }; // (~1 ms against the string)
+            // the thumb drives the string down onto the frets — a wide push
+            // (the fundamental: the sub) — and lets it go at once
+            displace (-(0.02f + 0.06f * vel), std::max (2, (int) (0.0012 * sr)));
+            // and its bite: light, very stiff, fast (~1 ms against the string)
+            hammer = { true, 0.0, 0.0, 15.0, 3.0, 2.3, 0, (int) (0.008 * sr) };
             // its rebound on the fret: a second, weaker strike 6-12 ms later
             rebound = hammer;
             reboundDelay = (int) ((0.006 + 0.006 * (1.0 - vel)) * sr);
@@ -99,38 +137,16 @@ void Voice::noteOn (double hz, float velocity, Attack attack)
             clickGain = 0.25f * vel;
             break;
         case Attack::finger:
-            // the finger: heavier, soft flesh — a rounder, longer contact (~4 ms)
-            hammer = { true, 0.0, 0.0, 40.0, 0.1, 1.5, 0, (int) (0.03 * sr) }; // (~2 ms: round, not dull)
+            // the finger: pulls the string sideways and lets it slide off its
+            // pad — a pluck with a wide, round corner (the pad's width)
+            displace (0.02f + 0.06f * vel, std::max (2, (int) ((0.0025 - 0.001 * vel) * sr)));
             clickLeft = 0;
             break;
         case Attack::pop:
         {
             // pulled away from the board, then let go: a triangle at the pluck
             // point, its corner rounded by how fast the finger lets go
-            const float A = 0.015f + 0.05f * vel;
-            const int p = excitePoint, width = std::max (1, (int) ((0.0006 - 0.0004 * vel) * sr));
-            std::vector<float> shape ((size_t) M, 0.0f);
-            for (int d = 0; d < M; ++d)
-                shape[(size_t) d] = d <= p ? A * (float) d / (float) p : A * (float) (M - 1 - d) / (float) (M - 1 - p);
-            // round the corner: a short moving average (the release's speed)
-            std::vector<float> smooth (shape);
-            for (int d = 0; d < M; ++d)
-            {
-                float acc = 0.0f;
-                int n = 0;
-                for (int j = -width; j <= width; ++j)
-                    if (d + j >= 0 && d + j < M)
-                    {
-                        acc += shape[(size_t) (d + j)];
-                        ++n;
-                    }
-                smooth[(size_t) d] = acc / (float) n;
-            }
-            for (int d = 0; d < M; ++d)
-            {
-                right.set (d, 0.5f * smooth[(size_t) d]);
-                left.set (M - 1 - d, 0.5f * smooth[(size_t) d]);
-            }
+            displace (0.015f + 0.05f * vel, std::max (1, (int) ((0.0006 - 0.0004 * vel) * sr)));
             // the snap back against the frets
             clickLeft = (int) (0.0012 * sr);
             clickGain = 0.12f * vel;
@@ -141,7 +157,7 @@ void Voice::noteOn (double hz, float velocity, Attack attack)
     {
         // the impact speed: the velocity (the pop's is its pull, above)
         hammer.x = displacementAt (excitePoint);
-        hammer.v = attack == Attack::finger ? 0.008 + 0.016 * vel : 0.004 + 0.012 * vel;
+        hammer.v = 0.004 + 0.012 * vel;
         rebound.v = 0.35 * hammer.v;
     }
 }
