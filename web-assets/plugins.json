@@ -15,7 +15,7 @@
     "downloads": {
       "macos": {
         "file": "GrooveKnobs-0.1.5-macOS.pkg",
-        "bytes": null,
+        "bytes": 210491392,
         "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
         "formats": [
           "VST3",
@@ -26,7 +26,7 @@
       },
       "windows": {
         "file": "GrooveKnobs-0.1.5-Windows-Setup.exe",
-        "bytes": null,
+        "bytes": 60800584,
         "requirements": "Windows 10/11 64-bit",
         "formats": [
           "VST3",
@@ -92,7 +92,7 @@
       "downloads": {
         "macos": {
           "file": "FrenchFilter-0.1.5-macOS.pkg",
-          "bytes": null,
+          "bytes": 36503962,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -103,7 +103,7 @@
         },
         "windows": {
           "file": "FrenchFilter-0.1.5-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 14227695,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -160,7 +160,7 @@
       "downloads": {
         "macos": {
           "file": "BoogieTrio-0.1.5-macOS.pkg",
-          "bytes": null,
+          "bytes": 18587040,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -171,7 +171,7 @@
         },
         "windows": {
           "file": "BoogieTrio-0.1.5-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 5786233,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -227,7 +227,7 @@
       "downloads": {
         "macos": {
           "file": "Backwash-0.1.5-macOS.pkg",
-          "bytes": null,
+          "bytes": 19321196,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -238,7 +238,7 @@
         },
         "windows": {
           "file": "Backwash-0.1.5-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 6123043,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -298,7 +298,7 @@
       "downloads": {
         "macos": {
           "file": "PewPew-0.1.5-macOS.pkg",
-          "bytes": null,
+          "bytes": 32999392,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -309,7 +309,7 @@
         },
         "windows": {
           "file": "PewPew-0.1.5-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 12782565,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -367,7 +367,7 @@
       "downloads": {
         "macos": {
           "file": "SingItBack-0.1.5-macOS.pkg",
-          "bytes": null,
+          "bytes": 29062280,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -378,7 +378,7 @@
         },
         "windows": {
           "file": "SingItBack-0.1.5-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 11295733,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -434,7 +434,7 @@
       "downloads": {
         "macos": {
           "file": "KickLock-0.1.5-macOS.pkg",
-          "bytes": null,
+          "bytes": 74108962,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -449,7 +449,7 @@
         },
         "windows": {
           "file": "KickLock-0.1.5-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 23645557,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
