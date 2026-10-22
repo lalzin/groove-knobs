@@ -1,0 +1,15 @@
+{
+  "name": "Night Drive",
+  "engine": "pulse",
+  "funk": 0.55,
+  "params": {
+    "attack": 0.25,
+    "pick": 0.45,
+    "string": 0.95,
+    "body": 0.35,
+    "mute": 0.0,
+    "tone": -0.3,
+    "drive": 0.15
+  },
+  "trimDb": -1.4
+}

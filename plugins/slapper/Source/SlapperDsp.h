@@ -40,11 +40,13 @@ public:
     static constexpr int engineChoice = 1; // Engine order: string, analog, fm, pulse
     static constexpr double maxHumanSeconds = 0.008;
 
-    void setPresets (const gk::PresetManager&) override {}
+    /** Each preset's level trim ("trimDb" in its JSON, calibrated: every
+        preset at the same loudness, K-weighted, at VOL 0 dB). */
+    void setPresets (const gk::PresetManager& presets) override;
     void prepare (double sampleRate, int maxBlockSize, int numChannels) override;
     void reset() override;
     int getLatencySamples() const override { return 0; }
-    void setPreset (int) override {}
+    void setPreset (int index) override { trimDb = trims.empty() ? 0.0f : trims[(size_t) juce::jlimit (0, (int) trims.size() - 1, index)]; }
     /** A preset's engine ("engine" in its JSON: string, analog, fm, pulse), as the ENGINE choice index. */
     static int engineIndexOf (const juce::var& presetJson);
     void setMidi (const juce::MidiBuffer& midi, int start, int numSamples) override;
@@ -102,7 +104,8 @@ private:
     int midiStart = 0, midiCount = 0;
     bool poly = false;
     float knobs[numKnobs] { 0.5f, 0.15f, 0.4f, 0.3f, 0.0f, 0.3f, 0.0f, 0.2f, 0.0f };
-    float funk = 0.5f;
+    float funk = 0.5f, trimDb = 0.0f;
+    std::vector<float> trims;
     double bendRatio = 1.0;
     Amp amp;
     /** Two one-poles in a row (~20 ms): follows a host's block-by-block

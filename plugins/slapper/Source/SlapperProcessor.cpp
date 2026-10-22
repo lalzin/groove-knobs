@@ -81,11 +81,19 @@ gk::PresetManager SlapperProcessor::loadBuiltInPresets()
         { SLPresets::mothership_json, SLPresets::mothership_jsonSize },
         { SLPresets::rubber_band_json, SLPresets::rubber_band_jsonSize },
         { SLPresets::floor_pedal_json, SLPresets::floor_pedal_jsonSize },
+        { SLPresets::acid_funk_json, SLPresets::acid_funk_jsonSize },
+        { SLPresets::velvet_sub_json, SLPresets::velvet_sub_jsonSize },
+        { SLPresets::square_strut_json, SLPresets::square_strut_jsonSize },
         { SLPresets::solid_fm_json, SLPresets::solid_fm_jsonSize },
         { SLPresets::fm_slap_json, SLPresets::fm_slap_jsonSize },
         { SLPresets::glass_bass_json, SLPresets::glass_bass_jsonSize },
+        { SLPresets::bell_bottom_json, SLPresets::bell_bottom_jsonSize },
+        { SLPresets::wood_block_json, SLPresets::wood_block_jsonSize },
         { SLPresets::boogie_pulse_json, SLPresets::boogie_pulse_jsonSize },
         { SLPresets::mirrorball_json, SLPresets::mirrorball_jsonSize },
+        { SLPresets::roller_disco_json, SLPresets::roller_disco_jsonSize },
+        { SLPresets::night_drive_json, SLPresets::night_drive_jsonSize },
+        { SLPresets::hot_wire_json, SLPresets::hot_wire_jsonSize },
     };
     gk::PresetManager pm;
     for (const auto& e : entries)

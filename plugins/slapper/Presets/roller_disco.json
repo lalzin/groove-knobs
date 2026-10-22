@@ -1,0 +1,15 @@
+{
+  "name": "Roller Disco",
+  "engine": "pulse",
+  "funk": 0.45,
+  "params": {
+    "attack": 0.45,
+    "pick": 0.25,
+    "string": 0.55,
+    "body": 0.4,
+    "mute": 0.2,
+    "tone": 0.35,
+    "drive": 0.2
+  },
+  "trimDb": -2.1
+}

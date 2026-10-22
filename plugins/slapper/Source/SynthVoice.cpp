@@ -175,8 +175,9 @@ float SynthVoice::process() noexcept
         case Engine::analog:
         {
             const double t1 = advance (ph1, inc), inc2 = inc * std::pow (2.0, (4.0 + 14.0 * str) / 1200.0), t2 = advance (ph2, inc2);
-            const double tSub = advance (phSub, 0.5 * inc);
-            const double osc = 0.5 * saw (t1, inc) + 0.5 * ((1.0 - m) * saw (t2, inc2) + m * pulse (t2, inc2, 0.5)) + 0.8 * body * pulse (tSub, 0.5 * inc, 0.5);
+            // BODY: a sine on the fundamental, in phase with the saw's (whose fundamental is -sin):
+            // weight at the note's own pitch, never an octave under it
+            const double osc = 0.5 * saw (t1, inc) + 0.5 * ((1.0 - m) * saw (t2, inc2) + m * pulse (t2, inc2, 0.5)) - 0.9 * body * std::sin (twoPi * t1);
             const double octaves = (1.5 + 5.0 * funk) * (0.5 + 0.5 * velocity) * fenv + (ghost ? 0.0 : 1.0); // (at rest an octave over: the closing filter barely bends the pitch)
             const double fc = std::min ({ 0.42 * sr, 16000.0, f * 1.2 * std::exp2 (octaves) });
             const double k = 3.4 * std::pow (funk, 1.2);
@@ -187,8 +188,8 @@ float SynthVoice::process() noexcept
         {
             const double lfo = std::sin (twoPi * advance (phLfo, 0.7 / sr));
             const double w = std::clamp (0.5 - 0.42 * m + 0.2 * str * lfo, 0.05, 0.95);
-            const double t1 = advance (ph1, inc), tSub = advance (phSub, 0.5 * inc);
-            const double osc = 0.7 * pulse (t1, inc, w) + 0.7 * body * pulse (tSub, 0.5 * inc, 0.5);
+            const double t1 = advance (ph1, inc);
+            const double osc = 0.7 * pulse (t1, inc, w) + 0.9 * body * std::sin (twoPi * t1); // (the pulse's fundamental is +sin)
             const double octaves = (1.0 + 4.0 * funk) * (0.5 + 0.5 * velocity) * fenv + 1.8; // (open at rest: a polysynth bass is bright)
             const double fc = std::min ({ 0.42 * sr, 16000.0, f * 1.5 * std::exp2 (octaves) });
             const double k = 1.5 * funk;
@@ -202,8 +203,9 @@ float SynthVoice::process() noexcept
             fmIndex += fmIndexCoef * (indexTarget - fmIndex);
             const double mod = std::sin (twoPi * advance (phMod, inc * ratio) + 1.2 * str * fmPrev);
             fmPrev = mod;
-            const double car = std::sin (twoPi * advance (ph1, inc) + fmIndex * mod);
-            y = 0.55 * car + 0.45 * body * std::sin (twoPi * advance (phSub, 0.5 * inc));
+            const double t1 = advance (ph1, inc);
+            const double car = std::sin (twoPi * t1 + fmIndex * mod);
+            y = 0.55 * car + 0.45 * body * std::sin (twoPi * t1);
             break;
         }
         case Engine::string: break;

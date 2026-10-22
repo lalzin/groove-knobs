@@ -1,0 +1,15 @@
+{
+  "name": "Square Strut",
+  "engine": "analog",
+  "funk": 0.55,
+  "params": {
+    "attack": 0.6,
+    "pick": 0.5,
+    "string": 0.1,
+    "body": 0.3,
+    "mute": 0.3,
+    "drive": 0.3,
+    "human": 0.2
+  },
+  "trimDb": -1.2
+}

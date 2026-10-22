@@ -13,6 +13,13 @@ int SlapperDsp::engineIndexOf (const juce::var& json)
     return (int) (e == "analog" ? Engine::analog : e == "fm" ? Engine::fm : e == "pulse" ? Engine::pulse : Engine::string);
 }
 
+void SlapperDsp::setPresets (const gk::PresetManager& presets)
+{
+    trims.clear();
+    for (int i = 0; i < presets.size(); ++i)
+        trims.push_back ((float) presets[i].json.getProperty ("trimDb", 0.0));
+}
+
 void SlapperDsp::prepare (double sampleRate, int, int)
 {
     sr = sampleRate;
@@ -43,7 +50,7 @@ void SlapperDsp::reset()
     amp.reset();
     driveSmooth.snap (std::clamp (knobs[driveKnob] + funk::driveAdd (funk), 0.0f, 1.0f));
     toneSmooth.snap (std::clamp (knobs[toneKnob] + funk::toneAdd (funk), -1.0f, 1.0f));
-    volume.snap (gk::dspmath::dbToGain (knobs[levelKnob]));
+    volume.snap (knobs[levelKnob] <= -59.9f ? 0.0f : gk::dspmath::dbToGain (knobs[levelKnob] + trimDb));
     envelope = 0.0f;
 }
 
@@ -286,7 +293,7 @@ void SlapperDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, c
     funk = amount != nullptr ? std::clamp (amount[0], 0.0f, 1.0f) : funk;
     driveSmooth.setTarget (std::clamp (knobs[driveKnob] + funk::driveAdd (funk), 0.0f, 1.0f));
     toneSmooth.setTarget (std::clamp (knobs[toneKnob] + funk::toneAdd (funk), -1.0f, 1.0f));
-    volume.setTarget (gk::dspmath::dbToGain (knobs[levelKnob]));
+    volume.setTarget (knobs[levelKnob] <= -59.9f ? 0.0f : gk::dspmath::dbToGain (knobs[levelKnob] + trimDb)); // (VOL: -inf at the bottom)
 
     // MIDI of this chunk, in time order, interleaved with the samples
     auto it = midi != nullptr ? midi->findNextSamplePosition (midiStart) : juce::MidiBufferIterator();

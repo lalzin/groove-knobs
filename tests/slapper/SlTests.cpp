@@ -14,7 +14,7 @@ using slapper::Voice;
 
 namespace
 {
-constexpr int numPresets = 16;
+constexpr int numPresets = 24;
 
 // the fundamental's frequency over a stretch: low-passed (the stiff string's
 // upper partials are sharp, as on a real bass), then the autocorrelation peak
@@ -180,7 +180,7 @@ TEST_CASE ("Stability: 60 s of random playing, every knob, both modes, no NaN, n
     }
 }
 
-TEST_CASE ("Presets: sixteen, each sounds different", "[slapper]")
+TEST_CASE ("Presets: twenty-four, each sounds different", "[slapper]")
 {
     auto probe = makeProc (0);
     REQUIRE (probe->getPresets().size() == numPresets);
@@ -417,5 +417,20 @@ TEST_CASE ("Synth engines: in tune, a slide glides, a retrigger does not click",
         INFO ("engine " << (int) e << ": HF bursts, first attack " << first << " dB, slide " << slid << " dB, retrigger " << again << " dB");
         CHECK (slid < first + 3.0);
         CHECK (again < first + 3.0);
+    }
+}
+
+TEST_CASE ("Presets: the same loudness, whatever the engine (K-weighted, within 1 dB)", "[slapper]")
+{
+    auto probe = makeProc (0);
+    for (int i = 0; i < numPresets; ++i)
+    {
+        auto p = makeProc (i);
+        gktest::setParam (p->getKnobParameter (SlapperDsp::humanKnob), 0.0f); // (HUMAN moves the level a little)
+        const auto b = render (*p, sequenceOf (funkRiff (4), 48000.0), 10.5);
+        const double db = gk::KWeighting::levelDb (b, 48000.0);
+        INFO (probe->getPresets()[i].name << ": " << db << " dB");
+        CHECK (std::fabs (db + 14.0) < 1.0);
+        CHECK (b.getMagnitude (0, b.getNumSamples()) < 0.95f); // (and under the safety clip)
     }
 }

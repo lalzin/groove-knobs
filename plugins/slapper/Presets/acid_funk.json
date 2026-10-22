@@ -1,0 +1,16 @@
+{
+  "name": "Acid Funk",
+  "engine": "analog",
+  "funk": 0.95,
+  "params": {
+    "attack": 0.85,
+    "pick": 0.05,
+    "string": 0.15,
+    "body": 0.2,
+    "mute": 0.5,
+    "drive": 0.45,
+    "tone": 0.2,
+    "human": 0.15
+  },
+  "trimDb": -0.3
+}

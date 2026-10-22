@@ -1,0 +1,16 @@
+{
+  "name": "Hot Wire",
+  "engine": "pulse",
+  "funk": 0.8,
+  "params": {
+    "attack": 0.8,
+    "pick": 0.35,
+    "string": 0.2,
+    "body": 0.3,
+    "mute": 0.45,
+    "tone": 0.1,
+    "drive": 0.7,
+    "human": 0.1
+  },
+  "trimDb": -0.5
+}

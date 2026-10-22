@@ -1,5 +1,9 @@
 # Changelog
 
+## Slapper 0.1.0-test3 — 2026-10-22 (version de test, hors suite)
+- **Même volume pour tous les presets**, quel que soit le moteur (calibré, ±0,4 dB) ; les synthés ne sonnent plus plus gros ni plus graves que la corde : BODY renforce la fondamentale de la note au lieu d'ajouter l'octave en dessous.
+- **24 presets** : nouveaux Acid Funk, Velvet Sub, Square Strut (ANALOG), Bell Bottom, Wood Block (FM), Roller Disco, Night Drive, Hot Wire (PULSE).
+
 ## Slapper 0.1.0-test2 — 2026-10-22 (version de test, hors suite)
 - **Plus de grésillement** quand on tourne un réglage (TONE, FUNK surtout) pendant qu'une note sonne.
 - **ENGINE** : STRING (la basse modélisée), **ANALOG** (basse mono-synthé, filtre résonant), **FM** (basse FM des années 80), **PULSE** (basse boogie / disco de polysynthé). Chaque preset choisit le sien ; sélecteur à gauche de Pluck.

@@ -1,13 +1,11 @@
 // SLAPPER — the synth voices: the other basses a funk / disco record has.
 //
-//   ANALOG  two saws (the second detuned, or a square) and a square an octave
-//           down, into a resonant 24 dB ladder low-pass with its envelope:
+//   ANALOG  two saws (the second detuned, or a square), into a resonant 24 dB ladder low-pass with its envelope:
 //           the mono-synth funk bass (the squelch is the resonance).
 //   FM      two operators: a sine carrier, its modulator (ratio 1, 2 or 3,
 //           with feedback), the index falling fast after the attack: the
 //           80s FM bass, percussive, glassy, a slap without a string.
-//   PULSE   a pulse wave (its width moving slowly) and a square an octave
-//           down, into the ladder with less resonance: the boogie /
+//   PULSE   a pulse wave (its width moving slowly), into the ladder with less resonance: the boogie /
 //           disco polysynth bass.
 //
 // The same knobs play them, each its own way (SlapperDsp::synthParams):
@@ -16,7 +14,8 @@
 //   MUTE    the note's length (sustain down, release short)
 //   PICK    ANALOG saw -> square; FM the modulator's ratio; PULSE the width
 //   STRING  ANALOG detune; FM feedback; PULSE the width's movement
-//   BODY    the octave-down square / sine
+//   BODY    a sine on the fundamental, in phase with it (as the string's sub:
+//           weight at the note's pitch, never an octave lower)
 // Oscillators band-limited (polyBLEP); a slide (MONO legato) glides the pitch.
 #pragma once
 #include <cstdint>
@@ -54,7 +53,7 @@ private:
     // pitch (log, glided), bend
     double targetHz = 55.0, logHz = 0.0, logFrom = 0.0, logTo = 0.0, glidePos = 1.0, glideStep = 0.0, bend = 1.0;
     // oscillators (phases 0..1)
-    double ph1 = 0.0, ph2 = 0.0, phSub = 0.0, phMod = 0.0, phLfo = 0.0;
+    double ph1 = 0.0, ph2 = 0.0, phMod = 0.0, phLfo = 0.0;
     double fmPrev = 0.0, fmIndex = 0.0, fmIndexCoef = 0.0; // the index follows its target in ~0.7 ms (a jump is a click)
     // envelopes: amp (attack / decay to sustain / release), filter (or FM index): a decay
     Stage stage = Stage::idle;

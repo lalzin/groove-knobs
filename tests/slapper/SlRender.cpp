@@ -39,7 +39,9 @@ int main (int argc, char** argv)
     {
         auto p = makeProc (i);
         const auto name = probe->getPresets()[i].name.toLowerCase().replaceCharacter (' ', '_');
-        write (render (*p, sequenceOf (funkRiff (4), sr), 10.5), out.getChildFile ("slapper_" + name + ".wav"));
+        const auto b = render (*p, sequenceOf (funkRiff (4), sr), 10.5);
+        std::cout << "  " << probe->getPresets()[i].name << ": " << gk::KWeighting::levelDb (b, sr) << " dB (K-weighted)\n";
+        write (b, out.getChildFile ("slapper_" + name + ".wav"));
     }
     {
         // disco: eighths, octave up on the off-beats, 120 BPM, four bars E E A B

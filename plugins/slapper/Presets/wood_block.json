@@ -1,0 +1,14 @@
+{
+  "name": "Wood Block",
+  "engine": "fm",
+  "funk": 0.7,
+  "params": {
+    "attack": 0.95,
+    "pick": 0.1,
+    "string": 0.6,
+    "body": 0.3,
+    "mute": 0.6,
+    "drive": 0.25
+  },
+  "trimDb": -2.0
+}

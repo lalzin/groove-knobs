@@ -1,0 +1,14 @@
+{
+  "name": "Bell Bottom",
+  "engine": "fm",
+  "funk": 0.5,
+  "params": {
+    "attack": 0.5,
+    "pick": 0.5,
+    "string": 0.15,
+    "body": 0.6,
+    "mute": 0.2,
+    "tone": 0.1
+  },
+  "trimDb": -2.9
+}
