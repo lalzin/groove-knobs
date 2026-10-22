@@ -884,7 +884,7 @@ double KickLockDsp::collisionPhase (double T, std::int64_t when) const noexcept
     // is back at full level while the kick still sounds — the collision
     // weighs most there; the window used to stop at the release's end)
     const auto beatLength = (std::int64_t) (60.0 / juce::jmax (1.0, bpm) * sampleRate);
-    const auto window = juce::jmin<std::int64_t> (heardUpTo - prevKick, (std::int64_t) (collisionSeconds * sampleRate), when - prevKick > 0 ? when - prevKick : beatLength);
+    const auto window = juce::jmin<std::int64_t> (heardUpTo - prevKick, (std::int64_t) (templateSeconds * sampleRate), when - prevKick > 0 ? when - prevKick : beatLength);
     if (window < (std::int64_t) (0.03 * sampleRate))
         return 0.0;
     const auto& table = shape == custom ? customTables[(size_t) customPublished.load (std::memory_order_acquire)] : presetTables[(size_t) shape];

@@ -133,7 +133,8 @@ public:
         kick against the sub coming back, weighted by the ducking curve, over
         ~90 ms after the kick, both seen ahead. It needs to see them: ~150 ms
         of latency (the host compensates it; for mixing, not for playing). */
-    static constexpr double hilbertSeconds = 0.045, collisionSeconds = 0.3;
+    static constexpr double hilbertSeconds = 0.045, collisionSeconds = 0.3; // PRECISE sees this much of the kick's tail ahead (a long kick's: 0.15 lost 4 %)
+    static constexpr double templateSeconds = 0.3; // LIVE: the last kick's tail it weighs (no latency: it is past)
     static int preciseLatencyFor (double sampleRate, int maxBlock) noexcept
     {
         const int D = juce::jmax (1, (int) std::round (sampleRate / 3000.0));

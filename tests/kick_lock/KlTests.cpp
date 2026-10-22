@@ -1860,6 +1860,65 @@ TEST_CASE ("KL 44. PRECISE: no note detection, the collision seen ahead - the ki
   }
 }
 
+TEST_CASE ("diag: Alan's bass and kick files (GK_KL_BASS, GK_KL_KICK, GK_KL_BPM): LOCK off / LIVE / PRECISE", "[.kldiag15]")
+{
+    juce::AudioFormatManager fm;
+    fm.registerBasicFormats();
+    auto load = [&] (const char* env)
+    {
+        std::unique_ptr<juce::AudioFormatReader> r (fm.createReaderFor (juce::File (std::getenv (env))));
+        Buffer one (2, (int) r->lengthInSamples);
+        r->read (&one, 0, (int) r->lengthInSamples, 0, true, true);
+        // looped 4 times (the plug-in settles on the first pass)
+        Buffer b (2, one.getNumSamples() * 4);
+        for (int n = 0; n < 4; ++n)
+            for (int c = 0; c < 2; ++c)
+                b.copyFrom (c, n * one.getNumSamples(), one, c, 0, one.getNumSamples());
+        return b;
+    };
+    const auto b = load ("GK_KL_BASS"), k = load ("GK_KL_KICK");
+    const double sr = 48000.0, bpm = std::atof (std::getenv ("GK_KL_BPM"));
+    const int from = b.getNumSamples() / 4; // the passes after the first
+    juce::String line;
+    for (int engine : { 0, 1, 2 })
+        for (int mode : { 0, 1 })
+        {
+            if (engine == 0 && mode == 1)
+                continue;
+            auto p = makeKl (sr, 1.0f, engine > 0, 1.0f);
+            p->getDsp().setAimAtCollision (true);
+            setParam (p->getPreciseParameter(), engine == 2 ? 1.0f : 0.0f);
+            setParam (p->getLockModeParameter(), (float) mode);
+            p->prepareToPlay (sr, 512);
+            int seen = 0;
+            juce::String kicksLog;
+            const auto out = run (*p, b, &k, { 512 }, bpm, [&] (int)
+            {
+                auto& d = p->getDsp();
+                if (engine == 1 && mode == 0 && d.getTelemetry().kickEvents.load() != seen)
+                {
+                    seen = d.getTelemetry().kickEvents.load();
+                    kicksLog << " [" << juce::String (d.getTelemetry().lastKickSample.load() / sr, 3) << " T " << juce::String (d.lastTm, 0) << " src " << d.lastSource
+                             << " age " << juce::String (d.lastNoteAgeMs, 0) << " conf " << juce::String (d.getTelemetry().phaseConfidence.load(), 2) << " err " << juce::String (d.getTelemetry().phaseErrorDeg.load(), 0) << "]";
+                }
+            });
+            if (kicksLog.isNotEmpty())
+                WARN (kicksLog);
+            const int L = p->getLatencySamples();
+            double sum = 0.0, cross = 0.0;
+            for (int i = from; i + L < out.getNumSamples(); ++i)
+            {
+                const double kick = 0.5 * (k.getSample (0, i) + k.getSample (1, i)), bassOut = 0.5 * (out.getSample (0, i + L) + out.getSample (1, i + L));
+                sum += (kick + bassOut) * (kick + bassOut);
+                cross += kick * bassOut;
+            }
+            line << (engine == 0 ? "LOCK off" : engine == 1 ? (mode ? " | LIVE Transition" : " | LIVE Hold") : (mode ? " | PRECISE Transition" : " | PRECISE Hold"))
+                 << ": sum " << juce::String (sum, 0) << ", kick x bass " << juce::String (cross, 1)
+                 << " (status " << p->getDsp().getTelemetry().status.load() << ", reason " << p->getDsp().getTelemetry().analysisReason.load() << ")";
+        }
+    WARN (line);
+}
+
 TEST_CASE ("diag: a bass file against a kick: LOCK off / LIVE / PRECISE (GK_KL_FILE, GK_KL_BPM)", "[.kldiag14]")
 {
     juce::AudioFormatManager fm;
@@ -1917,8 +1976,13 @@ TEST_CASE ("diag: a bass file (GK_KL_FILE, GK_KL_BPM)", "[.kldiag8]")
     r->read (&b, 0, (int) r->lengthInSamples, 0, true, true);
     const double sr = r->sampleRate, bpm = std::atof (std::getenv ("GK_KL_BPM"));
     auto p = makeKl (sr, 1.0f, true, 0.0f);
-    setParam (p->getTriggerParameter(), (float) KickLockDsp::triggerBeat);
+    setParam (p->getTriggerParameter(), (float) KickLockDsp::triggerSidechain);
     p->prepareToPlay (sr, 512);
+    std::unique_ptr<juce::AudioFormatReader> kr (std::getenv ("GK_KL_KICK") ? fm.createReaderFor (juce::File (std::getenv ("GK_KL_KICK"))) : nullptr);
+    Buffer kb (2, b.getNumSamples());
+    kb.clear();
+    if (kr != nullptr)
+        kr->read (&kb, 0, juce::jmin (b.getNumSamples(), (int) kr->lengthInSamples), 0, true, true);
     int seen = 0;
     juce::String log;
     std::vector<std::pair<std::int64_t, double>> kicksSeen;
