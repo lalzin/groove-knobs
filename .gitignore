@@ -12,6 +12,6 @@ web-assets/*.png
 
 # SLAPPER prototype: builds and renders
 prototypes/slapper/render
-prototypes/slapper/metrics
-prototypes/slapper/scan
+prototypes/slapper/diag
+prototypes/slapper/clicks
 renders/

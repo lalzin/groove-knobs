@@ -1,6 +1,13 @@
-// SLAPPER — step 1 prototype: one voice, no UI, no JUCE.
-// A plucked / struck string as a bidirectional digital waveguide, excited by
-// a nonlinear contact (SLAP, DOIGT) or a pull-and-release (POP).
+// SLAPPER — one voice, no UI, no JUCE.
+// The string as a sum of its modes (one damped resonator per harmonic, each
+// with its own decay: the highs die in a fraction of a second, the
+// fundamental rings for seconds — what a real bass does, and nothing above
+// ~6 kHz exists, so nothing aliases). Excited by a thumb strike (SLAP), a
+// pull-and-release (POP) or a finger pluck (DOIGT); the string bounces off
+// the frets under it (the slap's clank, the pop's snap: a real collision, not
+// noise). Read by a magnetic pickup (the string's velocity at the pickup, its
+// coil's resonance). A sub oscillator locked on the fundamental rounds the
+// low end, under a low cut.
 #pragma once
 #include <cstdint>
 #include <vector>
@@ -14,67 +21,57 @@ class Voice
 {
 public:
     void prepare (double sampleRate);
-    /** Starts a note (the string keeps vibrating if it already does: a new
-        excitation on top, as on a real string). */
+    /** Starts a note. The string that was ringing is damped in a few ms (the
+        fretting hand), not cut. */
     void noteOn (double hz, float velocity, Attack attack);
-    float process() noexcept; // one sample of the pickup (velocity, like a magnetic pickup)
+    float process() noexcept;
 
-    // the string (step 1: fixed by hand; later FUNK / the advanced knobs)
-    float pickPosition = 0.15f; // PINCEMENT: the excitation point, from the bridge (0.05..0.5)
-    float stringStiffness = 0.4f; // CORDE: tension and stiffness (0..1)
-    float mute = 0.0f; // ÉTOUFFER: damping in the loop (0..1)
+    float pickPosition = 0.15f;  // PINCEMENT: the finger's point, from the bridge (0.05..0.5)
+    float stringStiffness = 0.4f; // CORDE: stiffness (inharmonicity) and brightness (0..1)
+    float mute = 0.0f;            // ÉTOUFFER: the palm on the strings (0..1)
+    float subLevel = 0.5f;        // SUB: the sine locked on the fundamental (0..1)
+    float lowCutHz = 32.0f;       // the low cut under it all
 
-    /** The loop's period at the note, for the tuning test. */
-    double loopDelay() const noexcept { return loopTotal; }
-    int contactSamples = 0; // (diagnosis: how long the thumb / finger touched the string)
+    int contactSamples = 0; // (diagnosis: samples the string spent against the frets)
     double peakForce = 0.0;
 
 private:
-    struct Line
+    // one mode bank: the string's modes, as rotating phasors z = u + j q
+    // (q the modal displacement, u its velocity / omega)
+    struct Bank
     {
-        std::vector<float> buf;
-        int mask = 0, w = 0;
-        void init (int size);
-        void push (float x) noexcept { w = (w + 1) & mask; buf[(size_t) w] = x; }
-        float at (int d) const noexcept { return buf[(size_t) ((w - d) & mask)]; }
-        void add (int d, float x) noexcept { buf[(size_t) ((w - d) & mask)] += x; }
-        void set (int d, float x) noexcept { buf[(size_t) ((w - d) & mask)] = x; }
+        int K = 0;
+        std::vector<float> re, im, pr, pi, out, fret, fretInvW;
+        float fundW = 0.0f;
+        // the sub: a sine on this string's fundamental (its phase), its envelope
+        float subEnv = 0.0f, subTarget = 0.0f, subDecay = 1.0f;
+        double reach = 0.0; // how far one sample of contact force moves the struck point (per unit force)
+        bool alive = false;
+        void resize (int n);
     };
-    void tune (double hz);
-    void displace (float A, int width);
-    float displacementAt (int fromNut) const noexcept { return right.at (fromNut) + left.at (M - 1 - fromNut); }
-    void inject (int fromNut, float dy) noexcept
-    {
-        right.add (fromNut, 0.5f * dy);
-        left.add (M - 1 - fromNut, 0.5f * dy);
-    }
+    void setup (Bank& b, double hz, Attack attack, float vel);
+    void damp (Bank& b, double t60);
+    float run (Bank& b, bool contact) noexcept;
 
-    double sr = 48000.0, f0 = 55.0, loopTotal = 0.0;
-    Line right, left; // right: nut -> bridge (index = distance from the nut); left: bridge -> nut
-    int M = 2, excitePoint = 1, pickupPoint = 1;
-    // the bridge's reflection: -g * lowpass (loss) * allpass (stiffness) * Thiran (tuning)
-    float g = 0.99f, lpA = 0.2f, lpZ = 0.0f, dispC = 0.0f, dispX = 0.0f, dispY = 0.0f, thA = 0.0f, thX = 0.0f, thY = 0.0f;
-    // the hammer (thumb, finger): a mass on a nonlinear spring, F = k d^p
-    struct Hammer
+    double sr = 48000.0;
+    Bank bank[2];
+    int cur = 0;
+    // the frets under the string where it is struck: the string can't go past them
+    double fretGap = 1.0, fretK = 0.0;
+    bool contactOn = false;
+    float subAttack = 0.0f;
+    float sub (Bank& b) noexcept;
+    // the pickup's coil + cable (resonant low-pass), the low cut (2nd order high-pass)
+    struct Biquad
     {
-        bool active = false;
-        double x = 0.0, v = 0.0, m = 1.0, k = 1.0, p = 2.0;
-        int age = 0, life = 0;
-    } hammer, rebound;
-    int reboundDelay = -1;
-    float attackGain = 1.0f; // (step 1: the three attacks near the same level; the amp comes in step 2)
-    // the slap's "clac" (thumb on the frets) and the pop's snap: a short, filtered burst
-    int clickLeft = 0;
-    float clickGain = 0.0f, clickHp = 0.0f, clickPrev = 0.0f;
-    std::uint32_t seed = 0x9e3779b9u;
-    float lastPick = 0.0f, dcX = 0.0f, dcY = 0.0f;
-    // the pickup (a passive coil and its cable): a resonant low-pass ~3 kHz
-    float pb0 = 0, pb1 = 0, pb2 = 0, pa1 = 0, pa2 = 0, px1 = 0, px2 = 0, py1 = 0, py2 = 0;
-    float noise() noexcept
-    {
-        seed = seed * 1664525u + 1013904223u;
-        return (float) (seed >> 8) / 8388608.0f - 1.0f;
-    }
-    void stepHammer (Hammer& h) noexcept;
+        float b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+        float run (float x) noexcept
+        {
+            const float y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+            x2 = x1; x1 = x; y2 = y1; y1 = y;
+            return y;
+        }
+    } coil, lowCut;
+    float designedLowCut = -1.0f;
 };
 } // namespace slapper

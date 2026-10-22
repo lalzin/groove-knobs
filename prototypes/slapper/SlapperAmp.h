@@ -14,7 +14,7 @@ public:
     void reset();
     float process (float x) noexcept;
 
-    float drive = 0.3f; // SATURATION 0..1
+    float drive = 0.15f; // SATURATION 0..1
     float tone = 0.0f;  // TIMBRE -1 (dark) .. +1 (bright)
     float sub = 1.0f;   // the low end (0..1): the cabinet's 80 Hz and the shelf under it
 

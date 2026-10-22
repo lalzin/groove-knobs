@@ -93,7 +93,7 @@ void Amp::prepare (double sampleRate)
     const double f[4] { 80.0, 220.0, 600.0, 1800.0 }, q[4] { 1.1, 1.4, 1.8, 2.2 };
     for (int i = 0; i < 4; ++i)
         cab[i] = bandPass (sr, f[i], q[i]);
-    cabDirect = lowPass (sr, 4500.0, 0.8);
+    cabDirect = lowPass (sr, 5000.0, 0.7);
     designedTone = designedSub = -9.0f;
     design();
     reset();
@@ -106,7 +106,7 @@ void Amp::design()
     designedTone = tone;
     designedSub = sub;
     // the velocity pickup tilts the low end down: a shelf under 120 Hz gives it back
-    subShelf = lowShelf (sr, 120.0, 4.0 + 6.0 * sub);
+    subShelf = lowShelf (sr, 110.0, 2.0 + 4.0 * sub);
     lowS = lowShelf (sr, 200.0, -6.0 * tone);
     highS = highShelf (sr, 2500.0, 8.0 * tone);
     mid = peak (sr, 700.0, -2.5, 0.9); // a light mid scoop: funk
@@ -152,7 +152,7 @@ float Amp::process (float x) noexcept
         downPos = (downPos + 1) & 63;
     }
     // the cabinet: its four modes in parallel, and the cone's direct sound
-    float c = 0.5f * cabDirect.run (out);
+    float c = 0.8f * cabDirect.run (out);
     for (int i = 0; i < 4; ++i)
         c += cabGain[(size_t) i] * cab[i].run (out);
     // a soft limiter, no hard clipping

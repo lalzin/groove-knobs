@@ -79,7 +79,7 @@ int main (int argc, char** argv)
         float peakAmp = 0.0f;
         for (size_t i = 0; i < x.size(); ++i)
         {
-            y[i] = amp.process (3.0f * x[i]);
+            y[i] = amp.process (1.5f * x[i]);
             peakAmp = std::fmax (peakAmp, std::fabs (y[i]));
         }
         auto subShare = [&] (const std::vector<float>& z)
@@ -104,10 +104,10 @@ int main (int argc, char** argv)
         std::printf ("%s: peak %.3f, sub share (<100 Hz, E1 / A1, first 300 ms): string %.0f %%, amp %.0f %%\n", names[a], peak, subShare (x), subShare (y));
         for (auto& s : x)
             s *= 0.7f / peak;
-        writeWav (out + "/slapper_step1_" + names[a] + ".wav", x, sr);
+        writeWav (out + "/slapper_v2_corde_" + names[a] + ".wav", x, sr);
         for (auto& s : y)
             s *= 0.8f / peakAmp;
-        writeWav (out + "/slapper_step2_" + names[a] + ".wav", y, sr);
+        writeWav (out + "/slapper_v2_" + names[a] + ".wav", y, sr);
     }
     // tuning: 40, 110, 220 Hz, each attack, measured 0.3-0.8 s after the note
     double worst = 0.0;
@@ -118,59 +118,67 @@ int main (int argc, char** argv)
             v.prepare (sr);
             v.noteOn (hz, 0.85f, (Attack) a);
             std::vector<float> x;
+            // (the fundamental's pitch: the stiff string's upper partials are sharp, as on a real bass)
+            float l1 = 0.0f, l2 = 0.0f;
+            const float c = 1.0f - (float) std::exp (-2.0 * 3.14159265 * 1.3 * hz / sr);
             for (int i = 0; i < sr; ++i)
-                x.push_back (v.process());
+            {
+                l1 += c * (v.process() - l1);
+                l2 += c * (l1 - l2);
+                x.push_back (l2);
+            }
             const double got = measureHz (x, (int) (0.3 * sr), (int) (0.4 * sr), hz, sr);
             const double cents = 1200.0 * std::log2 (got / hz);
             worst = std::fmax (worst, std::fabs (cents));
             std::printf ("  %s %6.1f Hz: %8.3f Hz (%+.2f cents)\n", names[a], hz, got, cents);
         }
     std::printf ("tuning: worst %.2f cents (limit 2)\n", worst);
-    // 2. a groove: 100 BPM sixteenths, thumb on the root, pops on the octave
+    // 2. two grooves: a slap line (100 BPM: thumb on the roots, pops on the
+    // octaves) and a disco finger line (120 BPM, octaves on the eighths)
+    struct Hit { int step; double hz; Attack a; float vel; };
+    auto groove = [&] (const char* name, double bpm, int steps, const std::vector<Hit>& riff, int bars)
     {
         Voice v;
         v.prepare (sr);
-        const double sixteenth = 60.0 / 100.0 / 4.0;
-        struct Hit { int step; double hz; Attack a; float vel; };
-        const Hit riff[] { { 0, 41.2, Attack::slap, 0.95f }, { 2, 82.4, Attack::pop, 0.8f }, { 3, 41.2, Attack::slap, 0.6f },
-                           { 6, 82.4, Attack::pop, 0.85f }, { 8, 49.0, Attack::slap, 0.9f }, { 10, 98.0, Attack::pop, 0.75f },
-                           { 11, 55.0, Attack::slap, 0.7f }, { 12, 55.0, Attack::finger, 0.6f }, { 14, 110.0, Attack::pop, 0.9f } };
-        std::vector<float> x ((size_t) (sixteenth * 16 * 4 * sr), 0.0f);
+        const double step = 60.0 / bpm / 4.0;
+        std::vector<float> x ((size_t) ((step * steps * bars + 1.0) * sr), 0.0f);
         size_t pos = 0;
-        float peak = 0.0f;
-        for (int bar = 0; bar < 4; ++bar)
+        auto runTo = [&] (size_t at) { while (pos < at && pos < x.size()) x[pos++] = v.process(); };
+        for (int bar = 0; bar < bars; ++bar)
             for (const auto& h : riff)
             {
-                const size_t at = (size_t) ((bar * 16 + h.step) * sixteenth * sr);
-                while (pos < at)
-                {
-                    x[pos] = v.process();
-                    peak = std::fmax (peak, std::fabs (x[pos]));
-                    ++pos;
-                }
+                runTo ((size_t) ((bar * steps + h.step) * step * sr));
                 v.noteOn (h.hz, h.vel, h.a);
             }
-        while (pos < x.size())
-        {
-            x[pos] = v.process();
-            peak = std::fmax (peak, std::fabs (x[pos]));
-            ++pos;
-        }
+        runTo (x.size());
         Amp amp;
         amp.prepare (sr);
+        float peak = 0.0f, peakAmp = 0.0f;
         std::vector<float> y (x.size());
-        float peakAmp = 0.0f;
         for (size_t i = 0; i < x.size(); ++i)
         {
-            y[i] = amp.process (3.0f * x[i]);
+            y[i] = amp.process (1.5f * x[i]);
+            peak = std::fmax (peak, std::fabs (x[i]));
             peakAmp = std::fmax (peakAmp, std::fabs (y[i]));
         }
         for (auto& s : x)
             s *= 0.7f / peak;
-        writeWav (out + "/slapper_step1_groove.wav", x, sr);
+        writeWav (out + "/slapper_v2_corde_" + name + ".wav", x, sr);
         for (auto& s : y)
             s *= 0.8f / peakAmp;
-        writeWav (out + "/slapper_step2_groove.wav", y, sr);
+        writeWav (out + "/slapper_v2_" + name + ".wav", y, sr);
+    };
+    groove ("groove", 100.0, 16,
+            { { 0, 41.2, Attack::slap, 0.95f }, { 2, 82.4, Attack::pop, 0.8f }, { 3, 41.2, Attack::slap, 0.6f },
+              { 6, 82.4, Attack::pop, 0.85f }, { 8, 49.0, Attack::slap, 0.9f }, { 10, 98.0, Attack::pop, 0.75f },
+              { 11, 55.0, Attack::slap, 0.7f }, { 12, 55.0, Attack::finger, 0.6f }, { 14, 110.0, Attack::pop, 0.9f } }, 4);
+    {
+        std::vector<Hit> disco;
+        const double roots[] { 41.2, 41.2, 55.0, 61.7 }; // E E A B, a bar each... in eighths, octave up on the offbeats
+        for (int bar = 0; bar < 4; ++bar)
+            for (int e = 0; e < 8; ++e)
+                disco.push_back ({ bar * 16 + e * 2, roots[bar] * (e % 2 ? 2.0 : 1.0), Attack::finger, e % 2 ? 0.7f : 0.9f });
+        groove ("disco", 120.0, 64, disco, 2);
     }
     return worst <= 2.0 ? 0 : 1;
 }
