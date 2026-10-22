@@ -166,13 +166,23 @@ class KickLockEditor::PhaseGauge final : public juce::Component, public juce::Se
 public:
     PhaseGauge (KickLockProcessor& p, const gk::Palette& pal) : proc (p), palette (pal)
     {
-        setTooltip ("Phase of the sub against its aim: in phase with the kick where the sub comes back under it (the collision, under the ducking curve), plus TARGET. Green: within 5 degrees.");
+        setTooltip ("LIVE: the phase of the sub against its aim (in phase with the kick where the sub comes back under it, plus TARGET); green within 5 degrees. "
+                    "PRECISE with LOCK: the correction made at each kick (what is left is 0: the best rotation is chosen on the collision itself) (the rotation that makes the kick and the sub add up the most).");
     }
 
     void update (int preview, bool snap)
     {
         auto& tel = proc.getDsp().getTelemetry();
-        const float e = tel.phaseErrorDeg.load (std::memory_order_relaxed);
+        // PRECISE, LOCK on: what is left is 0 by construction (the best
+        // rotation is chosen on the collision itself) — the dial shows the
+        // correction made instead, and how well the kick and the sub match
+        const bool turnedView = proc.getPreciseParameter().get() && proc.getLockParameter().get();
+        if (turnedView != turned)
+        {
+            turned = turnedView;
+            shownError = 1.0e9f; // (repaint)
+        }
+        const float e = turned ? (float) KickLockDsp::wrap180 (tel.kickPhaseDeg.load (std::memory_order_relaxed)) : tel.phaseErrorDeg.load (std::memory_order_relaxed);
         const float c = tel.phaseConfidence.load (std::memory_order_relaxed);
         const int st = preview >= 0 ? preview : tel.status.load (std::memory_order_relaxed);
         const float a = snap ? 1.0f : 0.25f;
@@ -196,7 +206,7 @@ public:
         const bool measuring = status != (int) Status::noKick && status != (int) Status::weakSub && status != (int) Status::ducking;
         g.setColour (palette (cream).withAlpha (0.55f));
         g.setFont (gk::GrooveFonts::font (11.0f).withExtraKerningFactor (0.12f));
-        g.drawText ("PHASE ON KICK", b.withHeight (14.0f), juce::Justification::centred);
+        g.drawText (turned ? "CORRECTION ON KICK" : "PHASE ON KICK", b.withHeight (14.0f), juce::Justification::centred);
 
         // the dial: an arc of 180° from -180 (left) to +180 (right)
         const juce::Point<float> centre (b.getCentreX(), b.getY() + 62.0f);
@@ -222,19 +232,19 @@ public:
             juce::Path needle;
             needle.startNewSubPath (centre);
             needle.lineTo (centre.getPointOnCircumference (r + 2.0f, an));
-            g.setColour (palette (statusColour (status)));
+            g.setColour (palette (turned ? lime : statusColour (status)));
             g.strokePath (needle, juce::PathStrokeType (2.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         }
         g.setColour (palette (juce::Colour (0xff121318)));
         g.fillEllipse (juce::Rectangle<float> (9.0f, 9.0f).withCentre (centre));
         // the value, under the dial's hub
-        g.setColour (palette (measuring ? statusColour (status) : grey));
+        g.setColour (palette (measuring ? (turned ? lime : statusColour (status)) : grey));
         g.setFont (gk::GrooveFonts::font (17.0f));
         const auto value = measuring ? (error >= 0.05f ? "+" : "") + num (error, 1) + fr ("\xc2\xb0") : juce::String ("--");
         g.drawText (value, juce::Rectangle<float> (b.getWidth(), 20.0f).withPosition (b.getX(), centre.y + 4.0f), juce::Justification::centred);
         g.setColour (palette (cream).withAlpha (0.5f));
         g.setFont (gk::GrooveFonts::font (10.0f));
-        g.drawText ("confidence " + (measuring ? juce::String (juce::roundToInt (confidence * 100.0f)) + " %" : juce::String ("--")),
+        g.drawText (turned ? juce::String ("best on the collision") : "confidence " + (measuring ? juce::String (juce::roundToInt (confidence * 100.0f)) + " %" : juce::String ("--")),
                     juce::Rectangle<float> (b.getWidth(), 13.0f).withPosition (b.getX(), centre.y + 23.0f), juce::Justification::centred);
     }
 
@@ -242,6 +252,7 @@ private:
     KickLockProcessor& proc;
     const gk::Palette& palette;
     float error = 0.0f, confidence = 0.0f, shownError = 1.0e9f, shownConfidence = -1.0f;
+    bool turned = false; // PRECISE + LOCK: the correction made, not what is left
     int status = -1;
 };
 
@@ -1090,7 +1101,8 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
     addToCanvas (*status, { 576, 17, 132, 28 });
     engine = std::make_unique<EnginePill> (pal);
     engineAttachment = std::make_unique<juce::ButtonParameterAttachment> (proc.getPreciseParameter(), *engine);
-    addToCanvas (*engine, { 484, 17, 84, 28 });
+    // (under LOCK, where MODE was: Hold / Transition is gone, Alan)
+    addToCanvas (*engine, { 488, 376, 86, 30 });
     gauge = std::make_unique<PhaseGauge> (p, pal);
     addToCanvas (*gauge, { 10, 70, 182, 104 });
     scope = std::make_unique<Scope> (p, pal);
@@ -1105,9 +1117,6 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
     phaseButton = std::make_unique<LockButton> (pal, true);
     phaseAttachment = std::make_unique<juce::ButtonParameterAttachment> (proc.getPhaseParameter(), *phaseButton);
     addToCanvas (*phaseButton, { 488, 284, 86, 36 });
-    mode = std::make_unique<gk::ChoiceSelector> (p.getLockModeParameter(), "MODE", lime, pal);
-    mode->setTooltip ("Hold: the correction holds from one kick to the next. Transition: only around the kick, then back to the original bass.");
-    addToCanvas (*mode, { 492, 372, 80, 38 });
 
     trigger = std::make_unique<gk::ChoiceSelector> (p.getTriggerParameter(), "TRIGGER", orange, pal);
     trigger->setTooltip ("Auto: the kicks of Kick Lock Send on the same LINK number (put it on the kick's track), else the host's beats. "
@@ -1174,7 +1183,7 @@ void KickLockEditor::editorTick (double dt)
     if (const bool phaseOn = proc.getPhaseParameter().get(); lockButton->isEnabled() != phaseOn)
     {
         lockButton->setEnabled (phaseOn);
-        mode->setEnabled (phaseOn);
+        engine->setEnabled (phaseOn);
     }
     // TARGET, OFFSET, SUB CUT, WAVE START (knobs 0..3): touched, hovered or
     // automated, the scope explains what it does (Alan: "trop obscur")

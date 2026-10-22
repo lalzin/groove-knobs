@@ -50,7 +50,7 @@ private:
     std::unique_ptr<juce::ButtonParameterAttachment> engineAttachment;
     std::unique_ptr<LockButton> lockButton, phaseButton;
     std::unique_ptr<juce::ButtonParameterAttachment> lockAttachment, phaseAttachment;
-    std::unique_ptr<gk::ChoiceSelector> shape, release, mode, trigger, linkSel, monoSel;
+    std::unique_ptr<gk::ChoiceSelector> shape, release, trigger, linkSel, monoSel;
     std::vector<std::unique_ptr<gk::SmallKnob>> knobs;
     std::unique_ptr<juce::Component> panelsHolder;
     int previewStatus = -1, frameCount = 0;

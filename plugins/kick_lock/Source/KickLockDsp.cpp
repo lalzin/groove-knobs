@@ -322,7 +322,7 @@ void KickLockDsp::setChoices (const int* idx, int n)
 {
     shape = n > shapeChoice ? juce::jlimit (0, (int) custom, idx[shapeChoice]) : exponential;
     release = n > releaseChoice ? juce::jlimit (0, 4, idx[releaseChoice]) : 2;
-    lockMode = n > modeChoice ? juce::jlimit (0, 1, idx[modeChoice]) : continuous;
+    lockMode = continuous; // (MODE is gone from the window: Hold only; the parameter stays for old sessions)
     trigger = n > triggerChoice ? juce::jlimit (0, 3, idx[triggerChoice]) : triggerAuto;
     linkChannel = n > linkChoice ? juce::jlimit (0, KickLinkMemory::channels - 1, idx[linkChoice]) : 1;
     monoBelow = n > monoChoice ? juce::jlimit (0, monoOptions - 1, idx[monoChoice]) : 0;
@@ -1230,7 +1230,8 @@ void KickLockDsp::onKickPrecise (std::int64_t when, int source)
     kickPhase = psiStar;
     telemetry.kickPhaseDeg.store ((float) psiStar, std::memory_order_relaxed);
     telemetry.phaseErrorDeg.store (lock ? 0.0f : (float) wrap180 (-psiStar), std::memory_order_relaxed);
-    telemetry.phaseConfidence.store ((float) juce::jlimit (0.0, 1.0, coherence), std::memory_order_relaxed);
+    juce::ignoreUnused (coherence);
+    telemetry.phaseConfidence.store (1.0f, std::memory_order_relaxed); // (no doubt to tell: the collision is seen, not guessed)
 }
 
 void KickLockDsp::onKick (std::int64_t when, int extra, int source)
@@ -2023,7 +2024,15 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
             // the bass as heard, its lowest part only (Alan: a saw's highs hid
             // where its cycle is against the kick): its fundamental as heard
             // (rotated, ducked) while one is followed, else the band under SUB CUT
-            telemetry.scopeBass[(size_t) w].store (trackGain > 0.5f ? duck * scopeSub : scopeLow, std::memory_order_relaxed);
+            float shown = trackGain > 0.5f ? duck * scopeSub : scopeLow;
+            if (precise)
+            {
+                // PRECISE: the low band as heard (turned with its Hilbert pair, ducked)
+                shown = 0.0f;
+                for (int c = 0; c < nch; ++c)
+                    shown += duck * (cr * lowAt (c, t) + sr * hilbertAt (c, t)) / (float) nch;
+            }
+            telemetry.scopeBass[(size_t) w].store (shown, std::memory_order_relaxed);
             // the kick as heard (L later): Kick Lock Send's own wave when it leads, else the sidechain's
             float kv = kickRing[(size_t) (t & mask)];
             if (trigger != triggerSidechain && trigger != triggerBeat && timing.isPlaying && telemetry.linkSlot.load (std::memory_order_relaxed) >= 0)

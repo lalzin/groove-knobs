@@ -38,6 +38,7 @@ std::unique_ptr<KickLockProcessor> makeKl (double sr, float mix, bool lock, floa
     // the lock's accuracy against a fixed aim (0 deg at the kick); the aim at
     // the collision with the kick is tested on its own (KL 36)
     p->getDsp().setAimAtCollision (false);
+    setParam (p->getPreciseParameter(), 0.0f); // (most tests: LIVE; PRECISE, the default, has its own)
     p->prepareToPlay (sr, block);
     return p;
 }
@@ -560,33 +561,31 @@ TEST_CASE ("KL 18. Level: whatever MIX and the shift, the fundamental keeps its 
     WARN ("worst level change of the fundamental: " << worst << " dB");
 }
 
-TEST_CASE ("KL 19. MODE Transition: locked at the kick, the original bass again before the next one", "[kl][mode]")
+TEST_CASE ("KL 19. MODE is gone (Alan): an old session's Transition plays as Hold - the correction held to the next kick", "[kl][mode]")
 {
     const double sr = 48000.0, bpm = 124.0, seconds = 4.0, hz = 55.0;
     const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr);
     const double off = 0.25 + 0.4 / hz; // the kick 0.4 cycle off: a large correction
     const auto k = kicks (seconds, sr, bpm, off);
     auto p = makeKl (sr, 1.0f, true, 0.0f);
-    setParam (p->getLockModeParameter(), 1.0f);
+    setParam (p->getLockModeParameter(), 1.0f); // Transition, saved by an old session
     p->prepareToPlay (sr, 512);
     const auto out = run (*p, b, &k, { 512 }, bpm);
     const int L = p->getLatencySamples();
     const auto kt = kickTimes (seconds, bpm, off);
-    double worstLock = 0.0, worstBack = 0.0;
+    double worst = 0.0;
     for (size_t n = 2; n + 1 < kt.size(); ++n)
     {
-        // at the kick: the target phase (0)
-        const int at = (int) std::round (kt[n] * sr);
-        worstLock = juce::jmax (worstLock, std::abs (kl::KickLockDsp::wrap180 (phaseAt (out.getReadPointer (0), out.getNumSamples(), at + L, hz, sr))));
-        // just before the next kick: the original bass (sample by sample)
-        // (the next kick's crossfade starts ~12 ms before it is heard: before that)
-        const int from = (int) std::round ((kt[n + 1] - 0.030) * sr), to = (int) std::round ((kt[n + 1] - 0.015) * sr);
-        for (int i = from; i < to; ++i)
-            worstBack = juce::jmax (worstBack, (double) std::abs (out.getSample (0, i + L) - b.getSample (0, i)));
+        // at the kick and just before the next one: locked (held)
+        for (double t : { kt[n], kt[n + 1] - 0.05 })
+        {
+            const int at = (int) std::round (t * sr);
+            const double expected = 360.0 * hz * (t - kt[n]);
+            worst = juce::jmax (worst, std::abs (kl::KickLockDsp::wrap180 (phaseAt (out.getReadPointer (0), out.getNumSamples(), at + L, hz, sr) - expected)));
+        }
     }
-    INFO ("phase at the kicks within " << worstLock << " deg; largest difference from the bass before the next kick " << worstBack);
-    CHECK (worstLock < 5.0);
-    CHECK (worstBack < 1.0e-3);
+    INFO ("held: within " << worst << " deg from the kick to the next one");
+    CHECK (worst < 5.0);
 }
 
 TEST_CASE ("KL 20. Custom curve (LFOTool style): the gain follows the points, saved with the session", "[kl][curve]")
@@ -1594,7 +1593,7 @@ TEST_CASE ("KL 40. CPU: the worst block (a kick's analysis must not spike): lega
         const double budget = 1000.0 * block / sr;
         WARN ((engine ? "PRECISE, " : "LIVE, ") << block << "-sample blocks: worst " << worst << " ms (" << 100.0 * worst / budget << " % of its " << budget << " ms), average " << 100.0 * total / blocks / budget << " %");
         if (timingChecksEnforced())
-            CHECK (worst < 0.3 * budget); // (~0.5 ms per kick's analysis, once a beat)
+            CHECK (worst < (engine ? 0.15 : 0.35) * budget); // (LIVE ~0.5 ms per kick's analysis, once a beat; PRECISE ~0.2 ms)
     }
 }
 
