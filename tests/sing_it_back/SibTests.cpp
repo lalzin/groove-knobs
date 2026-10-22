@@ -631,7 +631,7 @@ TEST_CASE ("SIB 17. Styles: who sings what, how", "[sib][styles]")
     CHECK (maxRobot < 10.0);
 }
 
-TEST_CASE ("SIB 18. RÉPONSE: the crowd sings the phrase back half a bar / a bar later", "[sib][response]")
+TEST_CASE ("SIB 18. REPONSE: the crowd sings the phrase back half a bar / a bar later", "[sib][response]")
 {
     const double sr = 48000.0;
     for (int response : { 1, 2 })

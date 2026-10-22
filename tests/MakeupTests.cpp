@@ -79,7 +79,7 @@ TEST_CASE ("7. Makeup: K-weighted level of the drum loop stays stable over both 
 // any kick/bass-driven material, and a single makeup curve cannot satisfy
 // both (see DECISIONS.md). Kept visible but allowed to fail until the
 // calibration target is validated by ear.
-TEST_CASE ("7b. Makeup: K-weighted level of pink noise within ±1 dB over 0-100 %", "[makeup][!mayfail]")
+TEST_CASE ("7b. Makeup: K-weighted level of pink noise within +/-1 dB over 0-100 %", "[makeup][!mayfail]")
 {
     for (int preset = 0; preset < FrenchFilterProcessor::loadBuiltInPresets().size(); ++preset)
     {

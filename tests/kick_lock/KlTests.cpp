@@ -1761,7 +1761,7 @@ TEST_CASE ("KL diag10. A sub melody: a different note before each kick", "[.kldi
 }
 
 
-TEST_CASE ("KL 35. A raw saw bass (every harmonic to 18 kHz): held, repeated, a melody — locked, measured on its low band", "[kl][phase]")
+TEST_CASE ("KL 35. A raw saw bass (every harmonic to 18 kHz): held, repeated, a melody - locked, measured on its low band", "[kl][phase]")
 {
     const double sr = 48000.0, bpm = 124.0, beat = 60.0 / bpm, seconds = 12.0;
     auto sawAt = [&] (double ph, double hz)
