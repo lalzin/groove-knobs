@@ -161,7 +161,10 @@ private:
     int lowBand (std::int64_t from, std::int64_t to, double T) const noexcept; // T: the note's period (0 = unknown)
     double refinePeriod (std::int64_t from, std::int64_t to, double T0) const noexcept;
     double steadiness (std::int64_t from, std::int64_t to, double T) const noexcept;
-    mutable std::vector<float> analysis;
+    static constexpr int lowStep = 4; // the low band at 1 in 4
+    mutable std::vector<float> analysis, decimated;
+    mutable std::int64_t lowFrom = -1, lowTo = -1; // the stretch `analysis` holds (see lowBand)
+    mutable double lowT = 0.0;
     double differenceAt (std::int64_t from, std::int64_t to, double T) const noexcept;
     float monoSubAt (std::int64_t t) const noexcept { return mono[(size_t) (t & mask)]; }
     double targetPsiFor (double phaseDeg, double periodSamples) const noexcept;
@@ -220,7 +223,7 @@ public:
     int linkSendersOnChannel() const noexcept { return link.getSendersOnChannel(); }
     /** Tests / diagnosis: at the last kick measured, the phase coherence over
         8 cycles (before the caps), YIN's aperiodicity, the pitch spread (0.03 = 3 %). */
-    double lastCoherence = 0.0, lastAperiodicity = 0.0, lastPitchSpread = 0.0, lastTm = 0.0, lastNoteAgeMs = 0.0;
+    double lastCoherence = 0.0, lastAperiodicity = 0.0, lastTm = 0.0, lastNoteAgeMs = 0.0;
     int lastSource = 0; // diagnosis: young note period from 1 = itself, 2 = the note before
     /** Tests: bass note starts seen (each brings the rotation back to 0 before it is heard). */
     int noteStartsSeen() const noexcept { return noteOnsets; }
@@ -259,6 +262,17 @@ private:
     int oscRenorm = 0;
     void setTrackHz (double hz) noexcept;
     void retrack (std::int64_t from, double T) noexcept;
+    // The fundamental's tracking changes period (and its window) only while
+    // the rotation is at 0: a change under a rotation made the corrected
+    // fundamental jump — a click (Alan, in playback and in the render). A
+    // retrack asked meanwhile waits: the rotation goes to 0 (2 ms), the
+    // tracking changes, then the rotation goes where the kick wants it
+    void requestRetrack (std::int64_t from, double T) noexcept;
+    bool rotationIdle() const noexcept { return fadeStart < 0 && std::abs (wrap180 (psiNow)) < 1.0e-3 && std::abs (wrap180 (psiTo)) < 1.0e-3; } // (whole turns: none)
+    double trackPeriod = 0.0;
+    bool retrackPending = false, rampPending = false;
+    std::int64_t retrackFrom = 0, pendingHold = 0;
+    double retrackT = 0.0, pendingPsi = 0.0, pendingReturn = 1.0;
     std::int64_t pitchHoldUntil = -1, pitchHoldNote = -1; // a young note's period, measured at its kick: YIN waits for it
     std::vector<float> mono;                      // mono sub, for the analysis
     std::vector<float> envRing;                   // the kick envelope (to find each kick's start)
@@ -291,8 +305,6 @@ private:
     std::vector<float> dec;
     std::int64_t decWrite = 0;
     double periodSamples = 0.0, cleanPeriod = 0.0; // at the full rate, 0 = unknown; the last one from a steadily held note
-    std::array<double, 10> recentPeriods {}; // the last ~100 ms of YIN estimates
-    int recentCount = 0;
     float yinAperiodicity = 1.0f;
 
     // the correction: a rotation of the fundamental (degrees, + = later),

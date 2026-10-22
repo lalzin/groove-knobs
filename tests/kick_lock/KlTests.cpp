@@ -1542,83 +1542,51 @@ TEST_CASE ("KL 17. CPU: stereo bass + stereo sidechain, LOCK on, 48 kHz", "[kl][
         CHECK (pct < 10.0);
 }
 
-TEST_CASE ("diag: f0 estimate", "[.kldiag]")
+TEST_CASE ("KL 40. CPU: the worst block (a kick's analysis must not spike): legato saw melody, MONO BELOW, 128-sample blocks", "[kl][cpu]")
 {
-    const double sr = 48000.0, bpm = 124.0, seconds = 2.0;
-    for (double hz : { 40.0, 55.0, 61.7, 73.4, 98.0, 110.0 })
-    {
-        auto p = makeKl (sr, 1.0f, true, 0.0f);
-        const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr);
-        const auto k = kicks (seconds, sr, bpm, 0.25);
-        run (*p, b, &k, { 512 }, bpm);
-        const double f = p->getDsp().getTelemetry().f0Hz.load();
-        WARN (hz << " Hz: f0 " << f << " (" << 1200.0 * std::log2 (f / hz) << " cents), confidence " << p->getDsp().getTelemetry().phaseConfidence.load());
-    }
-}
-
-TEST_CASE ("diag: one kick", "[.kldiag2]")
-{
-    const double sr = 48000.0, seconds = 2.0;
-    for (double hz : { 40.0, 55.0 })
-    {
-        auto p = makeKl (sr, 1.0f, true, 0.0f);
-        const auto b = bass ({ { 0.0, seconds, hz } }, seconds, sr, true);
-        Buffer k (2, b.getNumSamples());
-        k.clear();
-        const double tk = 1.0;
-        const auto all = kicks (seconds, sr, 60.0, tk); // kicks at 1 s only (60 BPM: next at 2 s)
-        k.makeCopyOf (all);
-        const auto out = run (*p, b, &k, { 512 }, 120.0);
-        const int L = p->getLatencySamples();
-        const double truth = KickLockDsp::wrap180 (360.0 * hz * tk);
-        const double meas = p->getDsp().lastMeasuredPhase();
-        const double shift = p->getDsp().currentShiftMs();
-        const double outPh = phaseAt (out.getReadPointer (0), out.getNumSamples(), (int) (tk * sr) + L, hz, sr);
-        const double inPh = phaseAt (b.getReadPointer (0), b.getNumSamples(), (int) (tk * sr), hz, sr);
-        WARN ("onset " << p->getDsp().getTelemetry().lastKickSample.load() << " (true " << (int) (tk * sr) << "), f0 " << p->getDsp().getTelemetry().f0Hz.load());
-        WARN (hz << " Hz: truth " << truth << ", input measured by the test " << inPh << ", plugin measured " << meas << ", shift " << shift << " ms (expected "
-                 << KickLockDsp::wrap180 (meas) / 360.0 / hz * 1000.0 << "), output phase at the kick " << outPh);
-    }
-}
-
-TEST_CASE ("diag: ducking trace", "[.kldiag3]")
-{
-    const double sr = 48000.0, bpm = 124.0, seconds = 3.0;
+    // Alan: clicks with just the kick and the bass — the analysis at each
+    // kick ran in one sample. The worst block against its real-time budget
+    const double sr = 48000.0, bpm = 124.0, beat = 60.0 / bpm, seconds = 8.0;
+    const double notes[] { 55.0, 55.0, 65.4, 49.0, 41.2, 41.2, 61.7, 46.2 };
     Buffer b (2, (int) (seconds * sr));
+    double ph = 0.0;
     for (int i = 0; i < b.getNumSamples(); ++i)
-        for (int c = 0; c < 2; ++c)
-            b.setSample (c, i, 0.25f);
-    auto p = makeKl (sr, 1.0f, false, 1.0f);
-    setParam (p->getReleaseParameter(), 0.0f);
-    const auto k = kicks (seconds, sr, bpm, 0.5);
-    const auto out = run (*p, b, &k, { 512 }, bpm);
-    const int L = p->getLatencySamples();
-    const int kick = (int) std::round (1.467741935 * sr) + L;
-    juce::String s;
-    for (int ms = -5; ms < 480; ms += 20)
-        s << ms << ":" << juce::String (out.getSample (0, kick + ms * 48) / 0.25f, 3) << " ";
-    WARN (s << " kicks " << p->getDsp().getTelemetry().kickEvents.load());
-}
-
-TEST_CASE ("diag: output envelope around a kick", "[.kldiag4]")
-{
-    const double sr = 48000.0, bpm = 124.0, seconds = 3.2;
-    auto p = makeKl (sr, 0.6f, true, 1.0f);
-    const auto b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr);
-    const auto k = kicks (seconds, sr, bpm, 0.1);
-    const auto out = run (*p, b, &k, { 512 }, bpm);
-    const int L = p->getLatencySamples();
-    const double kt = 0.1 + 4 * 60.0 / bpm;
-    juce::String line;
-    for (int ms = -20; ms <= 480; ms += 20)
     {
-        const int at = (int) ((kt + ms / 1000.0) * sr) + L;
-        float pk = 0.0f;
-        for (int i = at - 480; i < at + 480; ++i)
-            pk = juce::jmax (pk, std::abs (out.getSample (0, i)));
-        line << ms << ":" << juce::String (pk, 2) << " ";
+        const double pos = (i / sr - 0.5) / beat;
+        const double hz = notes[(size_t) ((((int) std::floor (pos)) % 8 + 8) % 8)];
+        ph += hz / sr;
+        double y = 0.0;
+        for (int h = 1; h * hz < 12000.0; ++h)
+            y += std::sin (juce::MathConstants<double>::twoPi * h * ph) / h;
+        b.setSample (0, i, (float) (0.3 * y));
+        b.setSample (1, i, (float) (0.3 * y * 0.9));
     }
-    WARN (line);
+    const auto k = kicks (seconds, sr, bpm, 0.5);
+    for (int block : { 128, 512 })
+    {
+        auto p = makeKl (sr, 1.0f, true, 1.0f, block);
+        p->getDsp().setAimAtCollision (true);
+        setParam (p->getMonoBelowParameter(), 4.0f); // 120 Hz
+        p->prepareToPlay (sr, block);
+        double last = juce::Time::getMillisecondCounterHiRes(), total = 0.0;
+        std::vector<double> times;
+        run (*p, b, &k, { block }, bpm, [&] (int)
+        {
+            const double now = juce::Time::getMillisecondCounterHiRes();
+            times.push_back (now - last);
+            total += now - last;
+            last = now;
+        });
+        // the worst but 3 (the system's own hiccups — a kick comes every beat:
+        // its cost is in all the worst ones)
+        std::sort (times.begin(), times.end());
+        const double worst = times[times.size() - 4];
+        const int blocks = (int) times.size();
+        const double budget = 1000.0 * block / sr;
+        WARN (block << "-sample blocks: worst " << worst << " ms (" << 100.0 * worst / budget << " % of its " << budget << " ms), average " << 100.0 * total / blocks / budget << " %");
+        if (timingChecksEnforced())
+            CHECK (worst < 0.25 * budget);
+    }
 }
 
 TEST_CASE ("KL 23. One detection per kick, whatever the threshold (Kick Lock and Kick Lock Send)", "[kl][kick]")
@@ -1657,63 +1625,63 @@ TEST_CASE ("KL 23. One detection per kick, whatever the threshold (Kick Lock and
     }
 }
 
-TEST_CASE ("diag: high frequencies added by the lock on a raw saw bass", "[.kldiag7]")
+TEST_CASE ("KL 41. No click: a sine sub melody (legato / detached), the lock at work, nothing above 1 kHz that the bass did not have", "[kl][click]")
 {
-    const double sr = 48000.0, bpm = 124.0, seconds = 3.0;
-    Buffer b (2, (int) (seconds * sr));
-    b.clear();
-    const double beat = 60.0 / bpm;
-    gk::testsignals::Rng rng (7);
-    for (double t0 = 0.1; t0 < seconds - 0.05; t0 += 2 * beat)
+    // Alan: clicks with just the kick and the bass, in playback and in the
+    // render too (not the CPU then: a step in the sound). A pure sine sub: any
+    // energy above ~1 kHz in the output is a click
+    const double sr = 48000.0, bpm = 124.0, beat = 60.0 / bpm, seconds = 10.0;
+    const double notes[] { 55.0, 55.0, 65.4, 49.0, 41.2, 41.2, 61.7, 46.2 };
+    int worstAt = 0;
+    auto highs = [&] (const Buffer& x, int ch, int from, int to)
     {
-        const double hz = 55.0 * (std::fmod (t0, 4 * beat) < 2 * beat ? 1.0 : 1.122);
-        double ph = 0.0;
-        for (int i = (int) (t0 * sr); i < juce::jmin (b.getNumSamples(), (int) ((t0 + beat * 1.9) * sr)); ++i)
+        // 4 differences: a sine at 60 Hz all but vanishes, a step does not
+        double worst = 0.0;
+        for (int i = juce::jmax (from, 4); i < to; ++i)
         {
-            const double t = i / sr - t0;
-            ph += hz * (1.0 + 0.3 * std::exp (-t / 0.02)) / sr; // a pitch drop at the attack
-            const float v = (float) (0.4 * std::exp (-t / 0.4) * (2.0 * (ph - std::floor (ph)) - 1.0) + 0.01 * rng.bipolar());
-            b.setSample (0, i, v);
-            b.setSample (1, i, v);
-        }
-    }
-    const auto k = kicks (seconds, sr, bpm, 0.1 + 0.3 * beat); // in the middle of the notes
-    for (bool lock : { false, true })
-    {
-        auto p = makeKl (sr, 1.0f, lock, 0.0f);
-        int seen = 0;
-        juce::String perKick;
-        const auto out = run (*p, b, &k, { 512 }, bpm, [&] (int)
-        {
-            auto& tl = p->getDsp().getTelemetry();
-            if (tl.kickEvents.load() != seen)
+            const float* d = x.getReadPointer (ch);
+            const double h = d[i] - 4.0 * d[i - 1] + 6.0 * d[i - 2] - 4.0 * d[i - 3] + d[i - 4];
+            if (std::abs (h) > worst)
             {
-                seen = tl.kickEvents.load();
-                perKick << "[conf " << juce::String (tl.phaseConfidence.load(), 2) << " err " << juce::String (tl.phaseErrorDeg.load(), 0) << " meas "
-                        << juce::String (p->getDsp().lastMeasuredPhase(), 0) << "] ";
+                worst = std::abs (h);
+                worstAt = i;
             }
-        });
-        WARN (perKick);
-        const int L = p->getLatencySamples();
-        // the difference out - in, high-passed (3rd difference), against the input's
-        double ed = 0.0, ei = 0.0;
-        for (int i = L + 4; i < out.getNumSamples(); ++i)
-        {
-            auto hp = [&] (const float* x, int n) { return x[n] - 3.0f * x[n - 1] + 3.0f * x[n - 2] - x[n - 3]; };
-            std::vector<float> d (4);
-            float dd[4];
-            for (int j = 0; j < 4; ++j)
-                dd[j] = out.getSample (0, i - j) - b.getSample (0, i - j - L);
-            const float hd = dd[0] - 3.0f * dd[1] + 3.0f * dd[2] - dd[3];
-            const float hi = hp (b.getReadPointer (0), i - L);
-            ed += (double) hd * hd;
-            ei += (double) hi * hi;
         }
-        auto& tel = p->getDsp().getTelemetry();
-        WARN ("LOCK " << (lock ? "on" : "off") << ": highs added " << 10.0 * std::log10 (ed / ei + 1.0e-30) << " dB under the bass's own highs; status "
-              << tel.status.load() << " confidence " << tel.phaseConfidence.load() << " f0 " << tel.f0Hz.load() << " rotation " << p->getDsp().currentRotationDeg()
-              << " kicks " << tel.kickEvents.load());
-    }
+        return worst;
+    };
+    for (int legato : { 1, 0 })
+        for (double noteOffset : { 0.0, -0.02, 0.5 })
+        {
+            Buffer b (2, (int) (seconds * sr));
+            double ph = 0.0;
+            for (int i = 0; i < b.getNumSamples(); ++i)
+            {
+                const double pos = (i / sr - 0.5) / beat - noteOffset;
+                const double hz = notes[(size_t) ((((int) std::floor (pos)) % 8 + 8) % 8)];
+                const double inNote = (pos - std::floor (pos)) * beat;
+                double env = 1.0;
+                if (! legato)
+                    env = juce::jlimit (0.0, 1.0, juce::jmin (inNote / 0.01, (0.8 * beat - inNote) / 0.02));
+                ph += hz / sr;
+                const float v = (float) (0.5 * env * std::sin (juce::MathConstants<double>::twoPi * ph));
+                b.setSample (0, i, v);
+                b.setSample (1, i, v);
+            }
+            const auto k = kicks (seconds, sr, bpm, 0.5);
+            for (int mode : { 0, 1 }) // Hold, Transition
+            {
+                auto p = makeKl (sr, 1.0f, true, 0.0f); // no ducking: the lock alone
+                p->getDsp().setAimAtCollision (true);
+                setParam (p->getLockModeParameter(), (float) mode);
+                p->prepareToPlay (sr, 512);
+                const auto out = run (*p, b, &k, { 512 }, bpm);
+                const int L = p->getLatencySamples();
+                const double in = highs (b, 0, (int) (0.5 * sr), b.getNumSamples() - L);
+                const double o = highs (out, 0, (int) (0.5 * sr) + L, out.getNumSamples());
+                INFO ((legato ? "legato" : "detached") << ", notes " << noteOffset << " beat off, " << (mode ? "Transition" : "Hold") << ": the bass's own highs " << in << ", the output's " << o << " at " << (worstAt - L) / sr << " s (input time; kicks every " << beat << " s from 0.5)");
+                CHECK (o < juce::jmax (2.0 * in, 2.0e-4));
+            }
+        }
 }
 
 TEST_CASE ("diag: a bass file (GK_KL_FILE, GK_KL_BPM)", "[.kldiag8]")
@@ -1740,8 +1708,8 @@ TEST_CASE ("diag: a bass file (GK_KL_FILE, GK_KL_BPM)", "[.kldiag8]")
             seen = t.kickEvents.load();
             kicksSeen.push_back ({ t.lastKickSample.load(), d.lastTm });
             log << "\n kick " << seen << ": status " << t.status.load() << " conf " << juce::String (t.phaseConfidence.load(), 2) << " coherence "
-                << juce::String (d.lastCoherence, 2) << " aperiodic " << juce::String (d.lastAperiodicity, 2) << " spread " << juce::String (d.lastPitchSpread * 100.0, 1)
-                << "% f0 " << juce::String (t.f0Hz.load(), 1) << " err " << juce::String (t.phaseErrorDeg.load(), 1)
+                << juce::String (d.lastCoherence, 2) << " aperiodic " << juce::String (d.lastAperiodicity, 2)
+                << " f0 " << juce::String (t.f0Hz.load(), 1) << " err " << juce::String (t.phaseErrorDeg.load(), 1)
                 << " age " << juce::String (d.lastNoteAgeMs, 0) << " Tm " << juce::String (d.lastTm, 1) << " src " << d.lastSource << " ph " << juce::String (d.lastMeasuredPhase(), 0);
         }
     });
@@ -1751,127 +1719,6 @@ TEST_CASE ("diag: a bass file (GK_KL_FILE, GK_KL_BPM)", "[.kldiag8]")
             errs << juce::String (KickLockDsp::wrap180 (phaseAt (out.getReadPointer (0), out.getNumSamples(), (int) when + p->getLatencySamples(), sr / T, sr)), 0) << " ";
     WARN (log << "\n output phase at the kicks: " << errs);
 }
-
-TEST_CASE ("diag: same note every bar, phase-reset synth, note start vs kick", "[.kldiag9]")
-{
-    const double sr = 48000.0, bpm = 124.0, beat = 60.0 / bpm, hz = 55.0;
-    for (double lead : { 0.12, 0.06, 0.03, 0.01, 0.0, -0.01 }) // note-on this long before the kick
-    {
-        const double seconds = 8.0;
-        Buffer b (2, (int) (seconds * sr));
-        b.clear();
-        std::vector<double> kt;
-        for (double t = 0.5; t < seconds - 1.0; t += 2.0 * beat) // a kick every 2 beats, the note before it
-        {
-            kt.push_back (t);
-            const double t0 = t - lead;
-            for (int i = (int) (t0 * sr); i < (int) ((t0 + 1.5 * beat) * sr); ++i)
-            {
-                const double tt = i / sr - t0;
-                const double ph = hz * tt; // the synth restarts its wave at 0 on every note
-                const double env = juce::jmin (1.0, tt / 0.003) * juce::jmin (1.0, (t0 + 1.5 * beat - i / sr) / 0.01);
-                const double y = 0.5 * std::sin (2.0 * juce::MathConstants<double>::pi * ph) + 0.2 * std::sin (2.0 * juce::MathConstants<double>::pi * 2.0 * ph);
-                b.setSample (0, i, (float) (env * y));
-                b.setSample (1, i, (float) (env * y));
-            }
-        }
-        Buffer k (2, b.getNumSamples());
-        k.clear();
-        for (double t : kt)
-            for (int i = (int) (t * sr); i < juce::jmin (k.getNumSamples(), (int) ((t + 0.25) * sr)); ++i)
-            {
-                const double tt = i / sr - t;
-                const float v = (float) (0.8 * std::exp (-tt / 0.18) * std::sin (2.0 * juce::MathConstants<double>::pi * (50.0 * tt + 100.0 * 0.03 * (1.0 - std::exp (-tt / 0.03)))));
-                k.setSample (0, i, v);
-                k.setSample (1, i, v);
-            }
-        auto p = makeKl (sr, 1.0f, true, 0.0f);
-        int seen = 0;
-        juce::String dbg;
-        const auto out = run (*p, b, &k, { 512 }, bpm, [&] (int)
-        {
-            auto& d = p->getDsp();
-            if (d.getTelemetry().kickEvents.load() != seen)
-            {
-                seen = d.getTelemetry().kickEvents.load();
-                dbg << " [age " << juce::String (d.lastNoteAgeMs, 0) << " T " << juce::String (d.lastTm, 1) << " conf " << juce::String (d.getTelemetry().phaseConfidence.load(), 2)
-                    << " coh " << juce::String (d.lastCoherence, 2) << " ap " << juce::String (d.lastAperiodicity, 2) << " sp " << juce::String (d.lastPitchSpread * 100.0, 1) << "]";
-            }
-        });
-        if (std::abs (lead - 0.01) < 1.0e-6)
-            WARN (dbg);
-        const auto e = errorsAtKicks (out, p->getLatencySamples(), hz, sr, kt, 0.0, seconds);
-        juce::String line;
-        for (double v : e)
-            line << juce::String (v, 0) << " ";
-        WARN ("note " << lead * 1000.0 << " ms before the kick: phase at each kick " << line);
-    }
-}
-
-TEST_CASE ("KL diag10. A sub melody: a different note before each kick", "[.kldiag10]")
-{
-    const double sr = 48000.0, bpm = 124.0, beat = 60.0 / bpm, seconds = 12.0;
-    const double notes[] { 41.2, 55.0, 49.0, 61.7, 36.7, 73.4, 46.2, 65.4 };
-    for (double lead : { 0.12, 0.06, 0.03, 0.01, 0.0, -0.01 })
-    {
-        Buffer b (2, (int) (seconds * sr));
-        b.clear();
-        std::vector<double> kt, hzs;
-        int n = 0;
-        for (double t = 0.5; t < seconds - 1.0; t += 2.0 * beat, ++n)
-        {
-            const double hz = notes[n % 8];
-            kt.push_back (t);
-            hzs.push_back (hz);
-            const double t0 = t - lead;
-            for (int i = (int) (t0 * sr); i < (int) ((t0 + 1.5 * beat) * sr); ++i)
-            {
-                const double tt = i / sr - t0, ph = hz * tt;
-                const double env = juce::jmin (1.0, tt / 0.003) * juce::jmin (1.0, (t0 + 1.5 * beat - i / sr) / 0.01);
-                const double y = 0.5 * std::sin (2.0 * juce::MathConstants<double>::pi * ph) + 0.2 * std::sin (2.0 * juce::MathConstants<double>::pi * 2.0 * ph);
-                b.setSample (0, i, (float) (env * y));
-                b.setSample (1, i, (float) (env * y));
-            }
-        }
-        Buffer k (2, b.getNumSamples());
-        k.clear();
-        for (double t : kt)
-            for (int i = (int) (t * sr); i < juce::jmin (k.getNumSamples(), (int) ((t + 0.25) * sr)); ++i)
-            {
-                const double tt = i / sr - t;
-                const float v = (float) (0.8 * std::exp (-tt / 0.18) * std::sin (2.0 * juce::MathConstants<double>::pi * (50.0 * tt + 3.0 * (1.0 - std::exp (-tt / 0.03)))));
-                k.setSample (0, i, v);
-                k.setSample (1, i, v);
-            }
-        auto p = makeKl (sr, 1.0f, true, 0.0f);
-        int seen = 0;
-        juce::String dbg;
-        const auto out = run (*p, b, &k, { 512 }, bpm, [&] (int)
-        {
-            auto& d = p->getDsp();
-            if (d.getTelemetry().kickEvents.load() != seen)
-            {
-                seen = d.getTelemetry().kickEvents.load();
-                const double hz = notes[(seen - 1) % 8];
-                dbg << " [age " << juce::String (d.lastNoteAgeMs, 0) << " T " << juce::String (d.lastTm, 1) << "/" << juce::String (sr / hz, 1) << " s" << d.lastSource << " ph " << juce::String (d.lastMeasuredPhase(), 1) << "/" << juce::String (KickLockDsp::wrap180 (360.0 * hz * lead), 1) << " conf " << juce::String (d.getTelemetry().phaseConfidence.load(), 2) << "]";
-            }
-        });
-        WARN (dbg);
-        std::string line;
-        double worst = 0.0;
-        for (size_t j = 1; j < kt.size(); ++j)
-        {
-            const auto e = errorsAtKicks (out, p->getLatencySamples(), hzs[j], sr, { kt[j] }, 0.0, seconds);
-            if (! e.empty())
-            {
-                line += juce::String (e[0], 1).toStdString() + " ";
-                worst = juce::jmax (worst, std::abs (e[0]));
-            }
-        }
-        WARN ("lead " << lead * 1000.0 << " ms: worst " << worst << " | " << line);
-    }
-}
-
 
 TEST_CASE ("KL 35. A raw saw bass (every harmonic to 18 kHz): held, repeated, a melody - locked, measured on its low band", "[kl][phase]")
 {
