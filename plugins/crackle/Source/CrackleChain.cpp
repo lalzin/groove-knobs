@@ -184,7 +184,7 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
 
         const double sat = std::clamp ((double) now.saturation, 0.0, 1.0);
         const double noiseGain = 2.0 * std::clamp ((double) now.noise, 0.0, 1.0); // (0.5: 0 dB, 1: +6 dB)
-        const double hissLevel = 0.025 * std::pow (std::clamp ((double) now.hiss, 0.0, 1.0), 1.3) * noiseGain;
+        const double hissLevel = 0.008 * std::pow (std::clamp ((double) now.hiss, 0.0, 1.0), 1.3) * noiseGain;
 
         // VINYL: crackles at a rate that grows with it (up to ~30 a second): mostly
         // ticks, now and then a pop; raw impulses (the de-emphasis rounds them, below)
@@ -222,7 +222,7 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
                 if (++c.age > c.pulse && c.tail < 1e-4f)
                     c.on = false;
             }
-        const double surface = 0.004 * vin; // the pink floor: very low (after the de-emphasis)
+        const double surface = 0.002 * vin; // the pink floor: very low (after the de-emphasis; subtle — Alan)
 
         // DROPOUTS: from GRAIN 0.5, rare (up to ~1.5 a second at 1): 2-15 ms at 0, 1 ms fades
         const double dro = std::clamp ((double) now.dropout, 0.0, 1.0);
@@ -326,7 +326,7 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
             staticEnv *= staticDecay;
             const double n = rng.bipolar();
             staticHp += 0.5 * (n - staticHp); // (thin: a crude high-pass of the noise)
-            radioStatic = ra * 0.04 * (staticEnv * (n - staticHp) + 0.15 * (n - staticHp));
+            radioStatic = ra * 0.016 * (staticEnv * (n - staticHp) + 0.15 * (n - staticHp));
         }
 
         for (int ch = 0; ch < 2; ++ch)

@@ -17,7 +17,7 @@ using crackle::CrackleProcessor;
 namespace
 {
 constexpr double sr = 48000.0;
-constexpr int numPresets = 10;
+constexpr int numPresets = 12;
 
 std::unique_ptr<CrackleProcessor> makeProc (int preset = 0)
 {
@@ -37,8 +37,12 @@ Buffer music (double seconds)
     return b;
 }
 
-// third-octave band energies (dB) of a render, its tilt removed: a fingerprint
-std::vector<double> fingerprint (const Buffer& b)
+// what a preset does to the signal: per third-octave band, the energy of the
+// change (output minus the input, aligned on the latency) against the input's
+// own (dB). Noise added, distortion, filtering, wobble all show here — the plain
+// spectrum's shape hid most of them (a crackle and a wavefolder looked alike)
+// the output's own spectral shape (third octaves, tilt removed)
+std::vector<double> shape (const Buffer& b)
 {
     std::vector<double> bands;
     for (double f = 40.0; f < 16000.0; f *= 1.26)
@@ -57,6 +61,32 @@ std::vector<double> fingerprint (const Buffer& b)
     const double mean = std::accumulate (bands.begin(), bands.end(), 0.0) / (double) bands.size();
     for (auto& v : bands)
         v -= mean;
+    return bands;
+}
+
+std::vector<double> fingerprint (const Buffer& wet, const Buffer& dry, int latency)
+{
+    std::vector<double> bands;
+    for (double f = 40.0; f < 16000.0; f *= 1.26)
+    {
+        const double w = 2.0 * juce::MathConstants<double>::pi * f / sr, al = std::sin (w) / (2.0 * 4.3), cw = std::cos (w), a0 = 1.0 + al;
+        const double b0 = al / a0, b2 = -al / a0, a1 = -2.0 * cw / a0, a2 = (1.0 - al) / a0;
+        double dx1 = 0, dx2 = 0, dy1 = 0, dy2 = 0, rx1 = 0, rx2 = 0, ry1 = 0, ry2 = 0, eDry = 0, eRes = 0;
+        for (int i = latency; i < wet.getNumSamples(); ++i)
+        {
+            const double d = dry.getSample (0, i - latency), r = wet.getSample (0, i) - d;
+            const double yd = b0 * d + b2 * dx2 - a1 * dy1 - a2 * dy2;
+            dx2 = dx1; dx1 = d; dy2 = dy1; dy1 = yd;
+            const double yr = b0 * r + b2 * rx2 - a1 * ry1 - a2 * ry2;
+            rx2 = rx1; rx1 = r; ry2 = ry1; ry1 = yr;
+            if (i > (int) sr)
+            {
+                eDry += yd * yd;
+                eRes += yr * yr;
+            }
+        }
+        bands.push_back (10.0 * std::log10 ((eRes + 1e-12) / (eDry + 1e-12)));
+    }
     return bands;
 }
 } // namespace
@@ -136,19 +166,19 @@ TEST_CASE ("WOW 1: a 440 Hz tone swings by less than 3 %", "[crackle]")
 
 TEST_CASE ("AUTO: an effect follows GRAIN until its knob moves; a preset gives the others back", "[crackle]")
 {
-    auto p = makeProc (0); // Vinyl Sunday: WOW named (its own), the others on AUTO
+    auto p = makeProc (1); // Vinyl Sunday: WOW named (its own), CRUSH not (on AUTO)
     CHECK_FALSE (p->getAutoParameter (CrackleDsp::wowKnob).get());
-    CHECK (p->getAutoParameter (CrackleDsp::vinylKnob).get());
-    // moving VINYL (by hand or automation) takes it off AUTO
-    p->getKnobParameter (CrackleDsp::vinylKnob).setValueNotifyingHost (0.9f);
-    CHECK_FALSE (p->getAutoParameter (CrackleDsp::vinylKnob).get());
+    CHECK (p->getAutoParameter (CrackleDsp::crushKnob).get());
+    // moving CRUSH (by hand or automation) takes it off AUTO
+    p->getKnobParameter (CrackleDsp::crushKnob).setValueNotifyingHost (0.9f);
+    CHECK_FALSE (p->getAutoParameter (CrackleDsp::crushKnob).get());
     // the amount: the knob's own, or GRAIN's curve
     CHECK (CrackleDsp::effectAmount (CrackleDsp::crushKnob, 0.5f, 0.8f, true) == Catch::Approx (0.0f));
     CHECK (CrackleDsp::effectAmount (CrackleDsp::crushKnob, 0.5f, 0.8f, false) == Catch::Approx (0.8f));
     CHECK (CrackleDsp::effectAmount (CrackleDsp::crushKnob, 1.0f, 0.0f, true) == Catch::Approx (1.0f));
     // another preset: its named knobs set, the rest back on AUTO
     setParam (p->getPresetParameter(), (float) p->getPresets().indexOf ("Broken Sampler"));
-    CHECK (p->getAutoParameter (CrackleDsp::vinylKnob).get());
+    CHECK (p->getAutoParameter (CrackleDsp::flutterKnob).get());
     CHECK_FALSE (p->getAutoParameter (CrackleDsp::crushKnob).get());
     CHECK (p->getTypeParameter().getIndex() == (int) crackle::SatType::hard);
 }
@@ -168,25 +198,28 @@ TEST_CASE ("State: GRAIN, knobs and AUTOs come back as saved", "[crackle]")
     CHECK_FALSE (q->getAutoParameter (CrackleDsp::radioKnob).get());
 }
 
-TEST_CASE ("Presets: ten, each sounds different", "[crackle]")
+TEST_CASE ("Presets: twelve, each clearly different (3 dB in some band)", "[crackle]")
 {
     auto probe = makeProc();
     REQUIRE (probe->getPresets().size() == numPresets);
     const auto in = music (6.0);
-    std::vector<std::vector<double>> prints;
+    // different = the change made to the signal OR the output's spectrum differs by 3 dB somewhere
+    std::vector<std::vector<double>> prints, shapes;
     for (int i = 0; i < numPresets; ++i)
     {
         auto p = makeProc (i);
-        prints.push_back (fingerprint (processBlocks (*p, in, { 512 })));
+        const auto out = processBlocks (*p, in, { 512 });
+        prints.push_back (fingerprint (out, in, p->getLatencySamples()));
+        shapes.push_back (shape (out));
     }
     for (int i = 0; i < numPresets; ++i)
         for (int j = i + 1; j < numPresets; ++j)
         {
             double d = 0.0;
             for (size_t b = 0; b < prints[(size_t) i].size(); ++b)
-                d = std::max (d, std::fabs (prints[(size_t) i][b] - prints[(size_t) j][b]));
+                d = std::max ({ d, std::fabs (prints[(size_t) i][b] - prints[(size_t) j][b]), std::fabs (shapes[(size_t) i][b] - shapes[(size_t) j][b]) });
             INFO (probe->getPresets()[i].name << " vs " << probe->getPresets()[j].name << ": " << d << " dB");
-            CHECK (d > 1.5);
+            CHECK (d > 3.0);
         }
 }
 
@@ -240,7 +273,7 @@ TEST_CASE ("Moving GRAIN and every knob while music plays: no crackle beyond the
 
 TEST_CASE ("CPU: stereo at 48 kHz", "[crackle]")
 {
-    auto p = makeProc (9); // Crushed Dub Tape: nearly everything on
+    auto p = makeProc (11); // Crushed Dub Tape: nearly everything on
     const auto in = music (20.0);
     const auto t0 = juce::Time::getMillisecondCounterHiRes();
     processBlocks (*p, in, { 128 });

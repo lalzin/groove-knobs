@@ -8,15 +8,17 @@ juce_add_binary_data(CracklePresets
     HEADER_NAME CracklePresets.h
     NAMESPACE   CRPresets
     SOURCES
+        Presets/dust_only.json
         Presets/vinyl_sunday.json
         Presets/cassette_dream.json
-        Presets/am_radio_ghost.json
+        Presets/walkman_bus.json
         Presets/basement_tape.json
         Presets/dusty_drum_loop.json
-        Presets/walkman_bus.json
-        Presets/broken_sampler.json
         Presets/sunday_kitchen.json
+        Presets/am_radio_ghost.json
         Presets/telephone_booth.json
+        Presets/broken_sampler.json
+        Presets/fold_fuzz.json
         Presets/crushed_dub_tape.json)
 set_target_properties(CracklePresets PROPERTIES POSITION_INDEPENDENT_CODE ON)
 

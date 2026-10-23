@@ -18,11 +18,11 @@ constexpr Reels reelsOf[] {
 const juce::Colour reelInk (0xff1f1b24), reelCream (0xfff4ede1), dust (0xffd9cfc0);
 } // namespace
 
-HissMascot::HissMascot (CrackleProcessor& p, const gk::Palette& pal) : MascotComponent (p.getFeatures(), pal), proc (p)
+HissMascot::HissMascot (CrackleProcessor& p, const gk::Palette& pal) : MascotComponent (p.getFeatures(), pal)
 {
     setFrames (loadFrames());
-    motion = 0.6f;
-    repaintEvery = 1; // 60 fps: the reels turn
+    motion = 0.0f;      // no bounce, no nod: only the knob moves him
+    repaintEvery = 2;   // 30 fps (the reels)
 }
 
 std::vector<juce::Image> HissMascot::loadFrames()
@@ -41,94 +41,35 @@ std::vector<juce::Image> HissMascot::loadFrames()
     return frames;
 }
 
-int HissMascot::chooseFrame (float macro, float bypass, bool musicOn)
+int HissMascot::chooseFrame (float macro, float bypass, bool)
 {
     const auto& s = getState();
     const float dt = lastTime < 0.0 ? 0.0f : (float) juce::jlimit (0.0, 0.1, s.time - lastTime);
     lastTime = s.time;
     if (numFrames() < numPoses)
         return 0;
-    auto& tel = proc.getCrackleDsp().getTelemetry();
     const bool live = bypass < 0.5f;
+    const float g = live ? juce::jlimit (0.0f, 1.0f, macro) : 0.0f;
 
-    // dropouts: the reels stop dead (then pick up again)
-    const int dropouts = tel.dropouts.load (std::memory_order_relaxed);
-    if (dropouts != lastDropouts)
-    {
-        if (lastDropouts >= 0 && dropouts > lastDropouts && live)
-            droppedAt = s.time;
-        lastDropouts = dropouts;
-    }
-    // crackles: dust every time, a start now and then
-    const int crackles = tel.crackles.load (std::memory_order_relaxed);
-    if (crackles != lastCrackles)
-    {
-        if (lastCrackles >= 0 && crackles > lastCrackles && live)
-        {
-            flash = 1.0f;
-            // a few specks of dust off the body
-            const auto fig = getFigureArea();
-            for (int n = 0, made = 0; n < (int) specks.size() && made < 3; ++n)
-                if (specks[(size_t) n].life <= 0.0f)
-                {
-                    auto& sp = specks[(size_t) n];
-                    sp.x = fig.getX() + fig.getWidth() * (0.35f + 0.4f * random());
-                    sp.y = fig.getY() + fig.getHeight() * (0.25f + 0.4f * random());
-                    sp.vx = (random() - 0.5f) * 60.0f;
-                    sp.vy = -30.0f - 50.0f * random();
-                    sp.life = 1.0f;
-                    ++made;
-                }
-            if (s.time - startledAt > 1.2)
-            {
-                startledAt = s.time;
-                jumpV = -90.0f; // a little start
-            }
-        }
-        lastCrackles = crackles;
-    }
-
-    // the reels: their speed follows WOW and GRAIN, a dropout stops them, they pick up in ~0.3 s
-    const bool dropped = s.time - droppedAt < 0.18;
-    const float target = live ? 1.2f + 6.0f * tel.wow.load (std::memory_order_relaxed) + 3.0f * macro : 0.0f;
-    reelSpeed = dropped ? 0.0f : reelSpeed + (target - reelSpeed) * juce::jmin (1.0f, dt / 0.3f);
+    // the reels: their speed from GRAIN alone, eased
+    const float target = live ? 0.8f + 5.0f * g : 0.0f;
+    reelSpeed += (target - reelSpeed) * juce::jmin (1.0f, dt / 0.4f);
     reelAngle += reelSpeed * dt;
-    // the start: a damped jump
-    jumpV += (-jump * 900.0f - jumpV * 14.0f) * dt;
-    jump += jumpV * dt;
-    // the specks, the flash
-    for (auto& sp : specks)
-        if (sp.life > 0.0f)
-        {
-            sp.x += sp.vx * dt;
-            sp.y += sp.vy * dt;
-            sp.vy += 60.0f * dt;
-            sp.life -= dt / 0.7f;
-        }
-    flash = juce::jmax (0.0f, flash - dt / 0.15f);
-    // CRUSH: short bursts of pixels, more and bigger with more crush
-    const float crush = live ? tel.crush.load (std::memory_order_relaxed) : 0.0f;
-    if (crush > 0.05f && s.time - crushBurstAt > 1.6 - 1.0 * crush)
-    {
-        crushBurstAt = s.time;
-        ghostX = (random() < 0.5f ? -1.0f : 1.0f) * (0.06f + 0.05f * random());
-        ghostY = -0.02f - 0.03f * random();
-    }
-    const float burst = crush > 0.05f ? juce::jmax (0.0f, 1.0f - (float) (s.time - crushBurstAt) / 0.28f) : 0.0f;
-    pixel = burst * (0.3f + 0.7f * crush);
+    // the pixelated double: there from where the bitcrush comes in, still
+    pixel = live ? grain::crush (g) : 0.0f;
 
     if (! live)
         return eyesClosed;
-    if (dropped || s.time - droppedAt < 0.3)
-        return eyesClosed;
-    if (s.time - startledAt < 0.2)
-        return startled;
-    if (crush > 0.3f && burst > 0.0f)
-        return ((int) (s.time * 2.0) & 1) ? squint : squintOther;
-    if (! musicOn)
-        return macro > 0.8f ? armsCrossed : rest;
-    // with the music: a foot tap every half second, cheerful when GRAIN is high
-    return ((int) (s.time * 2.0) & 1) ? footUp : (macro > 0.7f ? laughing : cheerful);
+    // the ladder: calm -> smiling -> cheerful -> laughing -> squinting (the top), a
+    // little hysteresis so he never flickers between two steps
+    static constexpr float steps[] { 0.12f, 0.35f, 0.6f, 0.85f };
+    constexpr int numSteps = 4;
+    while (rung < numSteps && g > steps[rung] + 0.02f)
+        ++rung;
+    while (rung > 0 && g < steps[rung - 1] - 0.02f)
+        --rung;
+    static constexpr int poses[] { rest, smiling, cheerful, laughing, squint };
+    return poses[rung];
 }
 
 void HissMascot::drawReels (juce::Graphics& g, juce::Rectangle<float> fig, const juce::AffineTransform& animation) const
@@ -157,11 +98,10 @@ void HissMascot::drawReels (juce::Graphics& g, juce::Rectangle<float> fig, const
 
 void HissMascot::paintCharacter (juce::Graphics& g, juce::Rectangle<float> fig, const juce::AffineTransform& animation)
 {
-    const auto moved = animation.translated (0.0f, jump);
     if (pixel > 0.01f)
     {
-        // CRUSH: a pixelated double behind him, a little off to the side (it
-        // jumps each burst): drawn small, then blown up block by block
+        // the top of GRAIN (the bitcrush): a pixelated double stands behind him,
+        // a little to the left — drawn small, then blown up block by block
         const float block = 3.0f + 4.0f * pixel;
         const auto area = getLocalBounds();
         const int w = juce::jmax (1, (int) ((float) area.getWidth() / block)), h = juce::jmax (1, (int) ((float) area.getHeight() / block));
@@ -169,27 +109,15 @@ void HissMascot::paintCharacter (juce::Graphics& g, juce::Rectangle<float> fig, 
         {
             juce::Graphics sg (small);
             sg.addTransform (juce::AffineTransform::scale (1.0f / block));
-            drawFrame (sg, getState().frame, fig, moved.translated (ghostX * fig.getWidth(), ghostY * fig.getHeight()), 1.0f);
+            drawFrame (sg, getState().frame, fig, animation.translated (-0.08f * fig.getWidth(), -0.03f * fig.getHeight()), 1.0f);
         }
         juce::Graphics::ScopedSaveState keep (g);
         g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);
-        g.setOpacity (0.55f * juce::jmin (1.0f, 1.5f * pixel));
+        g.setOpacity (0.5f * pixel);
         g.drawImage (small, area.toFloat(), juce::RectanglePlacement::stretchToFit);
     }
     // Hiss himself stays sharp
-    drawFrame (g, getState().frame, fig, moved, 1.0f);
-    drawReels (g, fig, moved);
-}
-
-void HissMascot::paintOverlay (juce::Graphics& g, const State&, juce::Rectangle<float>)
-{
-    // the dust off a crackle
-    for (const auto& sp : specks)
-        if (sp.life > 0.0f)
-        {
-            g.setColour (dust.withAlpha (0.9f * sp.life));
-            const float r = 1.2f + 1.6f * sp.life;
-            g.fillEllipse (sp.x - r, sp.y - r, 2.0f * r, 2.0f * r);
-        }
+    drawFrame (g, getState().frame, fig, animation, 1.0f);
+    drawReels (g, fig, animation);
 }
 } // namespace crackle

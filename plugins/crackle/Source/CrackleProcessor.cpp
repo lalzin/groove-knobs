@@ -120,15 +120,17 @@ gk::PresetManager CrackleProcessor::loadBuiltInPresets()
 {
     struct Entry { const char* data; int size; };
     const Entry entries[] = {
-        { CRPresets::vinyl_sunday_json, CRPresets::vinyl_sunday_jsonSize }, // the default
+        { CRPresets::dust_only_json, CRPresets::dust_only_jsonSize }, // the default
+        { CRPresets::vinyl_sunday_json, CRPresets::vinyl_sunday_jsonSize },
         { CRPresets::cassette_dream_json, CRPresets::cassette_dream_jsonSize },
-        { CRPresets::am_radio_ghost_json, CRPresets::am_radio_ghost_jsonSize },
+        { CRPresets::walkman_bus_json, CRPresets::walkman_bus_jsonSize },
         { CRPresets::basement_tape_json, CRPresets::basement_tape_jsonSize },
         { CRPresets::dusty_drum_loop_json, CRPresets::dusty_drum_loop_jsonSize },
-        { CRPresets::walkman_bus_json, CRPresets::walkman_bus_jsonSize },
-        { CRPresets::broken_sampler_json, CRPresets::broken_sampler_jsonSize },
         { CRPresets::sunday_kitchen_json, CRPresets::sunday_kitchen_jsonSize },
+        { CRPresets::am_radio_ghost_json, CRPresets::am_radio_ghost_jsonSize },
         { CRPresets::telephone_booth_json, CRPresets::telephone_booth_jsonSize },
+        { CRPresets::broken_sampler_json, CRPresets::broken_sampler_jsonSize },
+        { CRPresets::fold_fuzz_json, CRPresets::fold_fuzz_jsonSize },
         { CRPresets::crushed_dub_tape_json, CRPresets::crushed_dub_tape_jsonSize },
     };
     gk::PresetManager pm;

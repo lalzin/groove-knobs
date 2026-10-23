@@ -1,5 +1,10 @@
 # Changelog
 
+## Crackle 0.1.0-test4 — 2026-10-23 (version de test, hors suite)
+- Hiss ne bouge plus qu'avec GRAIN (sa pose, ses bobines, son double pixellisé en haut de course).
+- Bruits subtils (souffle, statique, fond du vinyle nettement plus bas) ; chaque preset règle son NOISE ; plusieurs presets avec le vinyle sans souffle.
+- 12 presets bien distincts (nouveaux : Dust Only, Fold Fuzz).
+
 ## Crackle 0.1.0-test2 — 2026-10-23 (version de test, hors suite)
 - Hiss vivant : les bobines tournent (plus vite avec le wow et GRAIN) et s’arrêtent net sur une coupure ; de la poussière s’envole sur les craquements ; un double pixellisé de lui clignote derrière quand CRUSH mord. L'anneau de GRAIN brille avec le bruit ajouté.
 
