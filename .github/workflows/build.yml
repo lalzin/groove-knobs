@@ -1,5 +1,5 @@
 # Builds, tests and packages the Groove Knobs plugins (French Filter, Boogie
-# Trio, Backwash, Pew Pew, Sing It Back, Kick Lock, Slapper) on macOS and Windows. Installers are attached to each run;
+# Trio, Backwash, Pew Pew, Sing It Back, Kick Lock, Slapper, Crackle) on macOS and Windows. Installers are attached to each run;
 # pushing a tag "v<version>" also publishes a GitHub Release with the
 # Windows installers (permanent public links); a tag "kick-lock-v<version>",
 # a release of Kick Lock (+ Send) alone.
@@ -21,7 +21,7 @@ jobs:
         run: |
           case "$GITHUB_REF_NAME" in
             kick-lock-v*) tag="${GITHUB_REF_NAME#kick-lock-v}"; ids='KL' ;;
-            *) tag="${GITHUB_REF_NAME#v}"; ids='FF|BT|BW|PP|SIB|KL|SL|GK_SUITE' ;;
+            *) tag="${GITHUB_REF_NAME#v}"; ids='FF|BT|BW|PP|SIB|KL|SL|CR|GK_SUITE' ;;
           esac
           bad=$(grep -E "^set\(($ids)_VERSION " cmake/GrooveIds.cmake | grep -v "\"$tag\"" || true)
           if [ -n "$bad" ]; then echo "tag v$tag but:"; echo "$bad"; exit 1; fi
@@ -35,7 +35,7 @@ jobs:
         run: |
           brew install ninja
           scripts/build_mac.sh
-          for p in FF BT BW PP SIB KL SL; do scripts/make_installer_mac.sh --skip-build $p; done
+          for p in FF BT BW PP SIB KL SL CR; do scripts/make_installer_mac.sh --skip-build $p; done
           # the suite: only when every plug-in is at its version (a plug-in
           # released alone runs ahead)
           if scripts/make_suite_installer_mac.sh --check-versions; then scripts/make_suite_installer_mac.sh --skip-build; else echo "suite skipped"; fi
@@ -75,7 +75,7 @@ jobs:
           ls -la release
           case "$GITHUB_REF_NAME" in
             kick-lock-v*) v="${GITHUB_REF_NAME#kick-lock-v}"; files="KickLock" ;;
-            *) v="${GITHUB_REF_NAME#v}"; files="FrenchFilter BoogieTrio Backwash PewPew SingItBack KickLock Slapper GrooveKnobs" ;;
+            *) v="${GITHUB_REF_NAME#v}"; files="FrenchFilter BoogieTrio Backwash PewPew SingItBack KickLock Slapper Crackle GrooveKnobs" ;;
           esac
           for f in $files; do ls release/$f-$v-Windows-Setup.exe; done
       - uses: softprops/action-gh-release@v2

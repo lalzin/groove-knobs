@@ -1,6 +1,6 @@
 # Builds the Windows installers (VST3 + standalone, x64) of the Groove Knobs plugins:
 #   dist\<Plugin>-<version>-Windows-Setup.exe
-#   powershell -ExecutionPolicy Bypass -File scripts\make_installer_win.ps1 [-Plugin FF|BT|BW|PP|SIB|KL|SL|Suite|All] [-SkipBuild]
+#   powershell -ExecutionPolicy Bypass -File scripts\make_installer_win.ps1 [-Plugin FF|BT|BW|PP|SIB|KL|SL|CR|Suite|All] [-SkipBuild]
 # Requires Visual Studio 2022 and Inno Setup 6 (winget install JRSoftware.InnoSetup).
 #
 # Free public download: without an Authenticode certificate, Windows
@@ -46,9 +46,10 @@ $All = @{
   PP = @{ Name = "Pew Pew";       File = "PewPew";       Dir = "pew_pew\PewPew_artefacts" };
   SIB = @{ Name = "Sing It Back"; File = "SingItBack";   Dir = "sing_it_back\SingItBack_artefacts" };
   KL = @{ Name = "Kick Lock";     File = "KickLock";     Dir = "kick_lock\KickLock_artefacts" };
-  SL = @{ Name = "Slapper";       File = "Slapper";      Dir = "slapper\Slapper_artefacts" }
+  SL = @{ Name = "Slapper";       File = "Slapper";      Dir = "slapper\Slapper_artefacts" };
+  CR = @{ Name = "Crackle";       File = "Crackle";      Dir = "crackle\Crackle_artefacts" }
 }
-$Targets = if ($Plugin -eq "All") { @("FF", "BT", "BW", "PP", "SIB", "KL", "SL") } elseif ($Plugin -eq "Suite") { @() } else { @($Plugin) }
+$Targets = if ($Plugin -eq "All") { @("FF", "BT", "BW", "PP", "SIB", "KL", "SL", "CR") } elseif ($Plugin -eq "Suite") { @() } else { @($Plugin) }
 
 foreach ($P in $Targets) {
   $Info = $All[$P]

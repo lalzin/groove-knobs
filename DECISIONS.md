@@ -687,3 +687,6 @@ Une ligne par décision : **contexte** — choix — raison.
 
 ## Sing It Back — notation en lettres (2026-10-23)
 - Alan : « fais aussi la notation de note en allemand, A B C D… » : un choix « Do Ré Mi » / « C D E » (paramètre `notation`, ajouté en dernier : les autres gardent leur place ; affichage seulement), dans le menu de la tonalité. Lettres anglo-saxonnes (B = si) : la notation allemande proprement dite écrit H pour si — pas retenue, Alan a écrit « A B C D ».
+
+## Crackle dans la suite — 0.1.7 (2026-10-23)
+- Alan : « fais le build 0.1.7 avec l'intégration de Crackle dans la suite ». Toute la suite en 0.1.7 ; Crackle dans l'installateur de la suite macOS (effet) et Windows (composant `cr`), son installateur Windows (AppId propre), la CI, les visuels (huit fenêtres sur la bannière), `plugins.json` (+ galerie : hero, panneau EFFECTS, AM Radio Ghost, Broken Sampler), `versions.json`, `PROMPT-site-update-0.1.7.md`. Avec : Slapper (FUNK instantané, notes MIDI, « ⋯ »), Sing It Back (notation).

@@ -32,7 +32,7 @@ fi
 
 VERSION="$(get GK_SUITE_VERSION)"
 PREFIX="$(get GK_BUNDLE_ID_PREFIX)"
-PLUGINS=(FF BT BW PP SIB KL SL)
+PLUGINS=(FF BT BW PP SIB KL SL CR)
 for P in "${PLUGINS[@]}"; do
   [[ "$(get ${P}_VERSION)" == "$VERSION" ]] || { echo "$P is $(get ${P}_VERSION), the suite is $VERSION: align cmake/GrooveIds.cmake"; exit 1; }
 done

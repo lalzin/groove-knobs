@@ -9,15 +9,17 @@
 | **Pew Pew** *(instrument)* | le pew disco, en instrument MIDI — *the disco pew, as a MIDI instrument* |
 | **Sing It Back** | un chœur qui chante avec ta voix — *a choir singing along with your voice* |
 | **Kick Lock** *(+ Kick Lock Send)* | le sidechain qui remet le sub en phase avec le kick — *the sidechain that puts the sub in phase with the kick* |
-| **Slapper** *(nouveau, instrument)* | la basse funk en un knob — *the funk bass, in one knob* |
+| **Slapper** *(instrument)* | la basse funk en un knob — *the funk bass, in one knob* |
+| **Crackle** *(nouveau)* | le grain lo-fi en un knob — *lo-fi grain, in one knob* |
 
-### Nouveau dans la 0.1.6 / *What's new in 0.1.6*
-- **Slapper** (nouveau, instrument MIDI) : une basse funk / disco jouée par un modèle de corde, sans samples — le doigt, le slap du pouce qui fait claquer la corde sur les frettes, le pop — passée dans un ampli. Un knob, **FUNK**, de la basse ronde au slap agressif. **ENGINE** : la corde (STRING) ou trois basses synthé, ANALOG (mono-synthé à filtre résonant), FM (la basse FM des années 80), PULSE (la basse boogie de polysynthé). MONO avec glissés et ghost notes, ou POLY 6 voix. 24 presets, tous au même volume. Mascotte : Pluck.
-- Les autres plugins passent en 0.1.6 avec la suite, sans changement de son.
-- *Slapper (new, MIDI instrument): a funk / disco bass played by a string model, no samples — fingers, the thumb's slap snapping the string on the frets, the pop — through an amp. One knob, FUNK, from a round bass to an aggressive slap. ENGINE: the string or three synth basses (ANALOG, FM, PULSE). MONO with slides and ghost notes, or 6-voice POLY. 24 presets, all at the same loudness. The other plugins move to 0.1.6 with the suite, their sound unchanged.*
+### Nouveau dans la 0.1.7 / *What's new in 0.1.7*
+- **Crackle** (nouveau) : le grain lo-fi en un knob, GRAIN — craquements de vinyle naturels, cassette (wow, flutter, souffle, coupures), saturation (six types : lampe, transformateur, haut-parleur, bande, repliement, écrêtage, avec FOCUS), radio AM, bitcrush. Chaque effet a son knob dans « ⋯ » (AUTO : il suit GRAIN tant qu'on ne le touche pas), NOISE règle le niveau des bruits. 12 presets au volume de l'entrée. Mascotte : Hiss la cassette.
+- **Slapper** : FUNK répond tout de suite ; plus de notes oubliées en MIDI (une note rejouée avant d'être relâchée est toujours jouée) ; « ⋯ » : SLIDE (portamento, coupé par défaut), GHOST, HUMAN, VEL, PICK, STRING, BODY, RELEASE, SUB, BEND, OCTAVE ; Pluck ne bouge plus qu'avec FUNK.
+- **Sing It Back** : les notes en lettres (C D E…) ou en solfège (Do Ré Mi…).
+- *Crackle (new): lo-fi grain in one knob — natural vinyl crackle, tape (wow, flutter, hiss, dropouts), six RC-20-style saturation types with FOCUS, AM radio, bitcrush; every effect adjustable under "⋯" (AUTO follows GRAIN), NOISE level; 12 presets at the input's loudness. Slapper: FUNK answers at once, no more missed MIDI notes, SLIDE / GHOST / VEL / RELEASE / SUB / BEND / OCTAVE under "⋯". Sing It Back: letter note names (C D E) or solfège.*
 
 ### Windows (10 / 11, 64 bits)
-**Toute la suite d'un coup** : `GrooveKnobs-…-Windows-Setup.exe` (les sept plugins, chacun décochable). *The whole suite at once: `GrooveKnobs-…-Windows-Setup.exe`.*
+**Toute la suite d'un coup** : `GrooveKnobs-…-Windows-Setup.exe` (les huit plugins, chacun décochable). *The whole suite at once: `GrooveKnobs-…-Windows-Setup.exe`.*
 
 Télécharge le `…-Windows-Setup.exe` du plugin ci-dessous et lance-le : VST3 dans `C:\Program Files\Common Files\VST3` + application autonome.
 Si Windows affiche « Windows a protégé votre ordinateur » : **Informations complémentaires → Exécuter quand même** (l'installateur n'est pas encore signé pour Windows).

@@ -1,4 +1,4 @@
-# Groove Knobs — French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back, Kick Lock, Slapper
+# Groove Knobs — French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back, Kick Lock, Slapper, Crackle
 
 La suite **Groove Knobs** (LALZIN) : des plugins à un seul knob pour la funky house et la disco. **French Filter** (le filtre French Touch), **Boogie Trio** (chorus triple de string machine), **Backwash** (reverb inversée calée sur le tempo), **Pew Pew** (le pew disco, instrument) et **Sing It Back** (une foule qui chante avec ta voix).
 VST3 / AU / Standalone, macOS (universel) et Windows.
@@ -260,4 +260,12 @@ Instrument MIDI : **la basse funk en un knob**. Pas de samples : une corde modé
 - **ATTACK** (doigt → slap → pop ; sur les synthés : la vitesse de l'attaque), **MUTE** (paume, longueur des notes), **DRIVE**, **TONE**, **VOL**. PICK, STRING, BODY, HUMAN : réglés par les presets, automatisables.
 - **MONO** (par défaut) : une note jouée par-dessus une autre glisse vers elle (30–80 ms) ; vélocité < 20 : ghost note. **POLY** : 6 voix. Pitch bend ±2 demi-tons. Latence nulle.
 - 24 presets au même volume (`trimDb`, `scripts/calibrate_slapper_trims.py`). Tests : `ctest -R sl_` (accord ±2 cents, 60 s de jeu aléatoire, réglages tournés en jouant sans grésillement, presets distincts, CPU < 4 % pour 6 voix).
+
+# Crackle
+
+Effet : **le grain lo-fi en un knob**, GRAIN (0 = le son intact, au bit près). Mascotte : **Hiss**, la cassette.
+
+- La chaîne : bande (HP 40→350 Hz, LP 18→3,5 kHz) → wow et flutter (ligne à retard modulée) → saturation ×2 (TYPE : Tube, Transformer, Speaker, Tape, Fold, Hard ; FOCUS : la bande saturée) → bitcrush (16→6 bits, maintien d'échantillon) → radio AM (bande, mono, évanouissement) → + souffle, vinyle (impulsions + dé-accentuation RIAA), statique → coupures → MIX → VOL. Latence 17 échantillons (la saturation suréchantillonnée), compensée par l'hôte.
+- Chaque effet a son knob dans « ⋯ » (TAPE, VINYL, RADIO, SATURATION, DIGITAL), avec **AUTO** : il suit GRAIN (sa courbe, `GrainMap.h`) tant qu'on ne le touche pas. **NOISE** : le niveau des bruits ajoutés seulement.
+- 12 presets, volume calibré sur de la musique (`cr_render calibrate`). Tests : `ctest -R cr_`.
 
