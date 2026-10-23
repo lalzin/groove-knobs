@@ -25,6 +25,9 @@ DisableDirPage=auto
 LicenseFile=..\common\LICENSE.txt
 OutputDir=..\..\dist
 OutputBaseFilename=GrooveKnobs-{#MyAppVersion}-Windows-Setup
+; four mascots: the installer's icon, and the one in Apps & features
+SetupIconFile=icons\GrooveKnobs.ico
+UninstallDisplayIcon={app}\GrooveKnobs.ico
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
@@ -72,6 +75,7 @@ Name: "cr\vst3"; Description: "VST3"; Types: full vst3 custom
 Name: "cr\app"; Description: "Standalone application"; Types: full
 
 [Files]
+Source: "icons\GrooveKnobs.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildRoot}\french_filter\FrenchFilter_artefacts\Release\VST3\French Filter.vst3\*"; DestDir: "{commoncf64}\VST3\French Filter.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: ff\vst3
 Source: "{#BuildRoot}\french_filter\FrenchFilter_artefacts\Release\Standalone\French Filter.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: ff\app
 Source: "{#BuildRoot}\boogie_trio\BoogieTrio_artefacts\Release\VST3\Boogie Trio.vst3\*"; DestDir: "{commoncf64}\VST3\Boogie Trio.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: bt\vst3

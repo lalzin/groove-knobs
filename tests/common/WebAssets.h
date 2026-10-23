@@ -317,6 +317,17 @@ inline void writeSuite (const juce::File& outRoot, const std::vector<std::pair<j
         writePng (img, outRoot.getChildFile (file));
     };
     compose (1200, 630, 64.0f, { 150.0f, 130.0f, 900.0f, 470.0f }, uis, "groove-knobs-og.png");
+    // the suite's icon (its Windows installer): four mascots' icons, two by two
+    {
+        juce::Image icon (juce::Image::ARGB, 512, 512, true);
+        juce::Graphics g (icon);
+        g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+        const char* four[] { "french-filter", "pew-pew", "slapper", "crackle" };
+        for (int i = 0; i < 4; ++i)
+            if (const auto img = juce::ImageFileFormat::loadFrom (outRoot.getChildFile (juce::String (four[i]) + "/icon-512.png")); img.isValid())
+                g.drawImage (img, juce::Rectangle<float> ((float) (i % 2) * 256.0f + 4.0f, (float) (i / 2) * 256.0f + 4.0f, 248.0f, 248.0f));
+        writePng (icon, outRoot.getChildFile ("groove-knobs-icon-512.png"));
+    }
     compose (2400, 1000, 120.0f, { 360.0f, 230.0f, 1680.0f, 740.0f }, bannerUis, "groove-knobs-banner.png");
 }
 } // namespace gkweb

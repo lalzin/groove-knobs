@@ -66,6 +66,7 @@ juce_add_plugin(PewPew
     PLUGIN_MANUFACTURER_CODE    ${GK_MANUFACTURER_CODE}
     PLUGIN_CODE                 ${PP_PLUGIN_CODE}
     FORMATS                     VST3 AU Standalone
+    ICON_BIG                    ${CMAKE_CURRENT_SOURCE_DIR}/Assets/app_icon.png  # the mascot (app icon, macOS and Windows)
     IS_SYNTH                    TRUE
     NEEDS_MIDI_INPUT            TRUE
     NEEDS_MIDI_OUTPUT           FALSE

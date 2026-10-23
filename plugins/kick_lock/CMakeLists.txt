@@ -56,6 +56,7 @@ juce_add_plugin(KickLock
     PLUGIN_MANUFACTURER_CODE    ${GK_MANUFACTURER_CODE}
     PLUGIN_CODE                 ${KL_PLUGIN_CODE}
     FORMATS                     VST3 AU Standalone
+    ICON_BIG                    ${CMAKE_CURRENT_SOURCE_DIR}/Assets/app_icon.png  # the mascot (app icon, macOS and Windows)
     IS_SYNTH                    FALSE
     NEEDS_MIDI_INPUT            FALSE
     NEEDS_MIDI_OUTPUT           FALSE

@@ -70,6 +70,9 @@ DisableDirPage=auto
 LicenseFile=..\common\LICENSE.txt
 OutputDir=..\..\dist
 OutputBaseFilename={#MyFileName}-{#MyAppVersion}-Windows-Setup
+; the mascot: the installer's icon, and the one in Apps & features
+SetupIconFile=icons\{#MyFileName}.ico
+UninstallDisplayIcon={app}\{#MyFileName}.ico
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
@@ -94,6 +97,7 @@ Name: "vst3"; Description: "VST3 plug-in (Common Files\VST3)"; Types: full custo
 Name: "standalone"; Description: "Standalone application"; Types: full
 
 [Files]
+Source: "icons\{#MyFileName}.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\VST3\{#MyAppName}.vst3\*"; DestDir: "{commoncf64}\VST3\{#MyAppName}.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: vst3
 Source: "{#BuildDir}\Standalone\{#MyAppName}.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: standalone
 #if Plugin == "KL"
