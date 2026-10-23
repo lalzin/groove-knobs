@@ -23,6 +23,9 @@ public:
     /** Screenshots: the settings panel open. */
     void setPanelOpen (bool open);
 
+protected:
+    void editorTick (double dt) override;
+
 private:
     class Segments;
     class AutoLight;

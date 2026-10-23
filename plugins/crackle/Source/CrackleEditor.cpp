@@ -272,6 +272,15 @@ CrackleEditor::CrackleEditor (CrackleProcessor& p)
 
 CrackleEditor::~CrackleEditor() = default;
 
+void CrackleEditor::editorTick (double)
+{
+    // the GRAIN ring glows with the noise being added, and flashes on each crackle
+    auto& hiss = static_cast<HissMascot&> (getMascot());
+    auto& proc = static_cast<CrackleProcessor&> (processor);
+    const float noise = juce::jlimit (0.0f, 1.0f, proc.getCrackleDsp().getTelemetry().noiseLevel.load (std::memory_order_relaxed));
+    getKnob().setPulse (juce::jlimit (0.0f, 1.0f, 0.6f * noise + 0.4f * hiss.crackleFlash() * juce::jmin (1.0f, 2.0f * noise)));
+}
+
 void CrackleEditor::setPanelOpen (bool open)
 {
     more->setToggleState (open, juce::dontSendNotification);

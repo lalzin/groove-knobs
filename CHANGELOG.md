@@ -1,5 +1,8 @@
 # Changelog
 
+## Crackle 0.1.0-test2 — 2026-10-23 (version de test, hors suite)
+- Hiss vivant : les bobines tournent (plus vite avec le wow et GRAIN) et s'arrêtent net sur une coupure ; de la poussière s'envole sur les craquements ; il se pixellise quand CRUSH mord. L'anneau de GRAIN brille avec le bruit ajouté.
+
 ## Crackle 0.1.0-test1 — 2026-10-23 (version de test, hors suite)
 - **Crackle** (nouveau, en test) : le grain lo-fi en un knob, GRAIN — vinyle (craquements naturels), cassette (wow, flutter, souffle, coupures), saturation (six types façon RC-20, FOCUS), radio, bitcrush. Chaque effet a son knob (AUTO : il suit GRAIN tant qu'on ne le touche pas), NOISE règle le niveau des bruits, MIX, VOL. 10 presets au volume de l'entrée. Hiss la cassette en mascotte.
 

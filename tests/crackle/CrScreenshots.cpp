@@ -13,17 +13,39 @@ int main (int argc, char** argv)
     juce::ScopedJuceInitialiser_GUI init;
     const auto out = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 ? argv[1] : "screenshots/crackle");
     out.createDirectory();
-    for (int shot = 0; shot < 3; ++shot)
+    for (int shot = 0; shot < 4; ++shot)
     {
         const float scale = shot == 1 ? 2.0f : 1.0f;
         crackle::CrackleProcessor proc;
+        if (shot == 3)
+        {
+            // CRUSH in action: Broken Sampler, a second of noise through it first
+            const int bs = proc.getPresets().indexOf ("Broken Sampler");
+            proc.getPresetParameter().setValueNotifyingHost (proc.getPresetParameter().convertTo0to1 ((float) bs));
+            proc.applyPreset (bs);
+            juce::AudioProcessor::BusesLayout layout;
+            layout.inputBuses.add (juce::AudioChannelSet::stereo());
+            layout.outputBuses.add (juce::AudioChannelSet::stereo());
+            proc.setBusesLayout (layout);
+            proc.prepareToPlay (48000.0, 512);
+            juce::AudioBuffer<float> b (2, 512);
+            juce::MidiBuffer m;
+            juce::Random r (1);
+            for (int n = 0; n < 94; ++n)
+            {
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < 512; ++i)
+                        b.setSample (ch, i, 0.3f * (r.nextFloat() * 2.0f - 1.0f));
+                proc.processBlock (b, m);
+            }
+        }
         proc.editorScale.store (scale);
         std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
         auto* editor = dynamic_cast<crackle::CrackleEditor*> (ed.get());
         editor->setPanelOpen (shot == 2);
         editor->snapForSnapshot();
         const auto img = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
-        const auto f = out.getChildFile ("crackle_" + juce::String ((int) (scale * 100)) + (shot == 2 ? "_panel" : "") + ".png");
+        const auto f = out.getChildFile ("crackle_" + juce::String ((int) (scale * 100)) + (shot == 2 ? "_panel" : shot == 3 ? "_crush" : "") + ".png");
         f.deleteFile();
         juce::FileOutputStream os (f);
         juce::PNGImageFormat().writeImageToStream (img, os);
