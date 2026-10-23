@@ -40,6 +40,14 @@ public:
         is lifted, 0..1 (at most 3 % of the knob). */
     void setSkinLift (float amount);
 
+    /** A plugin's own knob face (Crackle: a pixel cassette), drawn instead of
+        the bands / drum skin, clipped to the body disc; `value` 0..1, `angle`
+        the pointer's (radians, 0 = up). The shading and outline still follow. */
+    using BodyPainter = std::function<void (juce::Graphics&, juce::Rectangle<float> body, float value, float angle)>;
+    void setBodyPainter (BodyPainter painter) { bodyPainter = std::move (painter); repaint(); }
+    /** false: no pointer cap or line (the face shows the position itself). */
+    void setPointerVisible (bool visible) { pointerVisible = visible; repaint(); }
+
     void paint (juce::Graphics&) override;
     void resized() override;
     bool hitTest (int x, int y) override;
@@ -73,7 +81,8 @@ private:
     juce::ParameterAttachment attachment;
 
     float value = 0.0f, dragStartValue = 0.0f, dragAnchorY = 0.0f, beatPhase = 0.0f, pulse = 0.0f, skinLift = 0.0f;
-    bool hovering = false, dragging = false, dragFine = false;
+    bool hovering = false, dragging = false, dragFine = false, pointerVisible = true;
+    BodyPainter bodyPainter;
 
     // Pre-built geometry (rebuilt in resized(), never in paint())
     juce::Point<float> centre;

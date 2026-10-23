@@ -3,6 +3,9 @@
 ## À venir
 - **Slapper** : FUNK répond tout de suite, y compris sur les notes qui sonnent déjà (avant : l'ancien réglage restait un instant) ; Pluck ne bouge plus qu'avec FUNK ; plus de notes oubliées en MIDI (une touche rejouée avant d'être relâchée est toujours jouée) ; « ⋯ » (sous MONO / POLY) ouvre SLIDE (le portamento, coupé par défaut : chaque note est pincée), GHOST (le seuil des ghost notes), HUMAN, VEL (la sensibilité à la vélocité), PICK, STRING, BODY, RELEASE, SUB, BEND (l'ampleur du pitch bend), OCTAVE.
 
+## Crackle 0.1.0-test5 — 2026-10-23 (version de test, hors suite)
+- GRAIN a une face de cassette en pixel art (ses bobines tournent avec le knob), le capuchon du knob par-dessus.
+
 ## Crackle 0.1.0-test4 — 2026-10-23 (version de test, hors suite)
 - Hiss ne bouge plus qu'avec GRAIN (sa pose, ses bobines, son double pixellisé en haut de course).
 - Bruits subtils (souffle, statique, fond du vinyle nettement plus bas) ; chaque preset règle son NOISE ; plusieurs presets avec le vinyle sans souffle.

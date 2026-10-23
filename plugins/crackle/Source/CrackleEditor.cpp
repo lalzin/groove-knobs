@@ -249,11 +249,70 @@ private:
     std::unique_ptr<Segments> type;
 };
 
+namespace
+{
+/** GRAIN's face: a cassette in pixel art (36 x 36, blown up block by block):
+    lilac shell, cream label, the window and its two reels — they turn as the
+    knob turns. The knob's own cap stays on top. */
+void paintPixelCassette (juce::Graphics& g, juce::Rectangle<float> body, float value, float)
+{
+    constexpr int N = 36;
+    juce::Image px (juce::Image::ARGB, N, N, true);
+    {
+        juce::Image::BitmapData d (px, juce::Image::BitmapData::writeOnly);
+        auto set = [&d] (int x, int y, juce::Colour c) { if (x >= 0 && y >= 0 && x < N && y < N) d.setPixelColour (x, y, c); };
+        auto rect = [&set] (int x0, int y0, int x1, int y1, juce::Colour c) { for (int y = y0; y <= y1; ++y) for (int x = x0; x <= x1; ++x) set (x, y, c); };
+        const juce::Colour shell = lilac, shellLight = lilac.brighter (0.35f), shadow = lilac.darker (0.55f), dark (0xff141218), grey = warmGrey;
+        // the background: ink with a faint pixel grid
+        for (int y = 0; y < N; ++y)
+            for (int x = 0; x < N; ++x)
+                set (x, y, ((x + y) & 1) ? ink : ink.brighter (0.08f));
+        // the shell, its outline, a light edge on top, a shadow under
+        rect (3, 8, 32, 28, dark);
+        rect (4, 9, 31, 27, shell);
+        rect (4, 9, 31, 9, shellLight);
+        rect (4, 27, 31, 27, shadow);
+        // screws in the corners
+        for (auto [x, y] : { std::pair { 5, 10 }, std::pair { 30, 10 }, std::pair { 5, 26 }, std::pair { 30, 26 } })
+            set (x, y, shadow);
+        // the label and its two lines
+        rect (7, 11, 28, 16, paper);
+        rect (9, 13, 26, 13, grey);
+        rect (9, 15, 20, 15, grey);
+        // the window and the two reels (cream rings, a dark hub, three teeth that turn with the knob)
+        rect (9, 17, 26, 25, dark);
+        const float turn = value * juce::MathConstants<float>::twoPi * 3.0f;
+        for (int r = 0; r < 2; ++r)
+        {
+            const int cx = r == 0 ? 13 : 22, cy = 21;
+            for (int y = -3; y <= 3; ++y)
+                for (int x = -3; x <= 3; ++x)
+                {
+                    const int d2 = x * x + y * y;
+                    if (d2 <= 10)
+                        set (cx + x, cy + y, d2 >= 5 ? paper : dark);
+                }
+            set (cx, cy, paper);
+            for (int t = 0; t < 3; ++t)
+            {
+                const float a = turn + (float) t * juce::MathConstants<float>::twoPi / 3.0f;
+                set (cx + (int) std::lround (std::cos (a) * 1.5f), cy + (int) std::lround (std::sin (a) * 1.5f), paper.darker (0.2f));
+            }
+        }
+    }
+    g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);
+    g.setOpacity (1.0f); // (drawImage takes the current colour's alpha: the knob's shadow left it at 35 %)
+    g.drawImage (px, body, juce::RectanglePlacement::stretchToFit);
+}
+} // namespace
+
 CrackleEditor::CrackleEditor (CrackleProcessor& p)
     : OneKnobEditor (p, makePalette(), "Crackle",
                      [&p] (gk::AudioFeatures&, const gk::Palette& palette) { return std::make_unique<HissMascot> (p, palette); })
 {
     getMascot().setBounds (110, 54, 200, 180); // Hiss above GRAIN
+    // GRAIN: a pixel cassette for a face, the knob's cap on top (Alan: "keep the big knob on it")
+    getKnob().setBodyPainter (paintPixelCassette);
     // MIX left of GRAIN, VOL right (Pew Pew's places)
     const std::pair<int, juce::Rectangle<int>> front[] { { CrackleDsp::mixKnob, { 10, 296, 64, 68 } }, { CrackleDsp::levelKnob, { 346, 296, 64, 68 } } };
     for (const auto& [k, r] : front)

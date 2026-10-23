@@ -257,7 +257,13 @@ void BigKnob::paint (juce::Graphics& g)
     // Body: drop shadow, bands, outline
     g.setColour (juce::Colours::black.withAlpha (0.35f));
     g.fillEllipse (juce::Rectangle<float> (bodyRadius * 2.0f, bodyRadius * 2.0f).withCentre (centre.translated (0.0f, 5.0f)));
-    if (! palette.knobRings.empty())
+    if (bodyPainter)
+    {
+        juce::Graphics::ScopedSaveState s (g);
+        g.reduceClipRegion (bodyOutline);
+        bodyPainter (g, juce::Rectangle<float> (bodyRadius * 2.0f, bodyRadius * 2.0f).withCentre (centre), value, angle);
+    }
+    else if (! palette.knobRings.empty())
     {
         // Drum skin seen from above: a rim, concentric rings; the centre
         // lifts (bigger, lighter, its shadow grows) with setSkinLift
@@ -304,6 +310,8 @@ void BigKnob::paint (juce::Graphics& g)
     g.strokePath (bodyOutline, juce::PathStrokeType (5.0f));
 
     // Pointer cap
+    if (pointerVisible)
+    {
     const auto rot = juce::AffineTransform::rotation (angle).translated (centre);
     g.setColour (juce::Colours::black.withAlpha (0.4f));
     g.fillPath (capPath, juce::AffineTransform::rotation (angle).translated (centre.translated (3.0f, 6.0f)));
@@ -318,6 +326,7 @@ void BigKnob::paint (juce::Graphics& g)
     const float len = bodyRadius * 0.92f;
     g.setColour (pal (palette.text));
     g.drawLine (juce::Line<float> (centre.getPointOnCircumference (len * 0.55f, angle), centre.getPointOnCircumference (len * 0.85f, angle)), 4.0f);
+    }
 
     // Value badge while hovering / dragging / focused
     if (hovering || dragging || hasKeyboardFocus (false))
