@@ -29,6 +29,19 @@ double Chain::Svf::hp (double x, double g, double k) noexcept
     return x - k * v1 - v2;
 }
 
+float Chain::Pink::next (Rng& r) noexcept
+{
+    // Voss-McCartney: row i is redrawn every 2^i samples (the lowest set bit of the counter)
+    ++counter;
+    int row = 0;
+    for (std::uint32_t c = counter; (c & 1u) == 0u && row < 4; c >>= 1)
+        ++row;
+    sum -= rows[(size_t) row];
+    rows[(size_t) row] = r.bipolar();
+    sum += rows[(size_t) row];
+    return (sum + r.bipolar()) / 6.0f;
+}
+
 void Chain::prepare (double sampleRate)
 {
     sr = sampleRate;
@@ -73,6 +86,12 @@ void Chain::reset()
     rng = {};
     now = {};
     now.noise = 0.5f;
+    pink = {};
+    crackles = {};
+    dropGain = 1.0;
+    drop = Drop::none;
+    dropFade = std::max (1, (int) (0.001 * sr));
+    crackleCount = dropoutCount = 0;
 }
 
 void Chain::process (float* left, float* right, int numSamples, const Amounts& target) noexcept
@@ -88,6 +107,8 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
         now.hiss += smooth * (target.hiss - now.hiss);
         now.saturation += smooth * (target.saturation - now.saturation);
         now.noise += smooth * (target.noise - now.noise);
+        now.vinyl += smooth * (target.vinyl - now.vinyl);
+        now.dropout += smooth * (target.dropout - now.dropout);
         if ((i & 15) == 0)
         {
             // BAND: HP 40 -> 350 Hz, LP 18 -> 3.5 kHz, on a log scale
@@ -120,6 +141,78 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
         const double norm = 0.5 / (std::tanh (0.5 * drive + bias) - std::tanh (bias));
         const double noiseGain = 2.0 * std::clamp ((double) now.noise, 0.0, 1.0); // (0.5: 0 dB, 1: +6 dB)
         const double hissLevel = 0.025 * std::pow (std::clamp ((double) now.hiss, 0.0, 1.0), 1.3) * noiseGain;
+
+        // VINYL: crackles at a rate that grows with it (up to ~30 a second), most of
+        // them small ticks, now and then a pop; each its own resonance and place
+        const double vin = std::clamp ((double) now.vinyl, 0.0, 1.0);
+        if (vin > 0.0 && rng.uniform() < (float) ((0.5 + 30.0 * vin * vin) / sr))
+            for (auto& c : crackles)
+                if (! c.on)
+                {
+                    c.on = true;
+                    c.age = 0;
+                    c.pulse = std::max (1, (int) ((0.001 + 0.002 * rng.uniform()) * sr));
+                    const float u = rng.uniform();
+                    c.amp = 0.02f + 0.5f * u * u * u * u; // (weighted: mostly ticks)
+                    const double tau = 0.005 + 0.015 * rng.uniform();
+                    c.decay = (float) std::exp (-1.0 / (tau * sr * 0.2)); // (its -60 dB at 5-20 ms)
+                    c.env = 1.0f;
+                    const double fc = 800.0 * std::pow (10.0, rng.uniform()); // 0.8-8 kHz
+                    c.g = std::tan (pi * std::min (fc, 0.4 * sr) / sr);
+                    c.k = 0.6 + 1.2 * rng.uniform();
+                    const float pan = 0.5f + 0.35f * rng.bipolar();
+                    c.panL = std::sqrt (1.0f - pan);
+                    c.panR = std::sqrt (pan);
+                    c.filter = {};
+                    ++crackleCount;
+                    break;
+                }
+        double crackleL = 0.0, crackleR = 0.0;
+        for (auto& c : crackles)
+            if (c.on)
+            {
+                // the impulse: a half-sine 1-3 ms (the stylus hitting the dust), then the ring
+                const double drive = c.age < c.pulse ? std::sin (pi * (c.age + 0.5) / c.pulse) * (rng.bipolar() * 0.5 + 0.5) : 0.0;
+                const double a1 = 1.0 / (1.0 + c.g * (c.g + c.k)), a2 = c.g * a1, a3 = c.g * a2;
+                const double in = drive * c.env;
+                const double v3 = in - c.filter.ic2, v1 = a1 * c.filter.ic1 + a2 * v3, v2 = c.filter.ic2 + a2 * c.filter.ic1 + a3 * v3;
+                c.filter.ic1 = 2.0 * v1 - c.filter.ic1;
+                c.filter.ic2 = 2.0 * v2 - c.filter.ic2;
+                const double bp = c.k * v1 + 0.6 * drive; // (the band-pass ring, plus a little of the raw impulse)
+                crackleL += c.amp * c.env * bp * c.panL;
+                crackleR += c.amp * c.env * bp * c.panR;
+                c.env *= c.decay;
+                if (++c.age > c.pulse && c.env < 1e-4f)
+                    c.on = false;
+            }
+        const double surface = 0.0015 * vin; // the pink floor: very low
+
+        // DROPOUTS: from GRAIN 0.5, rare (up to ~1.5 a second at 1): 2-15 ms at 0, 1 ms fades
+        const double dro = std::clamp ((double) now.dropout, 0.0, 1.0);
+        switch (drop)
+        {
+            case Drop::none:
+                if (dro > 0.0 && rng.uniform() < (float) (1.5 * dro * dro / sr))
+                {
+                    drop = Drop::falling;
+                    dropHold = (int) ((0.002 + 0.013 * rng.uniform()) * sr);
+                    ++dropoutCount;
+                }
+                break;
+            case Drop::falling:
+                dropGain -= 1.0 / dropFade;
+                if (dropGain <= 0.0) { dropGain = 0.0; drop = Drop::held; }
+                break;
+            case Drop::held:
+                if (--dropHold <= 0) drop = Drop::rising;
+                break;
+            case Drop::rising:
+                dropGain += 1.0 / dropFade;
+                if (dropGain >= 1.0) { dropGain = 1.0; drop = Drop::none; }
+                break;
+        }
+        // (a smooth fade: raised cosine of the linear ramp)
+        const double dropShape = 0.5 - 0.5 * std::cos (pi * dropGain);
 
         for (int ch = 0; ch < 2; ++ch)
         {
@@ -162,6 +255,11 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
                 const double n = hissLp[(size_t) ch].lp (hissHp[(size_t) ch].hp (rng.bipolar(), gHissHp, k), gHissLp, k);
                 x += hissLevel * n;
             }
+            // vinyl: the surface (pink) and the crackles, under NOISE
+            if (vin > 0.0)
+                x += noiseGain * (surface * pink[(size_t) ch].next (rng) + (ch == 0 ? crackleL : crackleR));
+            // a dropout takes everything (the tape lifts off the head)
+            x *= dropShape;
             io[ch][i] = (float) x;
         }
         upPos = (upPos + 2) & 63;

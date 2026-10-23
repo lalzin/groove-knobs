@@ -1,5 +1,5 @@
 // CRACKLE — GRAIN, the main knob: each section along its own curve (spec 2.3).
-// Step 1: BAND, WOW, HISS, SATURATION. (VINYL, CRUSH, DROPOUT: steps 2-3.)
+// BAND, WOW, HISS, SATURATION (step 1), VINYL, DROPOUT (step 2). (CRUSH: step 3.)
 #pragma once
 #include <algorithm>
 #include <cmath>
@@ -24,4 +24,8 @@ inline float saturation (float g)
     g = clamp01 (g);
     return g < 0.4f ? 0.3f * g / 0.4f : 0.3f + 0.7f * (g - 0.4f) / 0.6f;
 }
+/** VINYL: a gentle slope from 0 to 0.35, then a plateau. */
+inline float vinyl (float g) { return smoothstep (0.0f, 0.35f, g); }
+/** DROPOUT: nothing under 0.5, then more and more likely. */
+inline float dropout (float g) { return clamp01 ((g - 0.5f) / 0.5f); }
 } // namespace crackle::grain
