@@ -24,10 +24,14 @@ struct Telemetry
     the one not playing is let go when the engine changes (new notes only:
     a ringing note keeps its engine).
 
-    MONO (default): one string. A note played while another is held slides
-    to it (no new pluck, 30-80 ms by the interval); releasing it slides back
-    to the note still held. A note with velocity < 0.15 is a ghost (a muted,
-    pitchless thump). POLY: up to 6 strings, each note plucks its own.
+    MONO (default): one string. With SLIDE up, a note played while another is
+    held slides to it (no new pluck; the time grows with SLIDE and the
+    interval) and releasing it slides back to the note still held; SLIDE 0:
+    every note is plucked. A key pressed again while still held is always
+    plucked again (each press counted: its first release no longer cuts the
+    second — MIDI clips overlap the same note often). A note under GHOST's
+    velocity is a ghost (a muted, pitchless thump). POLY: up to 6 strings,
+    each note plucks its own.
     HUMAIN: each note a little late (up to 8 ms), its velocity (±6 %) and its
     pluck point (±3 %) varied, drawn from each voice's own seed. */
 class SlapperDsp final : public gk::OneKnobEngine
@@ -35,7 +39,7 @@ class SlapperDsp final : public gk::OneKnobEngine
 public:
     static constexpr int numVoices = 6;
     // the small knobs, in OneKnobConfig order
-    enum Knob { attackKnob, pickKnob, stringKnob, bodyKnob, muteKnob, driveKnob, toneKnob, humanKnob, levelKnob, numKnobs };
+    enum Knob { attackKnob, pickKnob, stringKnob, bodyKnob, muteKnob, driveKnob, toneKnob, humanKnob, levelKnob, slideKnob, ghostKnob, numKnobs };
     static constexpr int modeChoice = 0;   // 0 mono, 1 poly
     static constexpr int engineChoice = 1; // Engine order: string, analog, fm, pulse
     static constexpr double maxHumanSeconds = 0.008;
@@ -99,11 +103,12 @@ private:
     int numHeld = 0;
     std::array<Event, 64> pending {};
     std::array<double, 128> noteDelay {}; // the delay a note was played with (its note-off gets the same)
+    std::array<int, 128> pressed {};      // presses of each key not yet released
     std::uint32_t timingSeed = 0x1234567u;
     const juce::MidiBuffer* midi = nullptr;
     int midiStart = 0, midiCount = 0;
     bool poly = false;
-    float knobs[numKnobs] { 0.5f, 0.15f, 0.4f, 0.3f, 0.0f, 0.3f, 0.0f, 0.2f, 0.0f };
+    float knobs[numKnobs] { 0.5f, 0.15f, 0.4f, 0.3f, 0.0f, 0.3f, 0.0f, 0.2f, 0.0f, 0.0f, 0.5f };
     float funk = 0.5f, trimDb = 0.0f;
     std::vector<float> trims;
     double bendRatio = 1.0;

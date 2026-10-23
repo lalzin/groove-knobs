@@ -34,7 +34,8 @@ inline juce::MidiMessageSequence sequenceOf (const std::vector<Note>& notes, dou
         seq.addEvent (off);
     }
     seq.sort();
-    seq.updateMatchedPairs();
+    // (no updateMatchedPairs(): it inserts a note-off before a key pressed again
+    // while held — the very case a clip sends and the engine must handle)
     return seq;
 }
 

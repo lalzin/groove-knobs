@@ -68,11 +68,17 @@ int main (int argc, char** argv)
         return runWeb (juce::File::getCurrentWorkingDirectory().getChildFile (argc > 2 ? argv[2] : "web-assets"));
     const auto out = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 ? argv[1] : "screenshots/slapper");
     out.createDirectory();
-    for (float scale : { 1.0f, 2.0f })
+    for (int shot = 0; shot < 3; ++shot)
     {
+        const float scale = shot == 1 ? 2.0f : 1.0f;
         slapper::SlapperProcessor proc;
-        const auto img = shoot (proc, scale);
-        const auto f = out.getChildFile ("slapper_" + juce::String ((int) (scale * 100)) + ".png");
+        proc.editorScale.store (scale);
+        std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
+        auto* editor = dynamic_cast<slapper::SlapperEditor*> (ed.get());
+        editor->setPanelOpen (shot == 2);
+        editor->snapForSnapshot();
+        const auto img = editor->createComponentSnapshot (editor->getLocalBounds(), true, juce::jmax (1.0f, scale / 2.0f));
+        const auto f = out.getChildFile ("slapper_" + juce::String ((int) (scale * 100)) + (shot == 2 ? "_panel" : "") + ".png");
         gkweb::writePng (img, f);
         std::cout << f.getFullPathName() << "\n";
     }

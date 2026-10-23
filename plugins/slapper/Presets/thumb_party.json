@@ -7,5 +7,5 @@
     "drive": 0.5,
     "human": 0.3
   },
-  "trimDb": 0.1
+  "trimDb": -0.1
 }

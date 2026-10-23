@@ -31,7 +31,10 @@ namespace
                       { "drive", "Drive", "DRIVE", 0.3f },
                       { "tone", "Tone", "TONE", 0.0f, -1.0f, 1.0f },
                       { "human", "Human", "HUMAN", 0.2f },
-                      { "level", "Volume", "VOL", 0.0f, -60.0f, 6.0f, 3.02f, "dB" } };
+                      { "level", "Volume", "VOL", 0.0f, -60.0f, 6.0f, 3.02f, "dB" },
+                      // (added after: the earlier ones keep their places)
+                      { "slide", "Slide", "SLIDE", 0.0f },   // MONO: 0 every note plucked, up: overlapping notes slide
+                      { "ghost", "Ghost", "GHOST", 0.5f } }; // the velocity under which a note is a ghost: 0 .. 0.3 (0.15)
         cfg.choices = { { "mode", "Mode", "MODE", { "Mono", "Poly" }, 0, true },
                         { "engine", "Engine", "ENGINE", { "String", "Analog", "FM", "Pulse" }, 0, true } };
         cfg.editorBuildsControls = false;

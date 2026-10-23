@@ -44,6 +44,7 @@ void SlapperDsp::reset()
     for (auto& v : synths)
         v.reset();
     voiceNote.fill (-1);
+    pressed.fill (0);
     for (auto& e : pending)
         e.used = false;
     numHeld = 0;
@@ -110,10 +111,12 @@ void SlapperDsp::start (int slot, double hz, float velocity)
 void SlapperDsp::slide (int slot, double hz)
 {
     const double semis = 12.0 * std::log2 (hz / slotHz (slot));
+    // SLIDE: from quick (a hammer-on) to a slow portamento
+    const double seconds = glideSeconds (semis) * (0.4 + 2.0 * std::clamp ((double) knobs[slideKnob], 0.0, 1.0));
     if (slotEngine[(size_t) slot] == Engine::string)
-        voices[(size_t) slot].glideTo (hz, glideSeconds (semis));
+        voices[(size_t) slot].glideTo (hz, seconds);
     else
-        synths[(size_t) slot].glideTo (hz, glideSeconds (semis));
+        synths[(size_t) slot].glideTo (hz, seconds);
 }
 
 void SlapperDsp::letGo (int slot)
@@ -188,6 +191,7 @@ void SlapperDsp::handle (const juce::MidiMessage& m, float)
         for (int i = 0; i < numVoices; ++i)
             letGo (i);
         numHeld = 0;
+        pressed.fill (0);
         for (auto& e : pending)
             e.used = false;
     }
@@ -197,12 +201,19 @@ void SlapperDsp::play (int note, float velocity)
 {
     const double hz = noteHz (note);
     ++order;
+    const bool again = pressed[(size_t) note] > 0; // (the same key, still held from before)
+    ++pressed[(size_t) note];
+    // GHOST: under its velocity (0 .. 0.3, 0.15 by default) a note is a ghost; the
+    // voices take ghosts as "under 0.15", so the velocity is brought to their scale
+    const float ghostUnder = 0.3f * std::clamp (knobs[ghostKnob], 0.0f, 1.0f);
+    const bool ghostNote = velocity < ghostUnder;
+    velocity = ghostNote ? 0.01f : std::max (velocity, Voice::ghostVelocity);
     if (! poly)
     {
         // HUMAIN: the velocity ±6 %
         const float vel = std::clamp (velocity * (1.0f + 0.06f * knobs[humanKnob] * humanRandom (0)), 0.01f, 1.0f);
         // (a slide stays on the engine that is sounding; a new preset's engine starts with the next pluck)
-        const bool legato = numHeld > 0 && slotHeld (0) && velocity >= Voice::ghostVelocity && slotEngine[0] == engine;
+        const bool legato = knobs[slideKnob] > 0.001f && numHeld > 0 && slotHeld (0) && ! ghostNote && ! again && slotEngine[0] == engine;
         // the held keys: this one on top (moved there if already held)
         for (int i = 0; i < numHeld; ++i)
             if (heldKeys[(size_t) i] == note)
@@ -249,13 +260,16 @@ void SlapperDsp::play (int note, float velocity)
     }
     // the UI: which attack it was
     const float a = knobs[attackKnob];
-    telemetry.lastKind.store (velocity < Voice::ghostVelocity ? 3 : a < 0.25f ? 0 : a < 0.75f ? 1 : 2);
+    telemetry.lastKind.store (ghostNote ? 3 : a < 0.25f ? 0 : a < 0.75f ? 1 : 2);
     telemetry.lastVelocity.store (velocity);
     telemetry.hitCounter.fetch_add (1);
 }
 
 void SlapperDsp::release (int note)
 {
+    // a key pressed twice (MIDI overlaps): only its last release lets it go
+    if (pressed[(size_t) note] > 0 && --pressed[(size_t) note] > 0)
+        return;
     if (! poly)
     {
         int at = -1;

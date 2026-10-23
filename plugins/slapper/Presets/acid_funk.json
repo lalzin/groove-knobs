@@ -10,7 +10,8 @@
     "mute": 0.5,
     "drive": 0.45,
     "tone": 0.2,
-    "human": 0.15
+    "human": 0.15,
+    "slide": 0.2
   },
   "trimDb": -0.3
 }

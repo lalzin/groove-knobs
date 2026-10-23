@@ -1,7 +1,7 @@
 # Changelog
 
 ## À venir
-- **Slapper** : FUNK répond tout de suite, y compris sur les notes qui sonnent déjà (avant : l'ancien réglage restait un instant) ; Pluck ne bouge plus qu'avec FUNK.
+- **Slapper** : FUNK répond tout de suite, y compris sur les notes qui sonnent déjà (avant : l'ancien réglage restait un instant) ; Pluck ne bouge plus qu'avec FUNK ; plus de notes oubliées en MIDI (une touche rejouée avant d'être relâchée est toujours jouée) ; « ⋯ » ouvre SLIDE (le portamento, coupé par défaut : chaque note est pincée), GHOST (le seuil des ghost notes), HUMAN, PICK, STRING, BODY.
 
 ## Crackle 0.1.0-test4 — 2026-10-23 (version de test, hors suite)
 - Hiss ne bouge plus qu'avec GRAIN (sa pose, ses bobines, son double pixellisé en haut de course).

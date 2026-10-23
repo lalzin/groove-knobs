@@ -123,6 +123,89 @@ private:
     bool over = false;
 };
 
+/** "⋯": opens / closes the settings panel. */
+class SlapperEditor::MoreButton final : public juce::Button
+{
+public:
+    explicit MoreButton (const gk::Palette& p) : juce::Button ("Settings"), palette (p)
+    {
+        setClickingTogglesState (true);
+        setTooltip ("More: slide, ghost notes, human feel, the string");
+        setWantsKeyboardFocus (true);
+    }
+    void paintButton (juce::Graphics& g, bool over, bool) override
+    {
+        const auto b = getLocalBounds().toFloat().reduced (2.0f);
+        g.setColour (palette (getToggleState() ? amber : palette.surface).withMultipliedBrightness (over ? 1.15f : 1.0f));
+        g.fillRoundedRectangle (b, b.getHeight() * 0.5f);
+        g.setColour (palette (palette.outline));
+        g.drawRoundedRectangle (b, b.getHeight() * 0.5f, 2.0f);
+        g.setColour (palette (getToggleState() ? palette.outline : palette.text));
+        for (int i = -1; i <= 1; ++i)
+            g.fillEllipse (juce::Rectangle<float> (4.0f, 4.0f).withCentre (b.getCentre().translated (7.0f * (float) i, 0.0f)));
+    }
+
+private:
+    const gk::Palette& palette;
+};
+
+/** The settings the front panel leaves out, sorted: PLAY and STRING. */
+class SlapperEditor::SettingsPanel final : public juce::Component
+{
+public:
+    SettingsPanel (SlapperProcessor& p, const gk::Palette& pal) : palette (pal)
+    {
+        setTitle ("More settings");
+        const int ids[] { SlapperDsp::slideKnob, SlapperDsp::ghostKnob, SlapperDsp::humanKnob, SlapperDsp::pickKnob, SlapperDsp::stringKnob, SlapperDsp::bodyKnob };
+        for (int i = 0; i < 6; ++i)
+        {
+            knobs.push_back (std::make_unique<gk::SmallKnob> (p.getKnobParameter (ids[i]), palette, p.getConfig().knobs[(size_t) ids[i]].caption,
+                                                              palette.arcColour (i < 3 ? 0.0f : 1.0f)));
+            addAndMakeVisible (*knobs.back());
+        }
+    }
+
+    void resized() override
+    {
+        const auto area = getLocalBounds().reduced (12, 0).withTrimmedTop (30);
+        const int slotW = area.getWidth() / 3, rowH = 88;
+        for (int i = 0; i < 6; ++i)
+            knobs[(size_t) i]->setBounds (juce::Rectangle<int> (area.getX() + (i % 3) * slotW, area.getY() + (i / 3) * rowH + 14, slotW, rowH - 14)
+                                              .withSizeKeepingCentre (64, 68));
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto b = getLocalBounds().toFloat().reduced (2.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.45f));
+        g.fillRoundedRectangle (b.translated (2.0f, 4.0f), 12.0f);
+        g.setGradientFill (juce::ColourGradient (palette (wood).brighter (0.15f), b.getCentreX(), b.getY(), palette (palette.backgroundEdge), b.getCentreX(),
+                                                 b.getBottom(), false));
+        g.fillRoundedRectangle (b, 12.0f);
+        g.setColour (palette (amber).withAlpha (0.8f));
+        g.drawRoundedRectangle (b.reduced (1.0f), 12.0f, 2.0f);
+        g.setColour (palette (cream).withAlpha (0.85f));
+        g.setFont (gk::GrooveFonts::font (12.0f).withExtraKerningFactor (0.2f));
+        g.drawText ("MORE", b.withHeight (28.0f), juce::Justification::centred);
+        const auto area = getLocalBounds().reduced (12, 0).withTrimmedTop (30);
+        const int rowH = 88;
+        g.setFont (gk::GrooveFonts::font (9.5f).withExtraKerningFactor (0.14f));
+        const char* captions[] { "PLAY", "STRING" };
+        for (int row = 0; row < 2; ++row)
+        {
+            const auto r = juce::Rectangle<int> (area.getX() + 6, area.getY() + row * rowH, area.getWidth() - 12, 12).toFloat();
+            g.setColour (palette (amber).withAlpha (0.9f));
+            g.drawText (captions[row], r, juce::Justification::centredLeft);
+            g.setColour (palette (cream).withAlpha (0.25f));
+            g.fillRect (r.getX(), r.getBottom() + 1.0f, r.getWidth(), 1.0f);
+        }
+    }
+
+private:
+    const gk::Palette& palette;
+    std::vector<std::unique_ptr<gk::SmallKnob>> knobs;
+};
+
 SlapperEditor::SlapperEditor (SlapperProcessor& p)
     : OneKnobEditor (p, makePalette(), "Slapper",
                      [&p] (gk::AudioFeatures&, const gk::Palette& palette) { return std::make_unique<PluckMascot> (p, palette); })
@@ -150,7 +233,20 @@ SlapperEditor::SlapperEditor (SlapperProcessor& p)
                                                "STRING: the modelled bass guitar. ANALOG: a mono-synth bass (saws, resonant filter). "
                                                "FM: an 80s FM bass. PULSE: a boogie polysynth bass. Each preset picks one");
     addToCanvas (*engineSwitch, { 8, 66, 74, 132 });
+    // "⋯" (bottom left, under DRIVE) and its panel over Pluck
+    panel = std::make_unique<SettingsPanel> (p, getPalette());
+    addToCanvas (*panel, { 14, 56, 392, 236 });
+    panel->setVisible (false);
+    more = std::make_unique<MoreButton> (getPalette());
+    addToCanvas (*more, { 14, 440, 46, 26 });
+    more->onClick = [this] { panel->setVisible (more->getToggleState()); };
 }
 
 SlapperEditor::~SlapperEditor() = default;
+
+void SlapperEditor::setPanelOpen (bool open)
+{
+    more->setToggleState (open, juce::dontSendNotification);
+    panel->setVisible (open);
+}
 } // namespace slapper

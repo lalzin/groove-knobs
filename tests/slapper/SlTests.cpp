@@ -207,6 +207,7 @@ TEST_CASE ("MONO: a note played over a held one slides to it, no new pluck", "[s
     {
         auto p = makeProc (2); // Finger Round
         gktest::setParam (p->getKnobParameter (SlapperDsp::humanKnob), 0.0f);
+        gktest::setParam (p->getKnobParameter (SlapperDsp::slideKnob), 0.5f); // (SLIDE on: overlapping notes slide)
         const double sr = 48000.0;
         // A1 then E2 (a fourth up) at 0.5 s; held over it, or released before
         auto seq = sequenceOf ({ { 0.0, overlap ? 0.6 : 0.45, 33, 100 }, { 0.5, 0.8, 40, 100 } }, sr);
@@ -221,6 +222,31 @@ TEST_CASE ("MONO: a note played over a held one slides to it, no new pluck", "[s
             CHECK (at < 1.6 * before);
         else
             CHECK (at > 1.6 * before);
+    }
+}
+
+TEST_CASE ("MIDI: the same note again while still held is plucked again, its first release does not cut it; SLIDE 0 plucks every note", "[slapper]")
+{
+    const double sr = 48000.0;
+    for (int engine = 0; engine < 2; ++engine) // the string and a synth
+    {
+        auto p = makeProc (2);
+        gktest::setParam (p->getEngineParameter(), (float) engine);
+        gktest::setParam (p->getKnobParameter (SlapperDsp::humanKnob), 0.0f);
+        // A1 at 0 s (held to 0.55 s), A1 again at 0.5 s (to 1.2 s): overlapping, as clips do
+        const auto out = render (*p, sequenceOf ({ { 0.0, 0.55, 33, 100 }, { 0.5, 0.7, 33, 100 } }, sr), 1.4);
+        const double before = rms (out, 0.42, 0.49), after = rms (out, 0.505, 0.54), held = rms (out, 0.8, 0.9);
+        INFO ("engine " << engine << ": before " << before << ", the new attack " << after << ", later " << held);
+        if (engine == 0)
+            CHECK (after > 1.3 * before); // plucked again (a synth retriggers from its current level: no jump to see)
+        CHECK (held > 0.2 * after);     // still sounding after the first one's note-off (0.55 s)
+        // SLIDE 0 (default): a note played over another is plucked too
+        auto q = makeProc (2);
+        gktest::setParam (q->getEngineParameter(), (float) engine);
+        gktest::setParam (q->getKnobParameter (SlapperDsp::humanKnob), 0.0f);
+        const auto o2 = render (*q, sequenceOf ({ { 0.0, 0.6, 33, 100 }, { 0.5, 0.6, 40, 100 } }, sr), 1.2);
+        if (engine == 0)
+            CHECK (rms (o2, 0.505, 0.54) > 1.3 * rms (o2, 0.42, 0.49));
     }
 }
 
@@ -362,7 +388,7 @@ TEST_CASE ("Moving a knob while a note rings: no crackle (automation, every bloc
         }
         return out;
     };
-    const char* names[] { "attack", "pick", "string", "body", "mute", "drive", "tone", "human", "level" };
+    const char* names[] { "attack", "pick", "string", "body", "mute", "drive", "tone", "human", "level", "slide", "ghost" };
     for (int k = -2; k < SlapperDsp::numKnobs; ++k)
     {
         if (k == -1)
@@ -404,6 +430,7 @@ TEST_CASE ("Synth engines: in tune, a slide glides, a retrigger does not click",
         auto proc = makeProc (0);
         gktest::setParam (proc->getEngineParameter(), (float) e);
         gktest::setParam (proc->getKnobParameter (SlapperDsp::humanKnob), 0.0f);
+        gktest::setParam (proc->getKnobParameter (SlapperDsp::slideKnob), 0.5f); // (SLIDE on: the second note slides)
         const auto out = render (*proc, sequenceOf ({ { 0.0, 0.6, 33, 100 }, { 0.5, 0.5, 40, 100 }, { 1.2, 0.5, 28, 100 } }, sr), 2.0);
         std::vector<float> y (out.getReadPointer (0), out.getReadPointer (0) + out.getNumSamples());
         const double after = measureHz (y, (int) (0.75 * sr), (int) (0.2 * sr), 82.4, sr);
