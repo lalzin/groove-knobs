@@ -253,13 +253,11 @@ namespace
 {
 /** GRAIN's face (no stripes, no rings: those are the other plugins'): an
     ordered-dither gradient, lilac in the middle dissolving into ink at the
-    rim, and its pixels grow with the knob — GRAIN bitcrushes its own knob
-    (from 40 pixels across at 0 to 12 at the top). The knob's cap stays on top. */
-void paintPixelCassette (juce::Graphics& g, juce::Rectangle<float> body, float value, float)
+    rim, 40 pixels across (Alan kept the fine one: it does not coarsen with the
+    knob). The knob's cap stays on top. */
+void paintPixelFace (juce::Graphics& g, juce::Rectangle<float> body, float, float)
 {
-    // the grid: coarser as GRAIN rises, in steps (a crush, not a zoom)
-    static constexpr int grids[] { 40, 32, 24, 18, 14, 12 };
-    const int N = grids[juce::jlimit (0, 5, (int) (value * 5.999f))];
+    constexpr int N = 40;
     // 4 x 4 Bayer matrix: the threshold each pixel needs to light up
     static constexpr int bayer[4][4] { { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 } };
     juce::Image px (juce::Image::ARGB, N, N, true);
@@ -294,7 +292,7 @@ CrackleEditor::CrackleEditor (CrackleProcessor& p)
 {
     getMascot().setBounds (110, 54, 200, 180); // Hiss above GRAIN
     // GRAIN: a pixel cassette for a face, the knob's cap on top (Alan: "keep the big knob on it")
-    getKnob().setBodyPainter (paintPixelCassette);
+    getKnob().setBodyPainter (paintPixelFace);
     // MIX left of GRAIN, VOL right (Pew Pew's places)
     const std::pair<int, juce::Rectangle<int>> front[] { { CrackleDsp::mixKnob, { 10, 296, 64, 68 } }, { CrackleDsp::levelKnob, { 346, 296, 64, 68 } } };
     for (const auto& [k, r] : front)
