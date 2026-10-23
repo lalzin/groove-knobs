@@ -109,7 +109,11 @@ int HissMascot::chooseFrame (float macro, float bypass, bool musicOn)
     // CRUSH: short bursts of pixels, more and bigger with more crush
     const float crush = live ? tel.crush.load (std::memory_order_relaxed) : 0.0f;
     if (crush > 0.05f && s.time - crushBurstAt > 1.6 - 1.0 * crush)
+    {
         crushBurstAt = s.time;
+        ghostX = (random() < 0.5f ? -1.0f : 1.0f) * (0.06f + 0.05f * random());
+        ghostY = -0.02f - 0.03f * random();
+    }
     const float burst = crush > 0.05f ? juce::jmax (0.0f, 1.0f - (float) (s.time - crushBurstAt) / 0.28f) : 0.0f;
     pixel = burst * (0.3f + 0.7f * crush);
 
@@ -154,25 +158,27 @@ void HissMascot::drawReels (juce::Graphics& g, juce::Rectangle<float> fig, const
 void HissMascot::paintCharacter (juce::Graphics& g, juce::Rectangle<float> fig, const juce::AffineTransform& animation)
 {
     const auto moved = animation.translated (0.0f, jump);
-    if (pixel <= 0.01f)
+    if (pixel > 0.01f)
     {
-        drawFrame (g, getState().frame, fig, moved, 1.0f);
-        drawReels (g, fig, moved);
-        return;
+        // CRUSH: a pixelated double behind him, a little off to the side (it
+        // jumps each burst): drawn small, then blown up block by block
+        const float block = 3.0f + 4.0f * pixel;
+        const auto area = getLocalBounds();
+        const int w = juce::jmax (1, (int) ((float) area.getWidth() / block)), h = juce::jmax (1, (int) ((float) area.getHeight() / block));
+        juce::Image small (juce::Image::ARGB, w, h, true);
+        {
+            juce::Graphics sg (small);
+            sg.addTransform (juce::AffineTransform::scale (1.0f / block));
+            drawFrame (sg, getState().frame, fig, moved.translated (ghostX * fig.getWidth(), ghostY * fig.getHeight()), 1.0f);
+        }
+        juce::Graphics::ScopedSaveState keep (g);
+        g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);
+        g.setOpacity (0.55f * juce::jmin (1.0f, 1.5f * pixel));
+        g.drawImage (small, area.toFloat(), juce::RectanglePlacement::stretchToFit);
     }
-    // CRUSH: the cassette drawn small, then blown up block by block
-    const float block = 2.0f + 5.0f * pixel;
-    const auto area = getLocalBounds();
-    const int w = juce::jmax (1, (int) ((float) area.getWidth() / block)), h = juce::jmax (1, (int) ((float) area.getHeight() / block));
-    juce::Image small (juce::Image::ARGB, w, h, true);
-    {
-        juce::Graphics sg (small);
-        sg.addTransform (juce::AffineTransform::scale (1.0f / block));
-        drawFrame (sg, getState().frame, fig, moved, 1.0f);
-        drawReels (sg, fig, moved);
-    }
-    g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);
-    g.drawImage (small, area.toFloat(), juce::RectanglePlacement::stretchToFit);
+    // Hiss himself stays sharp
+    drawFrame (g, getState().frame, fig, moved, 1.0f);
+    drawReels (g, fig, moved);
 }
 
 void HissMascot::paintOverlay (juce::Graphics& g, const State&, juce::Rectangle<float>)

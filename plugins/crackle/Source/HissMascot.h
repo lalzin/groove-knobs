@@ -37,7 +37,7 @@ private:
     CrackleProcessor& proc;
     int lastCrackles = -1, lastDropouts = -1;
     double lastTime = -1.0, startledAt = -10.0, droppedAt = -10.0, crushBurstAt = -10.0;
-    float reelAngle = 0.0f, reelSpeed = 0.0f, jump = 0.0f, jumpV = 0.0f, flash = 0.0f, pixel = 0.0f;
+    float reelAngle = 0.0f, reelSpeed = 0.0f, jump = 0.0f, jumpV = 0.0f, flash = 0.0f, pixel = 0.0f, ghostX = 0.08f, ghostY = -0.03f;
     std::array<Speck, 24> specks {};
     std::uint32_t seed = 0x51ed2701u;
     float random() noexcept
