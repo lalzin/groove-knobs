@@ -15,7 +15,7 @@
     "downloads": {
       "macos": {
         "file": "GrooveKnobs-0.1.7-macOS.pkg",
-        "bytes": null,
+        "bytes": 262756893,
         "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
         "formats": [
           "VST3",
@@ -94,7 +94,7 @@
       "downloads": {
         "macos": {
           "file": "FrenchFilter-0.1.7-macOS.pkg",
-          "bytes": null,
+          "bytes": 37416835,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -162,7 +162,7 @@
       "downloads": {
         "macos": {
           "file": "BoogieTrio-0.1.7-macOS.pkg",
-          "bytes": null,
+          "bytes": 19509302,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -229,7 +229,7 @@
       "downloads": {
         "macos": {
           "file": "Backwash-0.1.7-macOS.pkg",
-          "bytes": null,
+          "bytes": 20253376,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -300,7 +300,7 @@
       "downloads": {
         "macos": {
           "file": "PewPew-0.1.7-macOS.pkg",
-          "bytes": null,
+          "bytes": 33955369,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -369,7 +369,7 @@
       "downloads": {
         "macos": {
           "file": "SingItBack-0.1.7-macOS.pkg",
-          "bytes": null,
+          "bytes": 29956942,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -436,7 +436,7 @@
       "downloads": {
         "macos": {
           "file": "KickLock-0.1.7-macOS.pkg",
-          "bytes": null,
+          "bytes": 75126373,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -617,7 +617,7 @@
       "downloads": {
         "macos": {
           "file": "Slapper-0.1.7-macOS.pkg",
-          "bytes": null,
+          "bytes": 24901640,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -722,7 +722,7 @@
       "downloads": {
         "macos": {
           "file": "Crackle-0.1.7-macOS.pkg",
-          "bytes": null,
+          "bytes": 21765003,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
