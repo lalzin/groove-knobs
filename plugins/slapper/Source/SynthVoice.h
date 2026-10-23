@@ -37,7 +37,7 @@ public:
     void reset() noexcept;
     void noteOn (double hz, float velocity, const SynthParams& p) noexcept;
     void glideTo (double hz, double seconds) noexcept;
-    void noteOff() noexcept;
+    void noteOff (double scale = 1.0) noexcept; // RELEASE: the note's own release time, scaled
     void setBend (double ratio) noexcept { bend = ratio; }
     /** FUNK moved while the note rings: envelope depth / FM index and resonance follow at once. */
     void setFunk (float funk) noexcept { p.funk = funk; }
@@ -59,7 +59,7 @@ private:
     double fmPrev = 0.0, fmIndex = 0.0, fmIndexCoef = 0.0; // the index follows its target in ~0.7 ms (a jump is a click)
     // envelopes: amp (attack / decay to sustain / release), filter (or FM index): a decay
     Stage stage = Stage::idle;
-    double amp = 0.0, sustain = 0.8, attackStep = 0.0, decayCoef = 0.0, releaseCoef = 0.0;
+    double amp = 0.0, sustain = 0.8, attackStep = 0.0, decayCoef = 0.0, releaseCoef = 0.0, noteReleaseCoef = 0.0;
     double fenv = 0.0, fenvCoef = 0.0;
     float velocity = 1.0f;
     // the ladder: four TPT one-poles, feedback

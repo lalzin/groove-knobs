@@ -39,7 +39,7 @@ class SlapperDsp final : public gk::OneKnobEngine
 public:
     static constexpr int numVoices = 6;
     // the small knobs, in OneKnobConfig order
-    enum Knob { attackKnob, pickKnob, stringKnob, bodyKnob, muteKnob, driveKnob, toneKnob, humanKnob, levelKnob, slideKnob, ghostKnob, numKnobs };
+    enum Knob { attackKnob, pickKnob, stringKnob, bodyKnob, muteKnob, driveKnob, toneKnob, humanKnob, levelKnob, slideKnob, ghostKnob, velKnob, releaseKnob, subKnob, bendKnob, octaveKnob, numKnobs };
     static constexpr int modeChoice = 0;   // 0 mono, 1 poly
     static constexpr int engineChoice = 1; // Engine order: string, analog, fm, pulse
     static constexpr double maxHumanSeconds = 0.008;
@@ -84,6 +84,9 @@ private:
     void start (int slot, double hz, float velocity);
     void slide (int slot, double hz);
     void letGo (int slot);
+    double hzOf (int note) const noexcept;  // OCTAVE applied
+    double releaseSeconds() const noexcept; // RELEASE: 0.02 .. 0.6 s (0.45: ~0.1 s, as before)
+    float subGain() const noexcept { return 2.0f * std::clamp (knobs[subKnob], 0.0f, 1.0f); } // SUB: 0 .. x2 (0.5: as FUNK sets it)
     bool slotActive (int slot) const noexcept { return voices[(size_t) slot].isActive() || synths[(size_t) slot].isActive(); }
     bool slotHeld (int slot) const noexcept { return voices[(size_t) slot].isHeld() || synths[(size_t) slot].isHeld(); }
     double slotHz (int slot) const noexcept { return slotEngine[(size_t) slot] == Engine::string ? voices[(size_t) slot].currentHz() : synths[(size_t) slot].currentHz(); }
@@ -108,7 +111,7 @@ private:
     const juce::MidiBuffer* midi = nullptr;
     int midiStart = 0, midiCount = 0;
     bool poly = false;
-    float knobs[numKnobs] { 0.5f, 0.15f, 0.4f, 0.3f, 0.0f, 0.3f, 0.0f, 0.2f, 0.0f, 0.0f, 0.5f };
+    float knobs[numKnobs] { 0.5f, 0.15f, 0.4f, 0.3f, 0.0f, 0.3f, 0.0f, 0.2f, 0.0f, 0.0f, 0.5f, 1.0f, 0.45f, 0.5f, 2.0f, 0.0f };
     float funk = 0.5f, trimDb = 0.0f;
     std::vector<float> trims;
     double bendRatio = 1.0;

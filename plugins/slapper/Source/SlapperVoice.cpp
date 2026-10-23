@@ -169,7 +169,7 @@ void Voice::setup (Bank& b, double hz, float vel, const NoteParams& p) noexcept
     b.subEnv = 0.0f;
     b.subTarget = ghost ? 0.0f : 0.25f + 0.75f * vel;
     b.subDecay = (float) std::exp (-6.91 / (t60Fund / (1.0 + 30.0 * mute) * sr));
-    subLevel = std::clamp (p.sub, 0.0f, 1.0f);
+    subLevel = std::clamp (p.sub, 0.0f, 2.0f);
 
     // a ghost: the palm-muted thump, a short dull burst
     if (ghost)
@@ -248,11 +248,11 @@ void Voice::glideTo (double hz, double seconds) noexcept
     retuneCountdown = 0;
 }
 
-void Voice::noteOff() noexcept
+void Voice::noteOff (double seconds) noexcept
 {
     held = false;
     if (bank[cur].alive)
-        damp (bank[cur], 0.10);
+        damp (bank[cur], std::max (0.01, seconds));
 }
 
 float Voice::run (Bank& b) noexcept

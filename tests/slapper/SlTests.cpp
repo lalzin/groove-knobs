@@ -388,7 +388,7 @@ TEST_CASE ("Moving a knob while a note rings: no crackle (automation, every bloc
         }
         return out;
     };
-    const char* names[] { "attack", "pick", "string", "body", "mute", "drive", "tone", "human", "level", "slide", "ghost" };
+    const char* names[] { "attack", "pick", "string", "body", "mute", "drive", "tone", "human", "level", "slide", "ghost", "vel", "release", "sub", "bend", "octave" };
     for (int k = -2; k < SlapperDsp::numKnobs; ++k)
     {
         if (k == -1)

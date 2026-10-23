@@ -76,7 +76,7 @@ void SynthVoice::noteOn (double noteHz, float vel, const SynthParams& params) no
     const double releaseTau = ghost ? 0.01 : 0.02 + 0.12 * open;
     attackStep = 1.0 / (0.0015 * sr);
     decayCoef = std::exp (-1.0 / (decayTau * sr));
-    releaseCoef = std::exp (-1.0 / (releaseTau * sr));
+    releaseCoef = noteReleaseCoef = std::exp (-1.0 / (releaseTau * sr));
     // the bright attack: how fast it closes (ATTACK 1: a short pluck)
     const double fTau = ghost ? 0.012 : 0.04 + 0.6 * (1.0 - attackShape) * (1.0 - attackShape);
     fenv = 1.0;
@@ -97,9 +97,11 @@ void SynthVoice::glideTo (double noteHz, double seconds) noexcept
     glideStep = 1.0 / std::max (1.0, seconds * sr);
 }
 
-void SynthVoice::noteOff() noexcept
+void SynthVoice::noteOff (double scale) noexcept
 {
     held = false;
+    if (scale > 0.0)
+        releaseCoef = std::pow (noteReleaseCoef, 1.0 / scale); // (the note's own time constant, times scale: twice the same note-off is the same)
     if (stage != Stage::idle)
         stage = Stage::release;
 }

@@ -130,7 +130,7 @@ public:
     explicit MoreButton (const gk::Palette& p) : juce::Button ("Settings"), palette (p)
     {
         setClickingTogglesState (true);
-        setTooltip ("More: slide, ghost notes, human feel, the string");
+        setTooltip ("More: slide, ghost notes, human feel, velocity, the string, release, sub, bend range, octave");
         setWantsKeyboardFocus (true);
     }
     void paintButton (juce::Graphics& g, bool over, bool) override
@@ -156,22 +156,28 @@ public:
     SettingsPanel (SlapperProcessor& p, const gk::Palette& pal) : palette (pal)
     {
         setTitle ("More settings");
-        const int ids[] { SlapperDsp::slideKnob, SlapperDsp::ghostKnob, SlapperDsp::humanKnob, SlapperDsp::pickKnob, SlapperDsp::stringKnob, SlapperDsp::bodyKnob };
-        for (int i = 0; i < 6; ++i)
-        {
-            knobs.push_back (std::make_unique<gk::SmallKnob> (p.getKnobParameter (ids[i]), palette, p.getConfig().knobs[(size_t) ids[i]].caption,
-                                                              palette.arcColour (i < 3 ? 0.0f : 1.0f)));
-            addAndMakeVisible (*knobs.back());
-        }
+        // three rows of up to four: PLAY, STRING, SOUND
+        const int rows[3][4] { { SlapperDsp::slideKnob, SlapperDsp::ghostKnob, SlapperDsp::humanKnob, SlapperDsp::velKnob },
+                               { SlapperDsp::pickKnob, SlapperDsp::stringKnob, SlapperDsp::bodyKnob, SlapperDsp::releaseKnob },
+                               { SlapperDsp::subKnob, SlapperDsp::bendKnob, SlapperDsp::octaveKnob, -1 } };
+        for (int r = 0; r < 3; ++r)
+            for (int c = 0; c < 4; ++c)
+                if (const int id = rows[r][c]; id >= 0)
+                {
+                    knobs.push_back (std::make_unique<gk::SmallKnob> (p.getKnobParameter (id), palette, p.getConfig().knobs[(size_t) id].caption,
+                                                                      palette.arcColour ((float) r / 2.0f)));
+                    addAndMakeVisible (*knobs.back());
+                    places.push_back ({ r, c });
+                }
     }
 
     void resized() override
     {
         const auto area = getLocalBounds().reduced (12, 0).withTrimmedTop (30);
-        const int slotW = area.getWidth() / 3, rowH = 88;
-        for (int i = 0; i < 6; ++i)
-            knobs[(size_t) i]->setBounds (juce::Rectangle<int> (area.getX() + (i % 3) * slotW, area.getY() + (i / 3) * rowH + 14, slotW, rowH - 14)
-                                              .withSizeKeepingCentre (64, 68));
+        const int slotW = area.getWidth() / 4, rowH = 88;
+        for (size_t i = 0; i < knobs.size(); ++i)
+            knobs[i]->setBounds (juce::Rectangle<int> (area.getX() + places[i].second * slotW, area.getY() + places[i].first * rowH + 14, slotW, rowH - 14)
+                                     .withSizeKeepingCentre (64, 68));
     }
 
     void paint (juce::Graphics& g) override
@@ -190,8 +196,8 @@ public:
         const auto area = getLocalBounds().reduced (12, 0).withTrimmedTop (30);
         const int rowH = 88;
         g.setFont (gk::GrooveFonts::font (9.5f).withExtraKerningFactor (0.14f));
-        const char* captions[] { "PLAY", "STRING" };
-        for (int row = 0; row < 2; ++row)
+        const char* captions[] { "PLAY", "STRING", "SOUND" };
+        for (int row = 0; row < 3; ++row)
         {
             const auto r = juce::Rectangle<int> (area.getX() + 6, area.getY() + row * rowH, area.getWidth() - 12, 12).toFloat();
             g.setColour (palette (amber).withAlpha (0.9f));
@@ -204,6 +210,7 @@ public:
 private:
     const gk::Palette& palette;
     std::vector<std::unique_ptr<gk::SmallKnob>> knobs;
+    std::vector<std::pair<int, int>> places; // (row, column) of each knob
 };
 
 SlapperEditor::SlapperEditor (SlapperProcessor& p)
@@ -227,18 +234,18 @@ SlapperEditor::SlapperEditor (SlapperProcessor& p)
     }
     mode = std::make_unique<Segments> (p.getModeParameter(), getPalette(), "MODE", juce::StringArray { "MONO", "POLY" },
                                        "MONO: one voice, overlapping notes slide. POLY: up to 6 voices");
-    addToCanvas (*mode, { 330, 414, 86, 38 }); // bottom right, under TONE
+    addToCanvas (*mode, { 330, 370, 86, 38 }); // right, under TONE
     // ENGINE: a column left of Pluck
     engineSwitch = std::make_unique<Segments> (p.getEngineParameter(), getPalette(), "ENGINE", juce::StringArray { "STRING", "ANALOG", "FM", "PULSE" },
                                                "STRING: the modelled bass guitar. ANALOG: a mono-synth bass (saws, resonant filter). "
                                                "FM: an 80s FM bass. PULSE: a boogie polysynth bass. Each preset picks one");
     addToCanvas (*engineSwitch, { 8, 66, 74, 132 });
-    // "⋯" (bottom left, under DRIVE) and its panel over Pluck
+    // "⋯" (bottom right, under MODE) and its panel over Pluck and FUNK
     panel = std::make_unique<SettingsPanel> (p, getPalette());
-    addToCanvas (*panel, { 14, 56, 392, 236 });
+    addToCanvas (*panel, { 14, 56, 392, 310 });
     panel->setVisible (false);
     more = std::make_unique<MoreButton> (getPalette());
-    addToCanvas (*more, { 14, 440, 46, 26 });
+    addToCanvas (*more, { 362, 418, 46, 26 });
     more->onClick = [this] { panel->setVisible (more->getToggleState()); };
 }
 

@@ -119,10 +119,20 @@ void SlapperDsp::slide (int slot, double hz)
         synths[(size_t) slot].glideTo (hz, seconds);
 }
 
+double SlapperDsp::hzOf (int note) const noexcept
+{
+    return noteHz (note + 12 * (int) std::lround (std::clamp (knobs[octaveKnob], -2.0f, 2.0f)));
+}
+
+double SlapperDsp::releaseSeconds() const noexcept
+{
+    return 0.02 * std::pow (30.0, (double) std::clamp (knobs[releaseKnob], 0.0f, 1.0f));
+}
+
 void SlapperDsp::letGo (int slot)
 {
-    voices[(size_t) slot].noteOff();
-    synths[(size_t) slot].noteOff();
+    voices[(size_t) slot].noteOff (releaseSeconds());
+    synths[(size_t) slot].noteOff (releaseSeconds() / (0.02 * std::pow (30.0, 0.45))); // (the synth's own release, scaled: 1 at the default)
 }
 
 NoteParams SlapperDsp::paramsFor (int voice, float velocity) noexcept
@@ -138,7 +148,7 @@ NoteParams SlapperDsp::paramsFor (int voice, float velocity) noexcept
     p.hardness = funk::hardness (funk);
     p.clank = funk::clank (funk);
     p.rebound = funk::rebound (funk);
-    p.sub = funk::sub (funk);
+    p.sub = funk::sub (funk) * subGain();
     return p;
 }
 
@@ -179,8 +189,7 @@ void SlapperDsp::handle (const juce::MidiMessage& m, float)
     }
     else if (m.isPitchWheel())
     {
-        // ±2 semitones
-        bendRatio = std::pow (2.0, (m.getPitchWheelValue() - 8192) / 8192.0 * 2.0 / 12.0);
+        bendRatio = std::pow (2.0, (m.getPitchWheelValue() - 8192) / 8192.0 * std::clamp ((double) knobs[bendKnob], 1.0, 12.0) / 12.0); // BEND: its range
         for (auto& v : voices)
             v.setBend (bendRatio);
         for (auto& v : synths)
@@ -199,7 +208,7 @@ void SlapperDsp::handle (const juce::MidiMessage& m, float)
 
 void SlapperDsp::play (int note, float velocity)
 {
-    const double hz = noteHz (note);
+    const double hz = hzOf (note);
     ++order;
     const bool again = pressed[(size_t) note] > 0; // (the same key, still held from before)
     ++pressed[(size_t) note];
@@ -207,7 +216,9 @@ void SlapperDsp::play (int note, float velocity)
     // voices take ghosts as "under 0.15", so the velocity is brought to their scale
     const float ghostUnder = 0.3f * std::clamp (knobs[ghostKnob], 0.0f, 1.0f);
     const bool ghostNote = velocity < ghostUnder;
-    velocity = ghostNote ? 0.01f : std::max (velocity, Voice::ghostVelocity);
+    // VEL: how much the velocity counts (0: every note full, 1: all of it)
+    const float sens = std::clamp (knobs[velKnob], 0.0f, 1.0f);
+    velocity = ghostNote ? 0.01f : std::max (1.0f - sens * (1.0f - velocity), Voice::ghostVelocity);
     if (! poly)
     {
         // HUMAIN: the velocity ±6 %
@@ -288,7 +299,7 @@ void SlapperDsp::release (int note)
         {
             // back to the key still held (a trill, a hammer-on / pull-off)
             const int back = heldKeys[(size_t) numHeld - 1];
-            slide (0, noteHz (back));
+            slide (0, hzOf (back));
             voiceNote[0] = back;
         }
         else
@@ -328,7 +339,7 @@ void SlapperDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, c
             toneSmooth.setTarget (std::clamp (knobs[toneKnob] + funk::toneAdd (funk), -1.0f, 1.0f));
             for (int v = 0; v < numVoices; ++v)
             {
-                voices[(size_t) v].setFunkLive (funk::sub (funk), funk::clank (funk));
+                voices[(size_t) v].setFunkLive (funk::sub (funk) * subGain(), funk::clank (funk));
                 synths[(size_t) v].setFunk (funk);
             }
         }

@@ -8,8 +8,8 @@ namespace slapper
     the middle, ATTACK (finger -> slap -> pop) and MUTE on its left, TONE and
     VOL on its right, DRIVE bottom left, MONO | POLY bottom right, ENGINE
     (STRING | ANALOG | FM | PULSE) a column left of Pluck, the presets
-    underneath; "⋯" opens the rest — PLAY (SLIDE, GHOST, HUMAN) and STRING
-    (PICK, STRING, BODY). The
+    underneath; "⋯" (under MODE) opens the rest — PLAY (SLIDE, GHOST, HUMAN,
+    VEL), STRING (PICK, STRING, BODY, RELEASE), SOUND (SUB, BEND, OCTAVE). The
     other parameters come with the presets (and the host's automation).
     Amber, cream, wood brown, wine — no blue, teal, green or lime (the
     suite's other plugins). */

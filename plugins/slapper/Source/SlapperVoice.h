@@ -47,7 +47,7 @@ public:
     /** Legato: the finger slides to `hz` (no new pluck) in `seconds`. */
     void glideTo (double hz, double seconds) noexcept;
     /** The fretting finger lifts: the string is damped (~0.1 s). */
-    void noteOff() noexcept;
+    void noteOff (double seconds = 0.10) noexcept; // RELEASE: the damping's time
     /** Pitch bend, as a frequency ratio (1 = none). */
     void setBend (double ratio) noexcept { bend = ratio; }
     /** FUNK moved while the note rings: its sub level and the action (how soon
@@ -55,7 +55,7 @@ public:
         rebound belong to the attack already played. */
     void setFunkLive (float sub, float clank) noexcept
     {
-        subLevel = sub < 0.0f ? 0.0f : sub > 1.0f ? 1.0f : sub;
+        subLevel = sub < 0.0f ? 0.0f : sub > 2.0f ? 2.0f : sub; // (SUB can double it)
         fretGap = 2.2 - 1.2 * (clank < 0.0f ? 0.0f : clank > 1.0f ? 1.0f : clank);
     }
 
