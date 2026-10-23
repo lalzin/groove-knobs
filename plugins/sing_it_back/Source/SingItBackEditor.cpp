@@ -7,7 +7,7 @@ namespace
 {
     const juce::Colour orange (0xffff8a3d), teal (0xff1fb5a8), plum (0xff5b2a86), cream (0xfff3e9d2);
 
-    juce::String keyName (int pc) { return Harmony::noteName (pc); }
+    juce::String keyName (int pc, bool letters) { return Harmony::noteName (pc, letters); }
 } // namespace
 
 //==============================================================================
@@ -19,7 +19,8 @@ public:
         : proc (p), palette (pal),
           keyAttachment (p.getKeyParameter(), [this] (float) { repaint(); }, nullptr),
           scaleAttachment (p.getScaleParameter(), [this] (float) { repaint(); }, nullptr),
-          snapAttachment (p.getSnapParameter(), [this] (float) { repaint(); }, nullptr)
+          snapAttachment (p.getSnapParameter(), [this] (float) { repaint(); }, nullptr),
+          notationAttachment (p.getNotationParameter(), [this] (float) { repaint(); }, nullptr)
     {
         setTitle ("Scale");
         setWantsKeyboardFocus (true);
@@ -78,7 +79,7 @@ public:
         }
         g.setColour (ink);
         g.setFont (gk::GrooveFonts::font (24.0f));
-        g.drawFittedText (keyName (proc.getKeyParameter().getIndex()), value (keyZone).toNearestInt(), juce::Justification::centred, 1, 0.8f);
+        g.drawFittedText (keyName (proc.getKeyParameter().getIndex(), letters()), value (keyZone).toNearestInt(), juce::Justification::centred, 1, 0.8f);
         caption (g, "TON", zone (keyDown).getUnion (zone (keyUp)));
 
         // scale ▾
@@ -115,7 +116,7 @@ public:
             const float a = 0.3f + 0.7f * lastVoiced;
             g.setColour (palette (plum).withAlpha (a));
             g.setFont (gk::GrooveFonts::font (23.0f));
-            g.drawFittedText (shownDegree >= 0 ? keyName (shownDegree) : juce::String ("-"), value (degreeZone).toNearestInt(), juce::Justification::centred, 1,
+            g.drawFittedText (shownDegree >= 0 ? keyName (shownDegree, letters()) : juce::String ("-"), value (degreeZone).toNearestInt(), juce::Justification::centred, 1,
                               0.8f);
         }
 
@@ -212,8 +213,15 @@ private:
     {
         juce::PopupMenu m;
         for (int i = 0; i < 12; ++i)
-            m.addItem (juce::PopupMenu::Item (keyName (i)).setTicked (i == proc.getKeyParameter().getIndex()).setAction ([this, i] {
+            m.addItem (juce::PopupMenu::Item (keyName (i, letters())).setTicked (i == proc.getKeyParameter().getIndex()).setAction ([this, i] {
                 keyAttachment.setValueAsCompleteGesture ((float) i);
+            }));
+        // the note names: French solfège or letters
+        m.addSeparator();
+        const auto& names = proc.getNotationParameter().choices;
+        for (int i = 0; i < names.size(); ++i)
+            m.addItem (juce::PopupMenu::Item (names[i]).setTicked (i == proc.getNotationParameter().getIndex()).setAction ([this, i] {
+                notationAttachment.setValueAsCompleteGesture ((float) i);
             }));
         m.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (localAreaToGlobal (zone (keyZone).toNearestInt())));
     }
@@ -230,7 +238,8 @@ private:
 
     SingItBackProcessor& proc;
     const gk::Palette& palette;
-    juce::ParameterAttachment keyAttachment, scaleAttachment, snapAttachment;
+    juce::ParameterAttachment keyAttachment, scaleAttachment, snapAttachment, notationAttachment;
+    bool letters() const { return proc.getNotationParameter().getIndex() == 1; }
     juce::Rectangle<float> plaque;
     int hot = -1, lastDegree = -2, shownDegree = -1;
     float lastVoiced = 0.0f;

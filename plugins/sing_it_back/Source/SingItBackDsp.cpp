@@ -113,8 +113,11 @@ double Harmony::target (double detected, int key, int scale, bool snapOn, int in
     return snapToScale (from + sign * st, key, scale);
 }
 
-juce::String Harmony::noteName (int pc)
+juce::String Harmony::noteName (int pc, bool letters)
 {
+    static const char* letterNames[] = { "C", "C#", "D", "E\xe2\x99\xad", "E", "F", "F#", "G", "A\xe2\x99\xad", "A", "B\xe2\x99\xad", "B" };
+    if (letters)
+        return juce::String::fromUTF8 (letterNames[((pc % 12) + 12) % 12]);
     static const char* names[] = { "Do", "Do#", "R\xc3\xa9", "Mi\xe2\x99\xad", "Mi", "Fa", "Fa#", "Sol", "La\xe2\x99\xad", "La", "Si\xe2\x99\xad", "Si" };
     return juce::isPositiveAndBelow (pc, 12) ? juce::String::fromUTF8 (names[pc]) : juce::String();
 }

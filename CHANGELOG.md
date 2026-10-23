@@ -1,6 +1,7 @@
 # Changelog
 
 ## À venir
+- **Sing It Back** : les notes en lettres (C D E…) ou en solfège (Do Ré Mi…), au choix dans le menu de la tonalité.
 - **Slapper** : FUNK répond tout de suite, y compris sur les notes qui sonnent déjà (avant : l'ancien réglage restait un instant) ; Pluck ne bouge plus qu'avec FUNK ; plus de notes oubliées en MIDI (une touche rejouée avant d'être relâchée est toujours jouée) ; « ⋯ » (sous MONO / POLY) ouvre SLIDE (le portamento, coupé par défaut : chaque note est pincée), GHOST (le seuil des ghost notes), HUMAN, VEL (la sensibilité à la vélocité), PICK, STRING, BODY, RELEASE, SUB, BEND (l'ampleur du pitch bend), OCTAVE.
 
 ## Crackle 0.1.0-test5 — 2026-10-23 (version de test, hors suite)

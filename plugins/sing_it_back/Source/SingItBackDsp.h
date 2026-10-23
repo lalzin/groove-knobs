@@ -24,7 +24,7 @@ struct Harmony
     /** Nearest scale note (MIDI) to a pitch. */
     static double snapToScale (double midi, int key, int scale);
     static bool inScale (double midi, int key, int scale);
-    static juce::String noteName (int pitchClass); // Do, Ré, Mi... (French solfège)
+    static juce::String noteName (int pitchClass, bool letters = false); // Do, Ré, Mi... (French solfège), or C, D, E... (letters)
 };
 
 /** YIN pitch detector on a decimated (~12 kHz) mono signal. */
@@ -94,6 +94,8 @@ public:
     static constexpr int snapSwitch = 0;
     static constexpr int keyChoice = 0, scaleChoice = 1, harmonyChoice = 2, voicesChoice = 3, roomSizeChoice = 4, styleChoice = 5,
                          responseChoice = 6;
+    /** The note names shown (after the voices' parts): 0 Do Ré Mi, 1 C D E. Display only. */
+    static constexpr int notationChoice = partChoice0 + maxVoices;
 
     /** What a voice sings (the voice panel). Style: the style's part for it
         (with HARMONIE). */

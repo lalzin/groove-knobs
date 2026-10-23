@@ -52,6 +52,8 @@ namespace
                           { "Ensemble", "1/2 mesure", "1 mesure" }, 0 } };
         for (int k = 0; k < SingItBackDsp::maxVoices; ++k)
             cfg.choices.push_back ({ "v" + juce::String (k + 1) + "Part", "Voice " + juce::String (k + 1) + " part", "PART", SingItBackDsp::partNames(), 0, true });
+        // the note names shown (added last: the earlier parameters keep their places)
+        cfg.choices.push_back ({ "notation", "Notation", "NOTATION", { juce::String::fromUTF8 ("Do R\xc3\xa9 Mi"), "C D E" }, 0, true });
         cfg.editorBuildsControls = false; // the editor's own layout: scale bar, selectors, advanced panel
         cfg.engineAlwaysRuns = true;   // pitch tracking and the UI keep going at 0 %
         cfg.tailSeconds = 3.0;         // stadium reverb
