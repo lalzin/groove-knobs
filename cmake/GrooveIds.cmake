@@ -66,3 +66,10 @@ set(SL_PLUGIN_CODE         "Slpr")
 set(SL_AU_TYPE             "aumu")          # kAudioUnitType_MusicDevice
 set(SL_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.slapper")
 set(SL_VERSION             "0.1.6")
+
+# Crackle (one-knob lo-fi grain: vinyl, tape, radio, bitcrush) — in test, not in the suite yet
+set(CR_PRODUCT_NAME        "Crackle")
+set(CR_PLUGIN_CODE         "Crkl")
+set(CR_AU_TYPE             "aufx")          # kAudioUnitType_Effect
+set(CR_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.crackle")
+set(CR_VERSION             "0.1.0")

@@ -20,6 +20,11 @@
 // frames are aligned on the character (head centre horizontally, feet
 // vertically) and share one canvas size, so it stays anchored when the plugin
 // switches frames. Output: <out-dir>/mascot_<n>.png (RGBA).
+//
+// --recolour <hueFrom>,<hueTo>,<hueShift>,<satMul>,<briMul>: every pixel whose
+// hue (degrees) lies in [hueFrom, hueTo] (and has some colour) is turned by
+// hueShift degrees, its saturation and brightness scaled — a character drawn
+// blue brought to the plugin's own colour; outlines, whites, creams untouched.
 
 #include <juce_graphics/juce_graphics.h>
 #include <iostream>
@@ -641,6 +646,30 @@ int main (int argc, char** argv)
             g.drawImageTransformed (f.image, juce::AffineTransform::translation ((float) -f.anchorX, (float) -f.anchorY)
                                                  .scaled (s)
                                                  .translated ((float) half * outScale, (float) (up + 6) * outScale));
+        }
+        if (const int ri = args.indexOf ("--recolour"); ri >= 0 && ri + 1 < args.size())
+        {
+            const auto v = juce::StringArray::fromTokens (args[ri + 1], ",", "");
+            if (v.size() == 5)
+            {
+                const float from = v[0].getFloatValue() / 360.0f, to = v[1].getFloatValue() / 360.0f, shift = v[2].getFloatValue() / 360.0f;
+                const float satMul = v[3].getFloatValue(), briMul = v[4].getFloatValue();
+                juce::Image::BitmapData d (frame, juce::Image::BitmapData::readWrite);
+                for (int y = 0; y < h; ++y)
+                    for (int x = 0; x < w; ++x)
+                    {
+                        const auto c = d.getPixelColour (x, y);
+                        if (c.getAlpha() == 0 || c.getSaturation() < 0.12f)
+                            continue;
+                        const float hue = c.getHue();
+                        if (hue < from || hue > to)
+                            continue;
+                        float nh = hue + shift;
+                        nh -= std::floor (nh);
+                        d.setPixelColour (x, y, juce::Colour::fromHSV (nh, juce::jlimit (0.0f, 1.0f, c.getSaturation() * satMul),
+                                                                       juce::jlimit (0.0f, 1.0f, c.getBrightness() * briMul), c.getFloatAlpha()));
+                    }
+            }
         }
         const auto file = outDir.getChildFile ("mascot_" + juce::String ((int) i) + ".png");
         juce::FileOutputStream os (file);

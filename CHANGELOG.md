@@ -1,5 +1,8 @@
 # Changelog
 
+## Crackle 0.1.0-test1 — 2026-10-23 (version de test, hors suite)
+- **Crackle** (nouveau, en test) : le grain lo-fi en un knob, GRAIN — vinyle (craquements naturels), cassette (wow, flutter, souffle, coupures), saturation (six types façon RC-20, FOCUS), radio, bitcrush. Chaque effet a son knob (AUTO : il suit GRAIN tant qu'on ne le touche pas), NOISE règle le niveau des bruits, MIX, VOL. 10 presets au volume de l'entrée. Hiss la cassette en mascotte.
+
 ## 0.1.6 — 2026-10-22 (toute la suite, sept plugins)
 - **Slapper** entre dans la suite (validé par Alan : « ça marche bien ») : la basse funk en un knob, instrument MIDI — corde modélisée (doigt, slap, pop, ghost notes, glissés) et trois moteurs synthé (ANALOG, FM, PULSE), 24 presets au même volume, MONO / POLY, Pluck en mascotte. Voir les versions de test ci-dessous.
 - L'installateur de la suite (macOS et Windows) contient les sept plugins. Les autres plugins passent en 0.1.6 sans changement de son.
