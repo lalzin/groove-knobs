@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds dist/<Plugin>-<version>-macOS.pkg (universal VST3 + AU + app).
 #
-#   scripts/make_installer_mac.sh [--skip-build] [FF|BT|BW|PP|SIB|KL|SL|CR]
+#   [TEST_SUFFIX=test1] scripts/make_installer_mac.sh [--skip-build] [FF|BT|BW|PP|SIB|KL|SL|CR]
 #   FF = French Filter (default), BT = Boogie Trio, BW = Backwash, PP = Pew Pew,
 #   SIB = Sing It Back, KL = Kick Lock, SL = Slapper, CR = Crackle
 #
@@ -62,6 +62,12 @@ FILE_NAME="${PRODUCT// /}"   # "French Filter" -> FrenchFilter
 ART="$ROOT/build-release/plugins/$DIR/${TARGET}_artefacts/Release"
 WORK="$ROOT/build-release/installer-$P"
 DIST="$ROOT/dist"
+# TEST_SUFFIX=test3: a test build, dist/test/<Name>-<version>-test3-macOS.pkg, no zip —
+# never written over a released package (a test build once replaced Slapper 0.1.6's)
+if [[ -n "${TEST_SUFFIX:-}" ]]; then
+  DIST="$ROOT/dist/test"
+fi
+PKG_NAME="$FILE_NAME-$VERSION${TEST_SUFFIX:+-$TEST_SUFFIX}-macOS"
 rm -rf "$WORK"; mkdir -p "$WORK"/{vst3,au,app,res} "$DIST"
 
 cp -R "$ART/VST3/$PRODUCT.vst3" "$WORK/vst3/"
@@ -128,7 +134,7 @@ cp "$ROOT/installer/common/LICENSE.txt" "$RES/welcome.html" "$RES/conclusion.htm
 sed -e "s/@VERSION@/$VERSION/g" -e "s/@BUNDLE_ID@/$BUNDLE_ID/g" -e "s/@BUNDLE_PREFIX@/$PREFIX/g" -e "s/@PRODUCT@/$PRODUCT/g" \
   "$ROOT/installer/mac/distribution.xml.in" > "$WORK/distribution.xml"
 
-OUT="$DIST/$FILE_NAME-$VERSION-macOS.pkg"
+OUT="$DIST/$PKG_NAME.pkg"
 sign=()
 [[ -n "${DEV_ID_INSTALLER:-}" ]] && sign=(--sign "$DEV_ID_INSTALLER" --timestamp)
 productbuild --distribution "$WORK/distribution.xml" --resources "$WORK/res" --package-path "$WORK" ${sign[@]+"${sign[@]}"} "$OUT"
@@ -147,8 +153,8 @@ if [[ -n "${DEV_ID_INSTALLER:-}" ]]; then
   fi
 fi
 
-# Companion zip for the website: pkg + licences
-( cd "$DIST" && rm -f "$FILE_NAME-$VERSION-macOS.zip" && \
+# Companion zip for the website: pkg + licences (not for test builds)
+[[ -n "${TEST_SUFFIX:-}" ]] || ( cd "$DIST" && rm -f "$FILE_NAME-$VERSION-macOS.zip" && \
   cp "$ROOT/installer/common/"{LICENSE.txt,THIRD_PARTY_NOTICES.txt,LilitaOne-OFL.txt} . && \
   zip -q "$FILE_NAME-$VERSION-macOS.zip" "$FILE_NAME-$VERSION-macOS.pkg" LICENSE.txt THIRD_PARTY_NOTICES.txt LilitaOne-OFL.txt && \
   rm LICENSE.txt THIRD_PARTY_NOTICES.txt LilitaOne-OFL.txt )
