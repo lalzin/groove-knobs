@@ -26,7 +26,7 @@
       },
       "windows": {
         "file": "GrooveKnobs-0.1.6-Windows-Setup.exe",
-        "bytes": null,
+        "bytes": 65287196,
         "requirements": "Windows 10/11 64-bit",
         "formats": [
           "VST3",
@@ -104,7 +104,7 @@
         },
         "windows": {
           "file": "FrenchFilter-0.1.6-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 14226536,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -172,7 +172,7 @@
         },
         "windows": {
           "file": "BoogieTrio-0.1.6-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 5786360,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -239,7 +239,7 @@
         },
         "windows": {
           "file": "Backwash-0.1.6-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 6124195,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -310,7 +310,7 @@
         },
         "windows": {
           "file": "PewPew-0.1.6-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 12782461,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -379,7 +379,7 @@
         },
         "windows": {
           "file": "SingItBack-0.1.6-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 11296547,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -450,7 +450,7 @@
         },
         "windows": {
           "file": "KickLock-0.1.6-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 23645286,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -627,7 +627,7 @@
         },
         "windows": {
           "file": "Slapper-0.1.6-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 6763454,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
