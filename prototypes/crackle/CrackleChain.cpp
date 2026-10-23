@@ -94,6 +94,8 @@ void Chain::prepare (double sampleRate)
     for (auto& v : halfBand)
         v = (float) (v / sum);
     smooth = (float) (1.0 - std::exp (-1.0 / (0.020 * sr)));
+    for (auto& sa : saturator)
+        sa.prepare (2.0 * sr);
     for (auto& r : riaa)
         r.design (sr);
     reset();
@@ -118,6 +120,8 @@ void Chain::reset()
     now.noise = 0.5f;
     pink = {};
     crackles = {};
+    for (auto& sa : saturator)
+        sa.reset();
     for (auto& r : riaa)
         r.x1 = r.x2 = r.y1 = r.y2 = r.hpState = r.hpOut = 0.0;
     dropGain = 1.0;
@@ -170,9 +174,6 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
         const float t = (float) (d - di);
 
         const double sat = std::clamp ((double) now.saturation, 0.0, 1.0);
-        const double drive = 1.0 + 5.0 * sat, bias = 0.12 * sat, wet = std::min (1.0, 4.0 * sat);
-        // (normalised so a -6 dB peak comes out at -6 dB: louder parts squashed, quiet ones lifted)
-        const double norm = 0.5 / (std::tanh (0.5 * drive + bias) - std::tanh (bias));
         const double noiseGain = 2.0 * std::clamp ((double) now.noise, 0.0, 1.0); // (0.5: 0 dB, 1: +6 dB)
         const double hissLevel = 0.025 * std::pow (std::clamp ((double) now.hiss, 0.0, 1.0), 1.3) * noiseGain;
 
@@ -269,7 +270,7 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
                     double u = 0.0;
                     for (int j = 0; j < N; ++j)
                         u += halfBand[(size_t) j] * up[(size_t) ((pos - j) & 63)];
-                    down[(size_t) pos] = (float) (u + wet * ((std::tanh (drive * u + bias) - std::tanh (bias)) * norm - u));
+                    down[(size_t) pos] = (float) saturator[(size_t) ch].process (u, target.satType, sat, target.focusLow, target.focusHigh);
                     if (phase == 1)
                         for (int j = 0; j < N; ++j)
                             out += halfBand[(size_t) j] * down[(size_t) ((pos - j) & 63)];

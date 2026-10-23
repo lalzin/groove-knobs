@@ -7,6 +7,7 @@
 #include <array>
 #include <cstdint>
 #include <vector>
+#include "Saturator.h"
 
 namespace crackle
 {
@@ -30,6 +31,8 @@ struct Amounts
 {
     float band = 0.0f, wow = 0.0f, hiss = 0.0f, saturation = 0.0f, vinyl = 0.0f, dropout = 0.0f;
     float flutter = 0.0f; // its own knob (WOW is the slow one)
+    SatType satType = SatType::tape;                    // TYPE (Saturator.h)
+    float focusLow = 20.0f, focusHigh = 20000.0f;       // FOCUS, Hz: the band that is saturated
     /** NOISE: the level of every noise added (hiss now; vinyl crackle and radio
         static later), not of the processing: 0 none, 0.5 as GRAIN sets them
         (0 dB), 1 +6 dB. */
@@ -67,6 +70,7 @@ private:
     std::vector<float> halfBand;
     std::array<std::array<float, 64>, 2> upHist {}, downHist {};
     int upPos = 0, downPos = 0;
+    std::array<Saturator, 2> saturator;
     // hiss
     std::array<Svf, 2> hissHp, hissLp;
     Rng rng;

@@ -117,6 +117,52 @@ int main (int argc, char** argv)
             writeWav (out + "/crackle_step2b_only_" + names[e] + ".wav", s, sr);
         }
     }
+    // SATURATION alone at 0.7, each TYPE; then SPEAKER with FOCUS 300 Hz - 3 kHz
+    for (float amount : { 0.3f, 1.0f })
+        for (int t = 0; t < (int) SatType::count; ++t)
+        {
+            Knobs k;
+            float* knob[] { &k.band, &k.wow, &k.flutter, &k.hiss, &k.vinyl, &k.dropout };
+            for (auto* p : knob)
+                *p = 0.0f;
+            k.saturation = amount;
+            auto a = k.amounts();
+            a.satType = (SatType) t;
+            Chain c;
+            c.prepare (sr);
+            Stereo s = music;
+            c.process (s.l.data(), s.r.data(), (int) n, a);
+            double e = 0.0;
+            for (size_t i = 0; i < n; ++i)
+                e += (double) s.l[i] * s.l[i];
+            std::printf ("SATURATION %.1f, %s: RMS %.1f dB\n", amount, Saturator::name ((SatType) t), 10.0 * std::log10 (e / (double) n));
+        }
+    for (int t = 0; t <= (int) SatType::count; ++t)
+    {
+        Knobs k;
+        float* knob[] { &k.band, &k.wow, &k.flutter, &k.hiss, &k.vinyl, &k.dropout };
+        for (auto* p : knob)
+            *p = 0.0f;
+        k.saturation = 0.7f;
+        auto a = k.amounts();
+        const bool focus = t == (int) SatType::count;
+        a.satType = focus ? SatType::speaker : (SatType) t;
+        if (focus)
+        {
+            a.focusLow = 300.0f;
+            a.focusHigh = 3000.0f;
+        }
+        Chain c;
+        c.prepare (sr);
+        Stereo s = music;
+        c.process (s.l.data(), s.r.data(), (int) n, a);
+        double e = 0.0;
+        for (size_t i = 0; i < n; ++i)
+            e += (double) s.l[i] * s.l[i];
+        const std::string name = focus ? std::string ("speaker_focus300-3k") : std::string (Saturator::name ((SatType) t));
+        std::printf ("SATURATION 0.7, %s: RMS %.1f dB\n", name.c_str(), 10.0 * std::log10 (e / (double) n));
+        writeWav (out + "/crackle_sat_" + name + ".wav", s, sr);
+    }
     // NOISE at GRAIN 0.75: 0 (no noise), 0.5 (as GRAIN sets it), 1 (+6 dB)
     for (float nz : { 0.0f, 0.5f, 1.0f })
     {
