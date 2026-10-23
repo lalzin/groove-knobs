@@ -61,7 +61,7 @@ static void writeWav (const std::string& path, const Stereo& s, int sr)
         }
 }
 
-static Amounts at (float g) { return { grain::band (g), grain::wow (g), grain::hiss (g), grain::saturation (g), grain::vinyl (g), grain::dropout (g) }; }
+static Amounts at (float g) { Knobs k; k.grain = g; return k.amounts(); }
 
 int main (int argc, char** argv)
 {
@@ -95,22 +95,27 @@ int main (int argc, char** argv)
         }
         const double rmsDb = 10.0 * std::log10 (e / (2.0 * (double) n));
         char name[64];
-        std::snprintf (name, sizeof name, "/crackle_step2_grain%03d.wav", (int) std::lround (g * 100));
+        std::snprintf (name, sizeof name, "/crackle_step2b_grain%03d.wav", (int) std::lround (g * 100));
         writeWav (out + name, s, sr);
         std::printf ("GRAIN %.2f: band %.2f wow %.2f hiss %.2f sat %.2f vinyl %.2f dropout %.2f, peak %.2f, RMS %.1f dB, %d crackles, %d dropouts in 12 s\n", g, at (g).band, at (g).wow,
                      at (g).hiss, at (g).saturation, at (g).vinyl, at (g).dropout, peak, rmsDb, c.crackleCount, c.dropoutCount);
     }
-    // VINYL alone at 1 (the rest off), and DROPOUT alone at 1, on the music
-    for (int which = 0; which < 2; ++which)
+    // each effect alone, its knob at 1 (GRAIN 0, every other knob at 0), on the music
     {
-        Chain c;
-        c.prepare (sr);
-        Stereo s = music;
-        Amounts a;
-        (which == 0 ? a.vinyl : a.dropout) = 1.0f;
-        c.process (s.l.data(), s.r.data(), (int) n, a);
-        writeWav (out + (which == 0 ? "/crackle_step2_vinyl_only.wav" : "/crackle_step2_dropouts_only.wav"), s, sr);
-        std::printf ("%s alone: %d crackles, %d dropouts in 12 s\n", which == 0 ? "VINYL" : "DROPOUT", c.crackleCount, c.dropoutCount);
+        const char* names[] { "band", "wow", "flutter", "hiss", "saturation", "vinyl", "dropout" };
+        for (int e = 0; e < 7; ++e)
+        {
+            Knobs k;
+            float* knob[] { &k.band, &k.wow, &k.flutter, &k.hiss, &k.saturation, &k.vinyl, &k.dropout };
+            for (auto* p : knob)
+                *p = 0.0f;
+            *knob[e] = 1.0f;
+            Chain c;
+            c.prepare (sr);
+            Stereo s = music;
+            c.process (s.l.data(), s.r.data(), (int) n, k.amounts());
+            writeWav (out + "/crackle_step2b_only_" + names[e] + ".wav", s, sr);
+        }
     }
     // NOISE at GRAIN 0.75: 0 (no noise), 0.5 (as GRAIN sets it), 1 (+6 dB)
     for (float nz : { 0.0f, 0.5f, 1.0f })
@@ -124,7 +129,7 @@ int main (int argc, char** argv)
         c.process (zl.data(), zr.data(), (int) zl.size(), a);
         c.process (s.l.data(), s.r.data(), (int) n, a);
         char name[64];
-        std::snprintf (name, sizeof name, "/crackle_step2_noise%03d.wav", (int) std::lround (nz * 100));
+        std::snprintf (name, sizeof name, "/crackle_step2b_noise%03d.wav", (int) std::lround (nz * 100));
         writeWav (out + name, s, sr);
     }
     // the sweep: GRAIN 0 -> 1 over 12 s, in 20 ms steps (the chain smooths)
@@ -138,7 +143,7 @@ int main (int argc, char** argv)
             const int len = (int) std::min ((size_t) step, n - i);
             c.process (s.l.data() + i, s.r.data() + i, len, at ((float) i / (float) n));
         }
-        writeWav (out + "/crackle_step2_sweep.wav", s, sr);
+        writeWav (out + "/crackle_step2b_sweep.wav", s, sr);
     }
     // a 440 Hz tone at WOW 1 (nothing else): the pitch swing, from the zero crossings
     {

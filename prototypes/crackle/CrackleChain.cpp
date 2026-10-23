@@ -1,6 +1,7 @@
 #include "CrackleChain.h"
 #include <algorithm>
 #include <cmath>
+#include <complex>
 
 namespace crackle
 {
@@ -42,6 +43,33 @@ float Chain::Pink::next (Rng& r) noexcept
     return (sum + r.bipolar()) / 6.0f;
 }
 
+void Chain::Riaa::design (double fs)
+{
+    // H(s) = (1 + s t2) / ((1 + s t1)(1 + s t3)), bilinear, normalised to 0 dB at 1 kHz
+    const double t1 = 3180e-6, t2 = 318e-6, t3 = 75e-6, K = 2.0 * fs;
+    const double n0 = 1.0 + t2 * K, n1 = 2.0, n2 = 1.0 - t2 * K;          // (numerator times (1 + z^-1), a zero at Nyquist)
+    const double d0 = t1 * t3 * K * K + (t1 + t3) * K + 1.0, d1 = 2.0 - 2.0 * t1 * t3 * K * K, d2 = t1 * t3 * K * K - (t1 + t3) * K + 1.0;
+    b0 = n0 / d0; b1 = n1 / d0; b2 = n2 / d0; a1 = d1 / d0; a2 = d2 / d0;
+    // the gain at 1 kHz
+    const double w = 2.0 * pi * 1000.0 / fs;
+    const std::complex<double> z1 = std::polar (1.0, -w), z2 = z1 * z1;
+    const double g = std::abs ((b0 + b1 * z1 + b2 * z2) / (1.0 + a1 * z1 + a2 * z2));
+    b0 /= g; b1 /= g; b2 /= g;
+    hpCoef = std::exp (-2.0 * pi * 100.0 / fs);
+}
+
+double Chain::Riaa::run (double x) noexcept
+{
+    const double y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1; x1 = x; y2 = y1; y1 = y;
+    // 1-pole high-pass, 25 Hz
+    hpOut = hpCoef * (hpOut + y - hpState);
+    hpState = y;
+    // (plus a little of the raw signal: a cartridge and a modern chain keep some
+    // tick in the top — full de-emphasis alone sounded muffled)
+    return hpOut + 0.3 * x;
+}
+
 void Chain::prepare (double sampleRate)
 {
     sr = sampleRate;
@@ -66,6 +94,8 @@ void Chain::prepare (double sampleRate)
     for (auto& v : halfBand)
         v = (float) (v / sum);
     smooth = (float) (1.0 - std::exp (-1.0 / (0.020 * sr)));
+    for (auto& r : riaa)
+        r.design (sr);
     reset();
 }
 
@@ -88,6 +118,8 @@ void Chain::reset()
     now.noise = 0.5f;
     pink = {};
     crackles = {};
+    for (auto& r : riaa)
+        r.x1 = r.x2 = r.y1 = r.y2 = r.hpState = r.hpOut = 0.0;
     dropGain = 1.0;
     drop = Drop::none;
     dropFade = std::max (1, (int) (0.001 * sr));
@@ -108,6 +140,7 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
         now.saturation += smooth * (target.saturation - now.saturation);
         now.noise += smooth * (target.noise - now.noise);
         now.vinyl += smooth * (target.vinyl - now.vinyl);
+        now.flutter += smooth * (target.flutter - now.flutter);
         now.dropout += smooth * (target.dropout - now.dropout);
         if ((i & 15) == 0)
         {
@@ -129,8 +162,9 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
         wowPhase -= std::floor (wowPhase);
         flutterPhase -= std::floor (flutterPhase);
         const double w = std::clamp ((double) now.wow, 0.0, 1.0);
+        const double fl = std::clamp ((double) now.flutter, 0.0, 1.0);
         const double swing = w * maxWowSeconds * sr * (0.5 - 0.5 * std::cos (2.0 * pi * wowPhase))
-                           + w * 0.00006 * sr * (0.5 - 0.5 * std::cos (2.0 * pi * flutterPhase));
+                           + fl * 0.00012 * sr * (0.5 - 0.5 * std::cos (2.0 * pi * flutterPhase));
         const double d = minDelay + swing;
         const int di = (int) d;
         const float t = (float) (d - di);
@@ -142,8 +176,8 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
         const double noiseGain = 2.0 * std::clamp ((double) now.noise, 0.0, 1.0); // (0.5: 0 dB, 1: +6 dB)
         const double hissLevel = 0.025 * std::pow (std::clamp ((double) now.hiss, 0.0, 1.0), 1.3) * noiseGain;
 
-        // VINYL: crackles at a rate that grows with it (up to ~30 a second), most of
-        // them small ticks, now and then a pop; each its own resonance and place
+        // VINYL: crackles at a rate that grows with it (up to ~30 a second): mostly
+        // ticks, now and then a pop; raw impulses (the de-emphasis rounds them, below)
         const double vin = std::clamp ((double) now.vinyl, 0.0, 1.0);
         if (vin > 0.0 && rng.uniform() < (float) ((0.5 + 30.0 * vin * vin) / sr))
             for (auto& c : crackles)
@@ -151,19 +185,16 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
                 {
                     c.on = true;
                     c.age = 0;
-                    c.pulse = std::max (1, (int) ((0.001 + 0.002 * rng.uniform()) * sr));
+                    const bool pop = rng.uniform() < 0.05f;
+                    c.pulse = std::max (1, (int) ((pop ? 0.001 + 0.002 * rng.uniform() : 0.0001 + 0.0003 * rng.uniform()) * sr));
                     const float u = rng.uniform();
-                    c.amp = 0.02f + 0.5f * u * u * u * u; // (weighted: mostly ticks)
-                    const double tau = 0.005 + 0.015 * rng.uniform();
-                    c.decay = (float) std::exp (-1.0 / (tau * sr * 0.2)); // (its -60 dB at 5-20 ms)
-                    c.env = 1.0f;
-                    const double fc = 800.0 * std::pow (10.0, rng.uniform()); // 0.8-8 kHz
-                    c.g = std::tan (pi * std::min (fc, 0.4 * sr) / sr);
-                    c.k = 0.6 + 1.2 * rng.uniform();
-                    const float pan = 0.5f + 0.35f * rng.bipolar();
+                    c.amp = (pop ? 0.09f : 0.125f) * (0.15f + 0.85f * u * u * u); // (weighted: mostly small)
+                    c.sign = rng.uniform() < 0.5f ? -1.0f : 1.0f;
+                    c.tail = 0.25f;
+                    c.tailDecay = (float) std::exp (-1.0 / ((0.005 + 0.015 * rng.uniform()) * 0.2 * sr)); // (-60 dB in 5-20 ms)
+                    const float pan = 0.5f + 0.3f * rng.bipolar();
                     c.panL = std::sqrt (1.0f - pan);
                     c.panR = std::sqrt (pan);
-                    c.filter = {};
                     ++crackleCount;
                     break;
                 }
@@ -171,21 +202,17 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
         for (auto& c : crackles)
             if (c.on)
             {
-                // the impulse: a half-sine 1-3 ms (the stylus hitting the dust), then the ring
-                const double drive = c.age < c.pulse ? std::sin (pi * (c.age + 0.5) / c.pulse) * (rng.bipolar() * 0.5 + 0.5) : 0.0;
-                const double a1 = 1.0 / (1.0 + c.g * (c.g + c.k)), a2 = c.g * a1, a3 = c.g * a2;
-                const double in = drive * c.env;
-                const double v3 = in - c.filter.ic2, v1 = a1 * c.filter.ic1 + a2 * v3, v2 = c.filter.ic2 + a2 * c.filter.ic1 + a3 * v3;
-                c.filter.ic1 = 2.0 * v1 - c.filter.ic1;
-                c.filter.ic2 = 2.0 * v2 - c.filter.ic2;
-                const double bp = c.k * v1 + 0.6 * drive; // (the band-pass ring, plus a little of the raw impulse)
-                crackleL += c.amp * c.env * bp * c.panL;
-                crackleR += c.amp * c.env * bp * c.panR;
-                c.env *= c.decay;
-                if (++c.age > c.pulse && c.env < 1e-4f)
+                double v = 0.0;
+                if (c.age < c.pulse)
+                    v = c.sign * std::sin (pi * (c.age + 0.5) / c.pulse); // the impulse
+                v += c.tail * rng.bipolar() * 0.5;                        // its grainy tail
+                c.tail *= c.tailDecay;
+                crackleL += c.amp * v * c.panL;
+                crackleR += c.amp * v * c.panR;
+                if (++c.age > c.pulse && c.tail < 1e-4f)
                     c.on = false;
             }
-        const double surface = 0.0015 * vin; // the pink floor: very low
+        const double surface = 0.004 * vin; // the pink floor: very low (after the de-emphasis)
 
         // DROPOUTS: from GRAIN 0.5, rare (up to ~1.5 a second at 1): 2-15 ms at 0, 1 ms fades
         const double dro = std::clamp ((double) now.dropout, 0.0, 1.0);
@@ -257,7 +284,7 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
             }
             // vinyl: the surface (pink) and the crackles, under NOISE
             if (vin > 0.0)
-                x += noiseGain * (surface * pink[(size_t) ch].next (rng) + (ch == 0 ? crackleL : crackleR));
+                x += noiseGain * riaa[(size_t) ch].run (surface * pink[(size_t) ch].next (rng) + (ch == 0 ? crackleL : crackleR));
             // a dropout takes everything (the tape lifts off the head)
             x *= dropShape;
             io[ch][i] = (float) x;

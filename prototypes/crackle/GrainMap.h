@@ -24,8 +24,41 @@ inline float saturation (float g)
     g = clamp01 (g);
     return g < 0.4f ? 0.3f * g / 0.4f : 0.3f + 0.7f * (g - 0.4f) / 0.6f;
 }
+/** FLUTTER: after the wow (a worn machine flutters once it already wobbles). */
+inline float flutter (float g) { return smoothstep (0.3f, 0.8f, g); }
 /** VINYL: a gentle slope from 0 to 0.35, then a plateau. */
 inline float vinyl (float g) { return smoothstep (0.0f, 0.35f, g); }
 /** DROPOUT: nothing under 0.5, then more and more likely. */
 inline float dropout (float g) { return clamp01 ((g - 0.5f) / 0.5f); }
 } // namespace crackle::grain
+
+#include "CrackleChain.h"
+
+namespace crackle
+{
+/** The knobs: GRAIN, and one knob per effect. An effect's knob at `automatic`
+    follows GRAIN (its curve above); once moved, it is its own. NOISE is the
+    level of every added noise (0.5 = as set, 0 none, 1 +6 dB). */
+struct Knobs
+{
+    static constexpr float automatic = -1.0f;
+    float grain = 0.0f;
+    float band = automatic, wow = automatic, flutter = automatic, hiss = automatic, saturation = automatic, vinyl = automatic, dropout = automatic;
+    float noise = 0.5f;
+
+    Amounts amounts() const
+    {
+        auto pick = [this] (float knob, float (*curve) (float)) { return knob >= 0.0f ? knob : curve (grain); };
+        Amounts a;
+        a.band = pick (band, grain::band);
+        a.wow = pick (wow, grain::wow);
+        a.flutter = pick (flutter, grain::flutter);
+        a.hiss = pick (hiss, grain::hiss);
+        a.saturation = pick (saturation, grain::saturation);
+        a.vinyl = pick (vinyl, grain::vinyl);
+        a.dropout = pick (dropout, grain::dropout);
+        a.noise = noise;
+        return a;
+    }
+};
+} // namespace crackle

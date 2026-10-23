@@ -29,6 +29,7 @@ struct Rng
 struct Amounts
 {
     float band = 0.0f, wow = 0.0f, hiss = 0.0f, saturation = 0.0f, vinyl = 0.0f, dropout = 0.0f;
+    float flutter = 0.0f; // its own knob (WOW is the slow one)
     /** NOISE: the level of every noise added (hiss now; vinyl crackle and radio
         static later), not of the processing: 0 none, 0.5 as GRAIN sets them
         (0 dB), 1 +6 dB. */
@@ -78,15 +79,23 @@ private:
         float next (Rng& r) noexcept;
     };
     std::array<Pink, 2> pink;
-    struct Crackle // one at a time per slot: an impulse ringing a resonance
+    struct Crackle // the stylus on a speck of dust: a raw impulse and a short grainy tail
     {
         bool on = false;
-        int age = 0, pulse = 1;         // the impulse's length (1-3 ms)
-        float amp = 0.0f, decay = 0.0f, env = 0.0f, panL = 1.0f, panR = 1.0f;
-        double g = 0.1, k = 0.5;        // its resonance (band-pass)
-        Svf filter;
+        int age = 0, pulse = 1;         // the impulse: a tick (0.1-0.4 ms) or now and then a pop (1-3 ms)
+        float amp = 0.0f, sign = 1.0f, tail = 0.0f, tailDecay = 0.0f, panL = 1.0f, panR = 1.0f;
     };
     std::array<Crackle, 8> crackles {};
+    /** Playback de-emphasis (RIAA: 3180 / 318 / 75 us), 0 dB at 1 kHz: what makes
+        crackle sound like a record — the highs rounded off, the pops given body. */
+    struct Riaa
+    {
+        double b0 = 1, b1 = 0, b2 = 0, a1 = 0, a2 = 0, x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+        double hpState = 0.0, hpOut = 0.0, hpCoef = 0.0; // and a 1-pole high-pass at 25 Hz (no rumble build-up)
+        void design (double fs);
+        double run (double x) noexcept;
+    };
+    std::array<Riaa, 2> riaa;
     // dropouts: the gain falls to 0 for 2-15 ms, 1 ms fades
     double dropGain = 1.0;
     int dropHold = 0, dropFade = 48;
