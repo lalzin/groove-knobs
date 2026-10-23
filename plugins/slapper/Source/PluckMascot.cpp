@@ -3,11 +3,11 @@
 
 namespace slapper
 {
-PluckMascot::PluckMascot (SlapperProcessor& p, const gk::Palette& pal) : MascotComponent (p.getFeatures(), pal), proc (p)
+PluckMascot::PluckMascot (SlapperProcessor& p, const gk::Palette& pal) : MascotComponent (p.getFeatures(), pal)
 {
     setFrames (loadFrames());
     showSleepZ = true;  // (the sheet's own "Zzz" was painted out: the code draws it)
-    motion = 0.6f;
+    motion = 0.0f; // no bounce, no nod: only FUNK moves him
     repaintEvery = 2;   // 30 fps
 }
 
@@ -27,31 +27,23 @@ std::vector<juce::Image> PluckMascot::loadFrames()
     return frames;
 }
 
-int PluckMascot::chooseFrame (float macro, float bypass, bool musicOn)
+int PluckMascot::chooseFrame (float macro, float bypass, bool)
 {
-    const auto& s = getState();
-    lastTime = s.time;
     if (numFrames() < numPoses)
         return 0;
     if (bypass >= 0.5f)
         return asleep;
-    auto& tel = proc.getSlapperDsp().getTelemetry();
-    const int hits = tel.hitCounter.load (std::memory_order_relaxed);
-    if (hits != lastHits)
-    {
-        if (lastHits >= 0)
-        {
-            hitTime = s.time;
-            const int kind = tel.lastKind.load (std::memory_order_relaxed);
-            const float vel = tel.lastVelocity.load (std::memory_order_relaxed);
-            hitFrame = kind == 3 ? ghost : kind == 2 ? pop : kind == 1 ? (vel > 0.85f && macro > 0.75f ? hype : slap) : armsOut;
-        }
-        lastHits = hits;
-    }
-    if (s.time - hitTime < 0.18)
-        return hitFrame;
-    if (! musicOn)
-        return macro < 0.25f ? eyesClosed : rest;
-    return macro > 0.8f ? laughing : smiling;
+    // only FUNK moves him (no reaction to the notes, the beat, the level): a
+    // ladder from a round, sleepy bass to the full slap, a little hysteresis so
+    // he never flickers between two steps
+    static constexpr float steps[] { 0.15f, 0.35f, 0.55f, 0.75f, 0.9f };
+    constexpr int numSteps = 5;
+    const float f = juce::jlimit (0.0f, 1.0f, macro);
+    while (rung < numSteps && f > steps[rung] + 0.02f)
+        ++rung;
+    while (rung > 0 && f < steps[rung - 1] - 0.02f)
+        --rung;
+    static constexpr int poses[] { eyesClosed, rest, smiling, armsOut, laughing, hype };
+    return poses[rung];
 }
 } // namespace slapper

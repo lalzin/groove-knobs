@@ -4,11 +4,10 @@
 
 namespace slapper
 {
-/** "Pluck", the sunburst bass. Test version (step 3): each note shows its
-    pose for a moment (slap: the hand on the strings, pop: a jump, ghost:
-    eyes closed, hands on the body; a hard slap with FUNK high: arms up),
-    otherwise he stands, smiles with the music, sleeps in bypass. The code
-    effects (boom, sparks, sweat) come with the interface, step 5. */
+/** "Pluck", the sunburst bass. Only FUNK moves him (Alan): his pose climbs
+    a ladder with the knob — eyes closed (round, soft), standing, smiling,
+    arms out, laughing, arms up (the full slap); asleep in bypass. Nothing
+    follows the notes or the beat. */
 class PluckMascot final : public gk::MascotComponent
 {
 public:
@@ -22,8 +21,6 @@ protected:
     int chooseFrame (float macro, float bypass, bool musicOn) override;
 
 private:
-    SlapperProcessor& proc;
-    int lastHits = -1, hitFrame = rest;
-    double lastTime = 0.0, hitTime = -10.0;
+    int rung = 0; // the pose ladder's step (with hysteresis)
 };
 } // namespace slapper

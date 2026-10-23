@@ -1,7 +1,7 @@
 # Changelog
 
 ## À venir
-- **Slapper** : FUNK répond tout de suite, y compris sur les notes qui sonnent déjà (avant : l'ancien réglage restait un instant).
+- **Slapper** : FUNK répond tout de suite, y compris sur les notes qui sonnent déjà (avant : l'ancien réglage restait un instant) ; Pluck ne bouge plus qu'avec FUNK.
 
 ## Crackle 0.1.0-test4 — 2026-10-23 (version de test, hors suite)
 - Hiss ne bouge plus qu'avec GRAIN (sa pose, ses bobines, son double pixellisé en haut de course).
