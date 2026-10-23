@@ -251,54 +251,36 @@ private:
 
 namespace
 {
-/** GRAIN's face: a cassette in pixel art (36 x 36, blown up block by block):
-    lilac shell, cream label, the window and its two reels — they turn as the
-    knob turns. The knob's own cap stays on top. */
+/** GRAIN's face (no stripes, no rings: those are the other plugins'): an
+    ordered-dither gradient, lilac in the middle dissolving into ink at the
+    rim, and its pixels grow with the knob — GRAIN bitcrushes its own knob
+    (from 40 pixels across at 0 to 12 at the top). The knob's cap stays on top. */
 void paintPixelCassette (juce::Graphics& g, juce::Rectangle<float> body, float value, float)
 {
-    constexpr int N = 36;
+    // the grid: coarser as GRAIN rises, in steps (a crush, not a zoom)
+    static constexpr int grids[] { 40, 32, 24, 18, 14, 12 };
+    const int N = grids[juce::jlimit (0, 5, (int) (value * 5.999f))];
+    // 4 x 4 Bayer matrix: the threshold each pixel needs to light up
+    static constexpr int bayer[4][4] { { 0, 8, 2, 10 }, { 12, 4, 14, 6 }, { 3, 11, 1, 9 }, { 15, 7, 13, 5 } };
     juce::Image px (juce::Image::ARGB, N, N, true);
     {
         juce::Image::BitmapData d (px, juce::Image::BitmapData::writeOnly);
-        auto set = [&d] (int x, int y, juce::Colour c) { if (x >= 0 && y >= 0 && x < N && y < N) d.setPixelColour (x, y, c); };
-        auto rect = [&set] (int x0, int y0, int x1, int y1, juce::Colour c) { for (int y = y0; y <= y1; ++y) for (int x = x0; x <= x1; ++x) set (x, y, c); };
-        const juce::Colour shell = lilac, shellLight = lilac.brighter (0.35f), shadow = lilac.darker (0.55f), dark (0xff141218), grey = warmGrey;
-        // the background: ink with a faint pixel grid
+        const float c = 0.5f * (float) (N - 1);
+        const juce::Colour light = lilac.brighter (0.15f), mid = lilac.darker (0.35f), deep = ink.brighter (0.05f);
         for (int y = 0; y < N; ++y)
             for (int x = 0; x < N; ++x)
-                set (x, y, ((x + y) & 1) ? ink : ink.brighter (0.08f));
-        // the shell, its outline, a light edge on top, a shadow under
-        rect (3, 8, 32, 28, dark);
-        rect (4, 9, 31, 27, shell);
-        rect (4, 9, 31, 9, shellLight);
-        rect (4, 27, 31, 27, shadow);
-        // screws in the corners
-        for (auto [x, y] : { std::pair { 5, 10 }, std::pair { 30, 10 }, std::pair { 5, 26 }, std::pair { 30, 26 } })
-            set (x, y, shadow);
-        // the label and its two lines
-        rect (7, 11, 28, 16, paper);
-        rect (9, 13, 26, 13, grey);
-        rect (9, 15, 20, 15, grey);
-        // the window and the two reels (cream rings, a dark hub, three teeth that turn with the knob)
-        rect (9, 17, 26, 25, dark);
-        const float turn = value * juce::MathConstants<float>::twoPi * 3.0f;
-        for (int r = 0; r < 2; ++r)
-        {
-            const int cx = r == 0 ? 13 : 22, cy = 21;
-            for (int y = -3; y <= 3; ++y)
-                for (int x = -3; x <= 3; ++x)
-                {
-                    const int d2 = x * x + y * y;
-                    if (d2 <= 10)
-                        set (cx + x, cy + y, d2 >= 5 ? paper : dark);
-                }
-            set (cx, cy, paper);
-            for (int t = 0; t < 3; ++t)
             {
-                const float a = turn + (float) t * juce::MathConstants<float>::twoPi / 3.0f;
-                set (cx + (int) std::lround (std::cos (a) * 1.5f), cy + (int) std::lround (std::sin (a) * 1.5f), paper.darker (0.2f));
+                // brightness: 1 in the middle, 0 at the rim, a little off-centre (a light from the top left)
+                const float dx = ((float) x - c * 0.85f) / c, dy = ((float) y - c * 0.8f) / c;
+                const float b = juce::jlimit (0.0f, 1.0f, 1.0f - 0.75f * std::sqrt (dx * dx + dy * dy));
+                // three tones, each band dithered into the next
+                const float t = (float) bayer[y & 3][x & 3] / 16.0f;
+                const float level = b * 2.0f; // 0..2: deep -> mid -> light
+                const int base = (int) level;
+                const bool up = (level - (float) base) > t;
+                const int tone = juce::jmin (2, base + (up ? 1 : 0));
+                d.setPixelColour (x, y, tone == 2 ? light : tone == 1 ? mid : deep);
             }
-        }
     }
     g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);
     g.setOpacity (1.0f); // (drawImage takes the current colour's alpha: the knob's shadow left it at 35 %)
