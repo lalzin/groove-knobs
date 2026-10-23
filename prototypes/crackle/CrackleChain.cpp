@@ -72,6 +72,7 @@ void Chain::reset()
     driftCountdown = 0;
     rng = {};
     now = {};
+    now.noise = 0.5f;
 }
 
 void Chain::process (float* left, float* right, int numSamples, const Amounts& target) noexcept
@@ -86,6 +87,7 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
         now.wow += smooth * (target.wow - now.wow);
         now.hiss += smooth * (target.hiss - now.hiss);
         now.saturation += smooth * (target.saturation - now.saturation);
+        now.noise += smooth * (target.noise - now.noise);
         if ((i & 15) == 0)
         {
             // BAND: HP 40 -> 350 Hz, LP 18 -> 3.5 kHz, on a log scale
@@ -116,7 +118,8 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
         const double drive = 1.0 + 5.0 * sat, bias = 0.12 * sat, wet = std::min (1.0, 4.0 * sat);
         // (normalised so a -6 dB peak comes out at -6 dB: louder parts squashed, quiet ones lifted)
         const double norm = 0.5 / (std::tanh (0.5 * drive + bias) - std::tanh (bias));
-        const double hissLevel = 0.025 * std::pow (std::clamp ((double) now.hiss, 0.0, 1.0), 1.3);
+        const double noiseGain = 2.0 * std::clamp ((double) now.noise, 0.0, 1.0); // (0.5: 0 dB, 1: +6 dB)
+        const double hissLevel = 0.025 * std::pow (std::clamp ((double) now.hiss, 0.0, 1.0), 1.3) * noiseGain;
 
         for (int ch = 0; ch < 2; ++ch)
         {

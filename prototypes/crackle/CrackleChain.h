@@ -28,6 +28,10 @@ struct Rng
 struct Amounts
 {
     float band = 0.0f, wow = 0.0f, hiss = 0.0f, saturation = 0.0f;
+    /** NOISE: the level of every noise added (hiss now; vinyl crackle and radio
+        static later), not of the processing: 0 none, 0.5 as GRAIN sets them
+        (0 dB), 1 +6 dB. */
+    float noise = 0.5f;
 };
 
 class Chain

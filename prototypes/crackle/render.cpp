@@ -99,6 +99,21 @@ int main (int argc, char** argv)
         writeWav (out + name, s, sr);
         std::printf ("GRAIN %.2f: band %.2f wow %.2f hiss %.2f sat %.2f, peak %.2f, RMS %.1f dB\n", g, at (g).band, at (g).wow, at (g).hiss, at (g).saturation, peak, rmsDb);
     }
+    // NOISE at GRAIN 0.75: 0 (no noise), 0.5 (as GRAIN sets it), 1 (+6 dB)
+    for (float nz : { 0.0f, 0.5f, 1.0f })
+    {
+        Chain c;
+        c.prepare (sr);
+        Stereo s = music;
+        auto a = at (0.75f);
+        a.noise = nz;
+        std::vector<float> zl (sr / 2, 0.0f), zr (sr / 2, 0.0f);
+        c.process (zl.data(), zr.data(), (int) zl.size(), a);
+        c.process (s.l.data(), s.r.data(), (int) n, a);
+        char name[64];
+        std::snprintf (name, sizeof name, "/crackle_step1_noise%03d.wav", (int) std::lround (nz * 100));
+        writeWav (out + name, s, sr);
+    }
     // the sweep: GRAIN 0 -> 1 over 12 s, in 20 ms steps (the chain smooths)
     {
         Chain c;
