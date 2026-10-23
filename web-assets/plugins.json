@@ -616,7 +616,7 @@
       "downloads": {
         "macos": {
           "file": "Slapper-0.1.6-macOS.pkg",
-          "bytes": 23902942,
+          "bytes": 23902928,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
