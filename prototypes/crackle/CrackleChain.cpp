@@ -122,6 +122,11 @@ void Chain::reset()
     crackles = {};
     for (auto& sa : saturator)
         sa.reset();
+    radioHp = radioLp = {};
+    held = {};
+    holdCount = 0;
+    radioFadePhase = staticEnv = staticHp = 0.0;
+    staticDecay = std::exp (-1.0 / (0.004 * sr));
     for (auto& r : riaa)
         r.x1 = r.x2 = r.y1 = r.y2 = r.hpState = r.hpOut = 0.0;
     dropGain = 1.0;
@@ -133,6 +138,8 @@ void Chain::reset()
 void Chain::process (float* left, float* right, int numSamples, const Amounts& target) noexcept
 {
     float* io[2] { left, right };
+    const double gRadioHp = std::tan (pi * 450.0 / sr), gRadioLp = std::tan (pi * 2800.0 / sr);
+    std::array<double, 2> stage {};
     double gHp = 0.0, gLp = 0.0, gHissHp = std::tan (pi * 2000.0 / sr), gHissLp = std::tan (pi * std::min (8000.0, 0.45 * sr) / sr);
     const double k = 1.4142135623730951; // Butterworth
     const int N = (int) halfBand.size();
@@ -145,6 +152,8 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
         now.noise += smooth * (target.noise - now.noise);
         now.vinyl += smooth * (target.vinyl - now.vinyl);
         now.flutter += smooth * (target.flutter - now.flutter);
+        now.crush += smooth * (target.crush - now.crush);
+        now.radio += smooth * (target.radio - now.radio);
         now.dropout += smooth * (target.dropout - now.dropout);
         if ((i & 15) == 0)
         {
@@ -277,6 +286,52 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
                 }
                 x = out;
             }
+            stage[(size_t) ch] = x;
+        }
+
+        // CRUSH: bit depth 16 -> 6, sample-and-hold 1 -> 12 samples (the aliasing is the point)
+        const double cr = std::clamp ((double) now.crush, 0.0, 1.0);
+        if (cr > 0.0)
+        {
+            const double bits = 16.0 - 10.0 * cr, steps = std::exp2 (bits - 1.0);
+            const int hold = 1 + (int) std::lround (11.0 * std::pow (cr, 1.5));
+            if (++holdCount >= hold)
+            {
+                holdCount = 0;
+                for (int ch = 0; ch < 2; ++ch)
+                    held[(size_t) ch] = std::round (stage[(size_t) ch] * steps) / steps;
+            }
+            for (int ch = 0; ch < 2; ++ch)
+                stage[(size_t) ch] = held[(size_t) ch];
+        }
+
+        // RADIO: the band of an AM set (450 Hz - 2.8 kHz), mono, fading slowly in and out
+        const double ra = std::clamp ((double) now.radio, 0.0, 1.0);
+        double radioStatic = 0.0;
+        if (ra > 0.0)
+        {
+            const double mid = 0.5 * (stage[0] + stage[1]);
+            radioFadePhase += (0.08 + 0.05 * drift) / sr;
+            radioFadePhase -= std::floor (radioFadePhase);
+            const double fade = 1.0 - ra * 0.45 * (0.5 + 0.5 * std::sin (2.0 * pi * radioFadePhase)) * (0.6 + 0.4 * std::sin (2.0 * pi * 2.7 * radioFadePhase));
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                const double mono = stage[(size_t) ch] + ra * (mid - stage[(size_t) ch]);
+                const double narrow = radioLp[(size_t) ch].lp (radioHp[(size_t) ch].hp (mono, gRadioHp, 0.9), gRadioLp, 0.9) * 1.4; // (a little resonance)
+                stage[(size_t) ch] = (mono + ra * (narrow - mono)) * fade;
+            }
+            // static: light impulsive noise, bursts that come and go
+            if (rng.uniform() < (float) (60.0 * ra / sr))
+                staticEnv = 0.4 + 0.6 * rng.uniform();
+            staticEnv *= staticDecay;
+            const double n = rng.bipolar();
+            staticHp += 0.5 * (n - staticHp); // (thin: a crude high-pass of the noise)
+            radioStatic = ra * 0.04 * (staticEnv * (n - staticHp) + 0.15 * (n - staticHp));
+        }
+
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            double x = stage[(size_t) ch];
             // tape hiss: white noise, 2-8 kHz, a different noise per channel
             if (hissLevel > 0.0)
             {
@@ -286,6 +341,8 @@ void Chain::process (float* left, float* right, int numSamples, const Amounts& t
             // vinyl: the surface (pink) and the crackles, under NOISE
             if (vin > 0.0)
                 x += noiseGain * riaa[(size_t) ch].run (surface * pink[(size_t) ch].next (rng) + (ch == 0 ? crackleL : crackleR));
+            // radio static, under NOISE
+            x += noiseGain * radioStatic;
             // a dropout takes everything (the tape lifts off the head)
             x *= dropShape;
             io[ch][i] = (float) x;

@@ -47,5 +47,7 @@ private:
     OnePole lowPre, lowPost, highPre, highPost;
     std::uint32_t seed = 0x1f2e3d4cu;
     double gFocusLo = 0.0, gFocusHi = 0.0, lastLo = -1.0, lastHi = -1.0;
+    SatType lastType = SatType::count;
+    double lastAmount = -1.0, drive = 1.0, gain = 1.0;
 };
 } // namespace crackle

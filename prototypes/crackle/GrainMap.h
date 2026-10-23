@@ -1,5 +1,5 @@
 // CRACKLE — GRAIN, the main knob: each section along its own curve (spec 2.3).
-// BAND, WOW, HISS, SATURATION (step 1), VINYL, DROPOUT (step 2). (CRUSH: step 3.)
+// BAND, WOW, HISS, SATURATION (step 1), VINYL, DROPOUT (step 2), CRUSH, RADIO (step 3).
 #pragma once
 #include <algorithm>
 #include <cmath>
@@ -30,6 +30,10 @@ inline float flutter (float g) { return smoothstep (0.3f, 0.8f, g); }
 inline float vinyl (float g) { return smoothstep (0.0f, 0.35f, g); }
 /** DROPOUT: nothing under 0.5, then more and more likely. */
 inline float dropout (float g) { return clamp01 ((g - 0.5f) / 0.5f); }
+/** CRUSH: nothing under 0.7, then up to 1. */
+inline float crush (float g) { return clamp01 ((g - 0.7f) / 0.3f); }
+/** RADIO: the top of the knob, coming in from 0.55. */
+inline float radio (float g) { return 0.8f * smoothstep (0.55f, 0.95f, g); }
 } // namespace crackle::grain
 
 #include "CrackleChain.h"
@@ -44,6 +48,7 @@ struct Knobs
     static constexpr float automatic = -1.0f;
     float grain = 0.0f;
     float band = automatic, wow = automatic, flutter = automatic, hiss = automatic, saturation = automatic, vinyl = automatic, dropout = automatic;
+    float crush = automatic, radio = automatic;
     float noise = 0.5f;
 
     Amounts amounts() const
@@ -57,6 +62,8 @@ struct Knobs
         a.saturation = pick (saturation, grain::saturation);
         a.vinyl = pick (vinyl, grain::vinyl);
         a.dropout = pick (dropout, grain::dropout);
+        a.crush = pick (crush, grain::crush);
+        a.radio = pick (radio, grain::radio);
         a.noise = noise;
         return a;
     }

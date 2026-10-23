@@ -2,7 +2,7 @@
 //   band (HP + LP closing in) -> wow & flutter (modulated delay, cubic) ->
 //   saturation (tanh, 2x oversampled) -> + tape hiss
 //   -> + vinyl (pink surface noise, sparse crackles) -> dropouts
-// Bitcrush and radio come in step 3.
+//   (after the saturation: crush -> radio -> + hiss, vinyl, radio static -> dropouts)
 #pragma once
 #include <array>
 #include <cstdint>
@@ -31,6 +31,7 @@ struct Amounts
 {
     float band = 0.0f, wow = 0.0f, hiss = 0.0f, saturation = 0.0f, vinyl = 0.0f, dropout = 0.0f;
     float flutter = 0.0f; // its own knob (WOW is the slow one)
+    float crush = 0.0f, radio = 0.0f;
     SatType satType = SatType::tape;                    // TYPE (Saturator.h)
     float focusLow = 20.0f, focusHigh = 20000.0f;       // FOCUS, Hz: the band that is saturated
     /** NOISE: the level of every noise added (hiss now; vinyl crackle and radio
@@ -71,6 +72,11 @@ private:
     std::array<std::array<float, 64>, 2> upHist {}, downHist {};
     int upPos = 0, downPos = 0;
     std::array<Saturator, 2> saturator;
+    // crush (sample-and-hold), radio (band, fading, static)
+    std::array<double, 2> held {};
+    int holdCount = 0;
+    std::array<Svf, 2> radioHp, radioLp;
+    double radioFadePhase = 0.0, staticEnv = 0.0, staticDecay = 0.0, staticHp = 0.0;
     // hiss
     std::array<Svf, 2> hissHp, hissLp;
     Rng rng;

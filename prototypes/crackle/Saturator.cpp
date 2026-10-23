@@ -89,6 +89,7 @@ void Saturator::reset()
     focusHp = focusLp = speakerHp = speakerLp = {};
     lowPre.z = lowPost.z = highPre.z = highPost.z = 0.0;
     lastLo = lastHi = -1.0;
+    lastAmount = -1.0;
 }
 
 double Saturator::core (double v, SatType t, double d) noexcept
@@ -145,14 +146,22 @@ double Saturator::process (double x, SatType type, double amount, double focusLo
     focusHp.run (x, gFocusLo, 1.4142, lp, bp, hp);
     focusLp.run (hp, gFocusHi, 1.4142, band, bp, hp);
     const double rest = x - band;
-    const double d = driveFor (type, amount);
-    // the level: the curve's largest output up to a -6 dB peak brought to -6 dB
-    // (its largest, not its value at 0.5: FOLD folds back through 0 there)
-    double top = 1e-6;
-    for (int i = 1; i <= 8; ++i)
-        top = std::max (top, std::fabs (shape (0.0625 * i, type, d) - shape (0.0, type, d)));
-    const double norm = 0.5 / top;
-    const double shaped = core (band, type, d) * norm * std::pow (10.0, -makeupDb (type) * amount / 20.0);
+    // the drive and the level (recomputed only when the type or the amount moves)
+    if (type != lastType || std::fabs (amount - lastAmount) > 1e-4)
+    {
+        lastType = type;
+        lastAmount = amount;
+        drive = driveFor (type, amount);
+        // the curve's largest output up to a -6 dB peak brought to -6 dB (its
+        // largest, not its value at 0.5: FOLD folds back through 0 there), and
+        // the type's makeup taken back
+        double top = 1e-6;
+        for (int i = 1; i <= 8; ++i)
+            top = std::max (top, std::fabs (shape (0.0625 * i, type, drive) - shape (0.0, type, drive)));
+        gain = 0.5 / top * std::pow (10.0, -makeupDb (type) * amount / 20.0);
+    }
+    const double d = drive;
+    const double shaped = core (band, type, d) * gain;
     const double wet = std::min (1.0, 4.0 * amount);
     return rest + band + wet * (shaped - band);
 }

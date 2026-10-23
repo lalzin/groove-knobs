@@ -95,18 +95,18 @@ int main (int argc, char** argv)
         }
         const double rmsDb = 10.0 * std::log10 (e / (2.0 * (double) n));
         char name[64];
-        std::snprintf (name, sizeof name, "/crackle_step2b_grain%03d.wav", (int) std::lround (g * 100));
+        std::snprintf (name, sizeof name, "/crackle_step3_grain%03d.wav", (int) std::lround (g * 100));
         writeWav (out + name, s, sr);
         std::printf ("GRAIN %.2f: band %.2f wow %.2f hiss %.2f sat %.2f vinyl %.2f dropout %.2f, peak %.2f, RMS %.1f dB, %d crackles, %d dropouts in 12 s\n", g, at (g).band, at (g).wow,
                      at (g).hiss, at (g).saturation, at (g).vinyl, at (g).dropout, peak, rmsDb, c.crackleCount, c.dropoutCount);
     }
     // each effect alone, its knob at 1 (GRAIN 0, every other knob at 0), on the music
     {
-        const char* names[] { "band", "wow", "flutter", "hiss", "saturation", "vinyl", "dropout" };
-        for (int e = 0; e < 7; ++e)
+        const char* names[] { "band", "wow", "flutter", "hiss", "saturation", "vinyl", "dropout", "crush", "radio" };
+        for (int e = 0; e < 9; ++e)
         {
             Knobs k;
-            float* knob[] { &k.band, &k.wow, &k.flutter, &k.hiss, &k.saturation, &k.vinyl, &k.dropout };
+            float* knob[] { &k.band, &k.wow, &k.flutter, &k.hiss, &k.saturation, &k.vinyl, &k.dropout, &k.crush, &k.radio };
             for (auto* p : knob)
                 *p = 0.0f;
             *knob[e] = 1.0f;
@@ -114,7 +114,7 @@ int main (int argc, char** argv)
             c.prepare (sr);
             Stereo s = music;
             c.process (s.l.data(), s.r.data(), (int) n, k.amounts());
-            writeWav (out + "/crackle_step2b_only_" + names[e] + ".wav", s, sr);
+            writeWav (out + "/crackle_step3_only_" + names[e] + ".wav", s, sr);
         }
     }
     // SATURATION alone at 0.7, each TYPE; then SPEAKER with FOCUS 300 Hz - 3 kHz
@@ -122,7 +122,7 @@ int main (int argc, char** argv)
         for (int t = 0; t < (int) SatType::count; ++t)
         {
             Knobs k;
-            float* knob[] { &k.band, &k.wow, &k.flutter, &k.hiss, &k.vinyl, &k.dropout };
+            float* knob[] { &k.band, &k.wow, &k.flutter, &k.hiss, &k.vinyl, &k.dropout, &k.crush, &k.radio };
             for (auto* p : knob)
                 *p = 0.0f;
             k.saturation = amount;
@@ -140,7 +140,7 @@ int main (int argc, char** argv)
     for (int t = 0; t <= (int) SatType::count; ++t)
     {
         Knobs k;
-        float* knob[] { &k.band, &k.wow, &k.flutter, &k.hiss, &k.vinyl, &k.dropout };
+        float* knob[] { &k.band, &k.wow, &k.flutter, &k.hiss, &k.vinyl, &k.dropout, &k.crush, &k.radio };
         for (auto* p : knob)
             *p = 0.0f;
         k.saturation = 0.7f;
@@ -175,7 +175,7 @@ int main (int argc, char** argv)
         c.process (zl.data(), zr.data(), (int) zl.size(), a);
         c.process (s.l.data(), s.r.data(), (int) n, a);
         char name[64];
-        std::snprintf (name, sizeof name, "/crackle_step2b_noise%03d.wav", (int) std::lround (nz * 100));
+        std::snprintf (name, sizeof name, "/crackle_step3_noise%03d.wav", (int) std::lround (nz * 100));
         writeWav (out + name, s, sr);
     }
     // the sweep: GRAIN 0 -> 1 over 12 s, in 20 ms steps (the chain smooths)
@@ -189,7 +189,7 @@ int main (int argc, char** argv)
             const int len = (int) std::min ((size_t) step, n - i);
             c.process (s.l.data() + i, s.r.data() + i, len, at ((float) i / (float) n));
         }
-        writeWav (out + "/crackle_step2b_sweep.wav", s, sr);
+        writeWav (out + "/crackle_step3_sweep.wav", s, sr);
     }
     // a 440 Hz tone at WOW 1 (nothing else): the pitch swing, from the zero crossings
     {
