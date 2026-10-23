@@ -1,5 +1,8 @@
 # Changelog
 
+## À venir
+- **Slapper** : FUNK répond tout de suite, y compris sur les notes qui sonnent déjà (avant : l'ancien réglage restait un instant).
+
 ## Crackle 0.1.0-test4 — 2026-10-23 (version de test, hors suite)
 - Hiss ne bouge plus qu'avec GRAIN (sa pose, ses bobines, son double pixellisé en haut de course).
 - Bruits subtils (souffle, statique, fond du vinyle nettement plus bas) ; chaque preset règle son NOISE ; plusieurs presets avec le vinyle sans souffle.

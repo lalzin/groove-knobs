@@ -19,6 +19,7 @@ namespace
         cfg.amountParamId = "funk";
         cfg.amountParamName = "Funk";
         cfg.defaultAmount = 0.5f;
+        cfg.amountRampSeconds = 0.008; // FUNK heard at once when turned fast (the engine smooths what would click)
         cfg.knobLowLabel = "ROUND";
         cfg.knobHighLabel = "FUNK";
         // in SlapperDsp::Knob order; VOLUME: -inf at the bottom, 0 dB at three quarters, +6 dB

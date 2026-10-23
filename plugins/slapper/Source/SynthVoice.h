@@ -39,6 +39,8 @@ public:
     void glideTo (double hz, double seconds) noexcept;
     void noteOff() noexcept;
     void setBend (double ratio) noexcept { bend = ratio; }
+    /** FUNK moved while the note rings: envelope depth / FM index and resonance follow at once. */
+    void setFunk (float funk) noexcept { p.funk = funk; }
     float process() noexcept;
 
     bool isActive() const noexcept { return stage != Stage::idle; }

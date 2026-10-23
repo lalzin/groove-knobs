@@ -50,6 +50,14 @@ public:
     void noteOff() noexcept;
     /** Pitch bend, as a frequency ratio (1 = none). */
     void setBend (double ratio) noexcept { bend = ratio; }
+    /** FUNK moved while the note rings: its sub level and the action (how soon
+        the string meets the frets) follow at once; the thumb's hardness and
+        rebound belong to the attack already played. */
+    void setFunkLive (float sub, float clank) noexcept
+    {
+        subLevel = sub < 0.0f ? 0.0f : sub > 1.0f ? 1.0f : sub;
+        fretGap = 2.2 - 1.2 * (clank < 0.0f ? 0.0f : clank > 1.0f ? 1.0f : clank);
+    }
 
     float process() noexcept;
 

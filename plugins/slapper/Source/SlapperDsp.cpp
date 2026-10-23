@@ -30,8 +30,9 @@ void SlapperDsp::prepare (double sampleRate, int, int)
         voiceSeed[(size_t) i] = 0x9e3779b9u * (std::uint32_t) (i + 1);
     }
     amp.prepare (sr);
-    driveSmooth.prepare (sr, 0.020);
-    toneSmooth.prepare (sr, 0.020);
+    // (short: FUNK turned fast must be heard at once — Alan: "the effect stays a moment")
+    driveSmooth.prepare (sr, 0.010);
+    toneSmooth.prepare (sr, 0.010);
     volume.prepare (sr, 0.020);
     reset();
 }
@@ -306,6 +307,17 @@ void SlapperDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, c
     {
         if (amount != nullptr)
             funk = amount[i];
+        // FUNK on the notes already ringing, and on the amp, every 32 samples
+        if ((clock & 31) == 0)
+        {
+            driveSmooth.setTarget (std::clamp (knobs[driveKnob] + funk::driveAdd (funk), 0.0f, 1.0f));
+            toneSmooth.setTarget (std::clamp (knobs[toneKnob] + funk::toneAdd (funk), -1.0f, 1.0f));
+            for (int v = 0; v < numVoices; ++v)
+            {
+                voices[(size_t) v].setFunkLive (funk::sub (funk), funk::clank (funk));
+                synths[(size_t) v].setFunk (funk);
+            }
+        }
         while (midi != nullptr && it != end)
         {
             const auto meta = *it;
