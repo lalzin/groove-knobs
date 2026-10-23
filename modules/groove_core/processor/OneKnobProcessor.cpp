@@ -191,6 +191,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
         layout.add (std::make_unique<juce::AudioParameterFloat> (
             juce::ParameterID { k.id, 1 }, k.name, range, k.defaultValue,
             juce::AudioParameterFloatAttributes()
+                .withMeta (k.meta)
                 .withLabel (k.unit)
                 .withStringFromValueFunction ([db, minimum, unit = k.unit] (float v, int)
                                               {

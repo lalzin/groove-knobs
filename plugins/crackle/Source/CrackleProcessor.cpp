@@ -37,6 +37,9 @@ namespace
                       { "focusLow", "Focus low", "FOCUS LO", 20.0f, 20.0f, 20000.0f, hzSkew, "Hz" },
                       { "focusHigh", "Focus high", "FOCUS HI", 20000.0f, 20.0f, 20000.0f, hzSkew, "Hz" },
                       { "level", "Volume", "VOL", 0.0f, -60.0f, 6.0f, 3.02f, "dB" } };
+        // an effect's knob turns its AUTO off when moved: a meta parameter (auval)
+        for (int k = CrackleDsp::firstEffect; k < CrackleDsp::firstEffect + CrackleDsp::numEffects; ++k)
+            cfg.knobs[(size_t) k].meta = true;
         // AUTO: each effect follows GRAIN until it is moved
         for (const auto* id : { "band", "wow", "flutter", "hiss", "saturation", "vinyl", "dropout", "crush", "radio" })
             cfg.switches.push_back ({ juce::String (id) + "Auto", juce::String (id).substring (0, 1).toUpperCase() + juce::String (id).substring (1) + " auto",

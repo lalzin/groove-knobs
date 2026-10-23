@@ -30,6 +30,9 @@ struct KnobSpec
         unit ("°", "ms", "Hz"...) shows the plain value with that unit. */
     float minimum = 0.0f, maximum = 1.0f, skew = 1.0f;
     juce::String unit { "%" };
+    /** Moving it changes other parameters (Crackle: an effect's knob turns its
+        AUTO switch off): a meta parameter for the hosts (auval). */
+    bool meta = false;
 };
 
 /** Static description of a Groove Knobs plugin. */
