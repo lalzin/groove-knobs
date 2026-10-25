@@ -15,7 +15,7 @@
     "downloads": {
       "macos": {
         "file": "GrooveKnobs-0.1.7-macOS.pkg",
-        "bytes": 262787928,
+        "bytes": 262864981,
         "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
         "formats": [
           "VST3",
@@ -178,7 +178,7 @@
       "downloads": {
         "macos": {
           "file": "BoogieTrio-0.1.7-macOS.pkg",
-          "bytes": 19509302,
+          "bytes": 19586355,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
