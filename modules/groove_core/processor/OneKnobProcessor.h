@@ -33,6 +33,11 @@ struct KnobSpec
     /** Moving it changes other parameters (Crackle: an effect's knob turns its
         AUTO switch off): a meta parameter for the hosts (auval). */
     bool meta = false;
+    /** Added to a published plugin: the parameter goes after the choices
+        (just before bypass), so the earlier parameters keep their places.
+        The knob's index (getKnobParameter, OneKnobEngine::setKnobs) is still
+        its place in OneKnobConfig::knobs. */
+    bool late = false;
 };
 
 /** Static description of a Groove Knobs plugin. */

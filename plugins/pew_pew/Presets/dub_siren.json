@@ -1,0 +1,25 @@
+{
+  "name": "Dub Siren",
+  "osc": "square",
+  "lpHz": 1800,
+  "baseHz": 392.0,
+  "glide": "linear",
+  "sweepOct": 0.0,
+  "endOct": -0.3,
+  "glideMs": 1500,
+  "holdMs": 500,
+  "decayMs": 600,
+  "wobble": 1.0,
+  "clickDb": -38,
+  "velCurve": 1.0,
+  "roomSize": 0.7,
+  "damping": 0.5,
+  "reverbMax": 0.45,
+  "delayFeedback": 0.75,
+  "toggles": {
+    "up": false,
+    "long": false,
+    "roll": false
+  },
+  "level": 0.287
+}

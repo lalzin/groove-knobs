@@ -7,7 +7,7 @@ namespace pp
 /** Sound design of one Pew Pew preset (from its JSON). */
 struct PewPreset
 {
-    enum class Osc { sine, triangle, square, fm };
+    enum class Osc { sine, triangle, square, fm, metal }; // metal: ring-modulated (bells, cowbells)
     Osc osc = Osc::sine;
     float baseHz = 130.8f, tuneOffset = 0.0f;              // note 60 = baseHz (+ tuneOffset semitones)
     float sweepOct = 1.2f, endOct = -0.4f, pitchTauMs = 35.0f; // the "pew"
@@ -22,6 +22,9 @@ struct PewPreset
     float holdMs = 0.0f;       // amplitude: held at full level, then the decay
     float detuneCents = 0.0f, detuneMix = 0.0f; // second oscillator (beating, width)
     float drive = 0.0f;        // soft asymmetric saturation (2nd harmonic)
+    float noise = 0.0f;        // band-passed noise in the hit (Simmons / syndrum snare), 0..1
+    float wobble = 0.0f;       // vibrato on the tail (the flying saucer), 0..1
+    float keyTrack = 1.0f;     // not in the JSON: the KEY TRACK knob (0 = every note at the base pitch)
 
     static PewPreset fromJson (const juce::var& root);
 };
@@ -58,7 +61,8 @@ public:
     void start (const Start& s) noexcept;
     /** Fades out over `samples` (stolen voice, panic) then frees itself. */
     void fadeOut (int samples) noexcept;
-    float render() noexcept;
+    /** pitchMul: the pitch bend (1 = none), applied live to the sounding voices. */
+    float render (double pitchMul = 1.0) noexcept;
     bool isActive() const noexcept { return active; }
     bool isFading() const noexcept { return fadeLeft >= 0; }
     std::int64_t getOrder() const noexcept { return order; }
@@ -83,7 +87,13 @@ private:
     float gain = 0.0f, clickGain = 0.0f;
     gk::TptSvf lp, clickHp;
     gk::TptSvf::Coeffs lpCoeffs, clickCoeffs;
-    gk::testsignals::Rng rng;
+    gk::testsignals::Rng rng, noiseRng;
+    double metalPhase = 0.0;
+    float noiseGain = 0.0f;
+    double noiseEnv = 0.0, noiseCoeff = 0.0;
+    gk::TptSvf noiseBp;
+    gk::TptSvf::Coeffs noiseCoeffs;
+    double wobbleSt = 0.0, wobbleInc = 0.0, wobblePhase = 0.0, wobbleEnv = 0.0, wobbleEnvStep = 0.0;
 };
 
 /** Pew Pew engine: 8-voice pool, ROOM (reverb) and ECHO (tempo delay) sends.
@@ -98,11 +108,25 @@ public:
     static constexpr int numVoices = 8, numTails = 4;
     static constexpr int roomKnob = 0, echoKnob = 1, volumeKnob = 2, divChoice = 0;
     static constexpr int upToggle = 0, longToggle = 1, rollToggle = 2, modeChoice = 1; // mode: 0 multi, 1 solo
+    static constexpr int waveChoice = 2; // 0 = the preset's oscillator, then sine, triangle, square, FM, metal
+    /** The "⋯" panel's knobs (after VOL in OneKnobConfig::knobs, published
+        after the choices). Every default leaves the preset as it was. */
+    enum PanelKnob { tuneKnob = 3, decayKnob, glideKnob, detuneKnob,   // TOM
+                     driveKnob, clickKnob, noiseKnob, toneKnob,        // COLOUR
+                     wobbleKnob, spaceKnob, feedbackKnob, widthKnob,   // FX
+                     velKnob, keyTrackKnob, hitsKnob, rushKnob,        // PLAY
+                     numKnobs };
+    static constexpr float panelDefaults[numKnobs - tuneKnob] { 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.0f, 0.5f, 0.0f, 0.5f, 0.5f, 0.5f, 0.5f, 1.0f, 5.0f, 0.0f };
+    static constexpr double bendRangeSemitones = 2.0;
     /** ROLL: a note becomes this many sixteenths, each softer. */
     static constexpr int rollHits = 5;
     static constexpr float rollDecay = 0.72f;
     static constexpr double stealFadeSeconds = 0.002, panicFadeSeconds = 0.005, preDelaySeconds = 0.015,
                             maxDelaySeconds = 2.0, delayCrossfadeSeconds = 0.030, smoothSeconds = 0.030;
+
+    /** A preset as the "⋯" knobs and WAVE change it (the knobs at their
+        defaults: the preset itself). */
+    static PewPreset applyPanel (const PewPreset& p, const float* knobs, int wave) noexcept;
 
     /** Delay division (index of the delayDiv choice) in beats. */
     static double divisionBeats (int index) noexcept;
@@ -118,6 +142,7 @@ public:
     {
         division = n > divChoice ? indices[divChoice] : 4;
         solo = n > modeChoice && indices[modeChoice] == 1;
+        wave = n > waveChoice ? indices[waveChoice] : 0;
     }
     void setToggleValues (const float* const* perSample, int numToggles) override
     {
@@ -156,12 +181,32 @@ private:
     int numToggleData = 0;
 
     // ROLL: pending repeats (sample clock of the next one, note, velocity, left)
-    struct Roll { std::int64_t next = 0; double step = 0.0, nextExact = 0.0; int note = 60; float velocity = 1.0f; int left = 0; bool up = false, longer = false; };
+    struct Roll { std::int64_t next = 0; double step = 0.0, nextExact = 0.0, stepFactor = 1.0; int note = 60; float velocity = 1.0f; int left = 0; bool up = false, longer = false; };
     std::array<Roll, 16> rolls {};
 
     const juce::MidiBuffer* midi = nullptr;
     int midiStart = 0, midiCount = 0;
     float room = 0.0f, echo = 0.0f, volumeDb = 0.0f;
+    static std::array<float, numKnobs> defaultKnobs() noexcept
+    {
+        std::array<float, numKnobs> k {};
+        for (int i = tuneKnob; i < numKnobs; ++i)
+            k[(size_t) i] = panelDefaults[i - tuneKnob];
+        return k;
+    }
+    std::array<float, numKnobs> knobs = defaultKnobs();
+    int wave = 0;
+    PewPreset voicePreset; // the preset with the panel applied (for the voices starting now)
+    // MIDI controllers: the mod wheel raises PEW for new hits, the pitch bend
+    // moves the sounding voices (+-2 semitones, 5 ms smoothing)
+    float modWheel = 0.0f;
+    double bendTarget = 0.0, bendNow = 0.0, bendCoeff = 0.0;
+    float amountForHit() const noexcept;
+    // TONE on the voices (high shelf), SPACE (room size), WIDTH (echo ping-pong)
+    gk::TptSvf toneSplit;
+    gk::TptSvf::Coeffs toneCoeffs;
+    gk::SmoothParam toneGain, echoRight;
+    float appliedRoomSize = -1.0f;
 
     // Effects
     juce::Reverb reverb;

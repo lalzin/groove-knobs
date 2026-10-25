@@ -171,6 +171,8 @@ Le **pew disco** en instrument : chaque note MIDI joue un tom électronique qui 
 - All Notes Off / reset : coupure propre en 5 ms.
 - Chips (sous ROOM, chaque preset a ses valeurs par défaut) : **UP** retourne le glissement (le pew monte au lieu de descendre) ; **LONG** double la tenue et la décroissance ; **ROLL** transforme chaque note en roulement de doubles-croches au tempo (5 coups, chacun plus doux).
 - La **vélocité** règle aussi la profondeur du glissement : un coup fort glisse plus loin (60 % de la profondeur au plus doux).
+- **« ⋯ »** (à gauche, au-dessus de ROOM) ouvre MORE : **WAVE** (PRESET = l'oscillateur du preset, SINE, TRI, SQUARE, FM, METAL) ; **TOM** : TUNE (±12 demi-tons), DECAY, GLIDE, DETUNE ; **COLOUR** : DRIVE, CLICK, NOISE (le souffle d'une caisse claire Simmons), TONE ; **FX** : WOBBLE (vibrato de soucoupe volante), SPACE (taille de la reverb), FEEDBACK et WIDTH (l'écho) ; **PLAY** : VEL (sensibilité à la vélocité), KEY TRACK (0 % : toutes les touches à la même hauteur), HITS (2 à 16 coups dans ROLL) et RUSH (le roulement accélère ou ralentit). Par défaut, chaque réglage laisse le preset tel quel.
+- **Pitch bend** ±2 demi-tons sur les notes qui sonnent ; la **molette** pousse PEW vers 100 % pour les coups suivants.
 
 | Preset | Pour quoi |
 |---|---|
@@ -184,10 +186,18 @@ Le **pew disco** en instrument : chaque note MIDI joue un tom électronique qui 
 | Arcade Zap | carré brillant, glissement rapide, lo-fi : le laser de jeu d'arcade |
 | Disco Cowbell | deux carrés désaccordés (~540 / 800 Hz) : une cloche disco jouable en hauteur |
 | Siren Sweep | glissement très long et lent avec un léger flottement : la sirène dub, pour les breaks |
+| Simmons Tom | le tom électronique des années 80 : triangle, souffle de caisse claire, clic dur |
+| 8-bit Coin | carré qui saute d'une octave : la pièce de jeu vidéo |
+| UFO Wobble | longue descente qui vibre : la soucoupe volante |
+| Disco Snare Zap | une caisse claire électronique courte, presque tout en souffle |
+| Zap Burst | un blip FM aigu qui retombe vite |
+| Metal Ping | une cloche métallique (WAVE METAL) |
+| Reverse Riser | une montée lente d'une octave (UP + LONG), pour les transitions |
+| Dub Siren | la sirène dub : carré qui vibre à fond, écho qui s'emballe |
 
 Mascotte : **Tomi**, le batteur disco. Il frappe à chaque note, plus fort avec la vélocité ; sa pose suit le knob (coup tranquille à 0 %, tour de baguette, étincelles, baguettes en l'air, saut euphorique à 100 %). Son tambour (dessiné par le code) se soulève avec le pitch, des ondes au sol suivent ROOM, des « fantômes » de Tomi rejouent le coup aux temps de l'écho. En bypass, il s'endort à côté du tambour.
 
-Outils : `gb_render` (rendu MIDI : `pattern`, `render`, `sweep`, `analyze`), captures `pp_screenshots`, poses de Tomi `scripts/make_tomi_frames.sh`.
+Outils : `gb_render` (rendu MIDI : `pattern`, `render`, `sweep`, `analyze`, `levels`), captures `pp_screenshots`, poses de Tomi `scripts/make_tomi_frames.sh`.
 
 # Sing It Back
 

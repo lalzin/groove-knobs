@@ -26,5 +26,6 @@ public:
     juce::AudioParameterBool& getLongParameter() noexcept { return getToggleParameter (PewPewDsp::longToggle); }
     juce::AudioParameterBool& getRollParameter() noexcept { return getToggleParameter (PewPewDsp::rollToggle); }
     juce::AudioParameterChoice& getModeParameter() noexcept { return getChoiceParameter (PewPewDsp::modeChoice); }
+    juce::AudioParameterChoice& getWaveParameter() noexcept { return getChoiceParameter (PewPewDsp::waveChoice); }
 };
 } // namespace pp

@@ -12,7 +12,7 @@ using pp::PewPewProcessor;
 
 namespace
 {
-constexpr int numPresets = 10;
+constexpr int numPresets = 18;
 
 struct Hit
 {
@@ -560,9 +560,13 @@ TEST_CASE ("PP 14. State round trip; presets keep ROOM / ECHO / division", "[pp]
     c.setCurrentProgram (2);
     CHECK (c.getRoomParameter().getValue() == Catch::Approx (0.5f)); // a preset does not touch the user's sends
     CHECK (c.getEchoParameter().getValue() == Catch::Approx (0.25f));
-    // (MODE was added last: the earlier parameters keep their places)
-    const char* ids[] { "amount", "preset", "up", "long", "roll", "reverb", "delay", "volume", "delayDiv", "mode", "bypass" };
-    for (int i = 0; i < 11; ++i)
+    // (MODE, then WAVE and the "⋯" knobs were added last: the earlier
+    // parameters keep their places)
+    const char* ids[] { "amount", "preset", "up", "long", "roll", "reverb", "delay", "volume", "delayDiv", "mode", "wave",
+                        "tune", "decay", "glide", "detune", "drive", "click", "noise", "tone", "wobble", "space", "feedback", "width",
+                        "vel", "keytrack", "hits", "rush", "bypass" };
+    REQUIRE (c.getParameters().size() == 28);
+    for (int i = 0; i < 28; ++i)
         CHECK (dynamic_cast<juce::RangedAudioParameter*> (c.getParameters()[i])->getParameterID() == ids[i]);
     // instrument bus: no input, stereo or mono output
     juce::AudioProcessor::BusesLayout stereo, mono, withInput;
@@ -792,6 +796,183 @@ TEST_CASE ("PP 20. SOLO: each note cuts the previous one (2 ms); MULTI: they ove
                 break;
             }
     }
+}
+
+namespace
+{
+/** Median frequency of the output between t0 and t1 (zero crossings). */
+double medianFrequency (const Buffer& out, double sr, double t0, double t1)
+{
+    auto f = zeroCrossingFrequency (out.getReadPointer (0), (int) (t0 * sr), (int) (t1 * sr), sr);
+    std::vector<double> v;
+    for (auto& x : f)
+        v.push_back (x.second);
+    std::sort (v.begin(), v.end());
+    return v.empty() ? 0.0 : v[v.size() / 2];
+}
+
+Buffer renderSequence (PewPewProcessor& p, const juce::MidiMessageSequence& seq, int length, double sr = 48000.0)
+{
+    gk::MidiRenderer::Options opt;
+    opt.blockSize = 512;
+    opt.bpm = 120.0;
+    return gk::MidiRenderer::render (p, seq, length, sr, opt);
+}
+
+double maxDifference (const Buffer& a, const Buffer& b)
+{
+    double d = 0.0;
+    for (int c = 0; c < a.getNumChannels(); ++c)
+        for (int i = 0; i < a.getNumSamples(); ++i)
+            d = juce::jmax (d, (double) std::abs (a.getSample (c, i) - b.getSample (c, i)));
+    return d;
+}
+} // namespace
+
+TEST_CASE ("PP 21. The \"⋯\" knobs: defaults leave the sound as it was, each one does something, extremes stay clean", "[pp][panel]")
+{
+    const double sr = 48000.0;
+    const auto beats = pp::testPatternBeats();
+    const auto events = pp::beatsToSamples (beats, 124.0, sr);
+    const int length = (int) (4.0 * sr);
+    for (int preset : { 0, 3, 7, 12, 17 })
+    {
+        CAPTURE (preset);
+        auto ref = makeProc (preset, 0.6f, 0.3f, 0.3f);
+        const auto base = renderSequence (*ref, events, length, sr);
+        // setting every knob to its default explicitly: identical, sample for sample
+        auto same = makeProc (preset, 0.6f, 0.3f, 0.3f);
+        for (int k = pp::PewPewDsp::tuneKnob; k < pp::PewPewDsp::numKnobs; ++k)
+            setParam (same->getKnobParameter (k), pp::PewPewDsp::panelDefaults[k - pp::PewPewDsp::tuneKnob]);
+        CHECK (maxDifference (renderSequence (*same, events, length, sr), base) == 0.0);
+        // each knob, at either end, changes the output (HITS / RUSH: with ROLL on)
+        for (int k = pp::PewPewDsp::tuneKnob; k < pp::PewPewDsp::numKnobs; ++k)
+        {
+            const auto probe = makeProc (preset, 0.0f);
+            auto& param = probe->getKnobParameter (k);
+            for (float end : { param.getNormalisableRange().start, param.getNormalisableRange().end })
+            {
+                if (juce::exactlyEqual (end, pp::PewPewDsp::panelDefaults[k - pp::PewPewDsp::tuneKnob]))
+                    continue;
+                // DETUNE / DRIVE / CLICK at 0 remove the preset's: nothing to remove on some presets
+                const bool removes = k == pp::PewPewDsp::detuneKnob || k == pp::PewPewDsp::driveKnob || k == pp::PewPewDsp::clickKnob;
+                if (removes && end < 0.5f)
+                    continue;
+                if (k == pp::PewPewDsp::wobbleKnob && probe->getPewDsp().getPresetData (preset).wobble >= 1.0f)
+                    continue; // already at its deepest (Dub Siren)
+                CAPTURE (k, end);
+                const bool roll = k == pp::PewPewDsp::hitsKnob || k == pp::PewPewDsp::rushKnob;
+                auto a = makeProc (preset, 0.6f, 0.3f, 0.3f), b = makeProc (preset, 0.6f, 0.3f, 0.3f);
+                setParam (a->getRollParameter(), roll ? 1.0f : 0.0f);
+                setParam (b->getRollParameter(), roll ? 1.0f : 0.0f);
+                setParam (b->getKnobParameter (k), end);
+                const auto outA = renderSequence (*a, events, length, sr), outB = renderSequence (*b, events, length, sr);
+                CHECK (maxDifference (outA, outB) > 1.0e-3);
+                CHECK (allFinite (outB));
+                CHECK (outB.getMagnitude (0, outB.getNumSamples()) < 1.0f);
+            }
+        }
+        // everything at once, both ends, every WAVE
+        for (float end : { 0.0f, 1.0f })
+            for (int w = 0; w < 6; ++w)
+            {
+                CAPTURE (end, w);
+                auto p = makeProc (preset, 1.0f, 1.0f, 1.0f);
+                for (int k = pp::PewPewDsp::tuneKnob; k < pp::PewPewDsp::numKnobs; ++k)
+                    p->getKnobParameter (k).setValueNotifyingHost (end);
+                setParam (p->getWaveParameter(), (float) w);
+                setParam (p->getRollParameter(), 1.0f);
+                const auto out = renderSequence (*p, events, length, sr);
+                CHECK (allFinite (out));
+                CHECK (out.getMagnitude (0, out.getNumSamples()) < 1.0f);
+            }
+    }
+}
+
+TEST_CASE ("PP 22. WAVE: each oscillator gives another waveform, PRESET keeps the preset's", "[pp][panel]")
+{
+    const double sr = 48000.0;
+    std::vector<Buffer> out;
+    for (int w = 0; w < 6; ++w)
+    {
+        auto p = makeProc (0, 1.0f); // Laser Pew: a sine
+        setParam (p->getWaveParameter(), (float) w);
+        out.push_back (render (*p, { { 0, 60 } }, (int) (0.3 * sr), sr));
+    }
+    CHECK (maxDifference (out[0], out[1]) == 0.0); // PRESET = SINE for Laser Pew
+    for (int a = 1; a < 6; ++a)
+        for (int b = a + 1; b < 6; ++b)
+        {
+            CAPTURE (a, b);
+            CHECK (maxDifference (out[(size_t) a], out[(size_t) b]) > 0.05);
+        }
+}
+
+TEST_CASE ("PP 23. TUNE, KEY TRACK, pitch bend and mod wheel", "[pp][panel][midi]")
+{
+    const double sr = 48000.0;
+    const int len = (int) (0.3 * sr);
+    auto pitchOf = [&] (PewPewProcessor& p, const juce::MidiMessageSequence& seq) { return medianFrequency (renderSequence (p, seq, len, sr), sr, 0.03, 0.12); };
+    auto note = [] (int n, int at = 0)
+    {
+        juce::MidiMessageSequence seq;
+        auto on = juce::MidiMessage::noteOn (1, n, (juce::uint8) 127);
+        on.setTimeStamp (at);
+        seq.addEvent (on);
+        return seq;
+    };
+    // Disco Tom flat (0 %): a steady sine at its base frequency
+    auto plain = makeProc (1, 0.0f);
+    const double f60 = pitchOf (*plain, note (60));
+    CHECK (f60 == Catch::Approx (130.8).epsilon (0.01));
+    // TUNE +7 semitones
+    auto tuned = makeProc (1, 0.0f);
+    setParam (tuned->getKnobParameter (pp::PewPewDsp::tuneKnob), 7.0f);
+    CHECK (pitchOf (*tuned, note (60)) / f60 == Catch::Approx (std::pow (2.0, 7.0 / 12.0)).epsilon (0.01));
+    // KEY TRACK 0: an octave up on the keyboard plays the same pitch
+    auto fixed = makeProc (1, 0.0f);
+    setParam (fixed->getKnobParameter (pp::PewPewDsp::keyTrackKnob), 0.0f);
+    CHECK (pitchOf (*fixed, note (72)) == Catch::Approx (f60).epsilon (0.01));
+    // pitch bend full up: +2 semitones on the sounding note
+    auto bent = makeProc (1, 0.0f);
+    auto seq = note (60, 100);
+    seq.addEvent (juce::MidiMessage::pitchWheel (1, 16383), 0.0);
+    seq.sort();
+    CHECK (pitchOf (*bent, seq) / f60 == Catch::Approx (std::pow (2.0, 2.0 * 8191.0 / 8192.0 / 12.0)).epsilon (0.01));
+    // mod wheel up: the knob at 0 % but the hit glides like at 100 %
+    auto wheel = makeProc (1, 0.0f), full = makeProc (1, 1.0f);
+    auto withWheel = note (60, 100);
+    withWheel.addEvent (juce::MidiMessage::controllerEvent (1, 1, 127), 0.0);
+    withWheel.sort();
+    const auto w = renderSequence (*wheel, withWheel, len, sr), f = renderSequence (*full, note (60, 100), len, sr);
+    CHECK (maxDifference (w, f) < 1.0e-4);
+}
+
+TEST_CASE ("PP 24. ROLL: HITS sets the count, RUSH speeds the roll up (or slows it down)", "[pp][chips][panel]")
+{
+    const double sr = 48000.0;
+    for (int hits : { 2, 8, 16 })
+    {
+        auto p = makeProc (1, 0.0f);
+        setParam (p->getRollParameter(), 1.0f);
+        setParam (p->getKnobParameter (pp::PewPewDsp::hitsKnob), (float) hits);
+        render (*p, { { 0, 60 } }, (int) (3.0 * sr), sr);
+        CHECK (p->getPewDsp().getTelemetry().triggerCounter.load() == hits);
+    }
+    // the time of the last of 8 hits: shorter with RUSH up, longer with it down
+    auto lastHit = [&] (float rush)
+    {
+        auto p = makeProc (1, 0.0f);
+        setParam (p->getRollParameter(), 1.0f);
+        setParam (p->getKnobParameter (pp::PewPewDsp::hitsKnob), 8.0f);
+        setParam (p->getKnobParameter (pp::PewPewDsp::rushKnob), rush);
+        render (*p, { { 0, 60 } }, (int) (3.0 * sr), sr);
+        return p->getPewDsp().getTelemetry().lastTriggerSample.load();
+    };
+    const auto even = lastHit (0.0f), rushed = lastHit (1.0f), dragged = lastHit (-1.0f);
+    CHECK (even == std::llround (7 * 0.125 * sr)); // 7 sixteenths at 120 BPM
+    CHECK (rushed < even);
+    CHECK (dragged > even);
 }
 
 TEST_CASE ("PP 16. CPU: 8 voices + reverb + delay, stereo 48 kHz", "[pp][cpu]")

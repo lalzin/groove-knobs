@@ -19,12 +19,13 @@ bool writePng (const juce::Image& img, const juce::File& file)
     return os.openedOk() && juce::PNGImageFormat().writeImageToStream (img, os);
 }
 
-juce::Image shoot (pp::PewPewProcessor& proc, float scale, float hitSecondsAgo = -1.0f)
+juce::Image shoot (pp::PewPewProcessor& proc, float scale, float hitSecondsAgo = -1.0f, bool panelOpen = false)
 {
     proc.editorScale.store (juce::jmin (2.0f, scale));
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     auto* editor = dynamic_cast<pp::PewPewEditor*> (ed.get());
     editor->setHitOverride (hitSecondsAgo);
+    editor->setPanelOpen (panelOpen);
     editor->snapForSnapshot();
     return editor->createComponentSnapshot (editor->getLocalBounds(), true, juce::jmax (1.0f, scale / 2.0f));
 }
@@ -152,6 +153,9 @@ int main (int argc, char** argv)
         hitRows.push_back (std::move (row));
     }
     writePng (sheetOf (hitRows), outDir.getChildFile ("hits_sheet.png"));
+    // The "⋯" panel open
+    for (float scale : { 1.0f, 2.0f })
+        writePng (shoot (proc, scale, 0.3f, true), outDir.getChildFile (juce::String ("panel") + (scale > 1.5f ? "@2x" : "") + ".png"));
     std::cout << "screenshots written to " << outDir.getFullPathName() << std::endl;
     return 0;
 }

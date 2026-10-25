@@ -13,7 +13,7 @@ PewPreset PewPreset::fromJson (const juce::var& root)
         return v.isDouble() || v.isInt() || v.isInt64() ? (float) (double) v : fallback;
     };
     const auto osc = root.getProperty ("osc", "sine").toString();
-    p.osc = osc == "triangle" ? Osc::triangle : osc == "square" ? Osc::square : osc == "fm" ? Osc::fm : Osc::sine;
+    p.osc = osc == "triangle" ? Osc::triangle : osc == "square" ? Osc::square : osc == "fm" ? Osc::fm : osc == "metal" ? Osc::metal : Osc::sine;
     p.baseHz = juce::jlimit (20.0f, 2000.0f, num ("baseHz", p.baseHz));
     p.tuneOffset = juce::jlimit (-48.0f, 48.0f, num ("tuneOffset", p.tuneOffset));
     p.sweepOct = juce::jlimit (0.0f, 6.0f, num ("sweepOct", p.sweepOct));
@@ -37,6 +37,8 @@ PewPreset PewPreset::fromJson (const juce::var& root)
     p.detuneCents = juce::jlimit (-1200.0f, 1200.0f, num ("detuneCents", p.detuneCents));
     p.detuneMix = juce::jlimit (0.0f, 1.0f, num ("detuneMix", p.detuneMix));
     p.drive = juce::jlimit (0.0f, 1.0f, num ("drive", p.drive));
+    p.noise = juce::jlimit (0.0f, 1.0f, num ("noise", p.noise));
+    p.wobble = juce::jlimit (0.0f, 1.0f, num ("wobble", p.wobble));
     return p;
 }
 
@@ -44,7 +46,8 @@ PewPreset PewPreset::fromJson (const juce::var& root)
 double PewVoice::baseFrequency (const PewPreset& p, int note) noexcept
 {
     // MIDI note 60 (C3 in Ableton) plays the preset's base frequency
-    return (double) p.baseHz * std::pow (2.0, ((double) note - 60.0 + (double) p.tuneOffset) / 12.0);
+    // (KEY TRACK below 100 %: the notes move the pitch less, 0 = all at the base)
+    return (double) p.baseHz * std::pow (2.0, (((double) note - 60.0) * (double) p.keyTrack + (double) p.tuneOffset) / 12.0);
 }
 
 void PewVoice::start (const Start& s) noexcept
@@ -94,6 +97,21 @@ void PewVoice::start (const Start& s) noexcept
     fmCoeff = std::exp (-1.0 / (p.fmTauMs * 0.001 * sr));
     fmRatio = p.fmRatio;
     gain = p.level * std::pow (juce::jlimit (0.0f, 1.0f, s.velocity), p.velCurve) * 0.25f;
+
+    // NOISE: a band-passed noise burst under the tone (Simmons / syndrum snare)
+    noiseGain = 0.9f * p.noise;
+    noiseEnv = 1.0;
+    noiseCoeff = std::exp (-1.0 / (juce::jmin (250.0, 0.5 * (double) p.decayMs) * lengthScale * 0.001 * sr));
+    noiseCoeffs = gk::TptSvf::Coeffs::make (juce::jlimit (300.0, juce::jmin (8000.0, nyquistGuard), 3.0 * fBase), sr, 0.9);
+    noiseBp.reset();
+    noiseRng = gk::testsignals::Rng (0x9e3779b9u + 7919u * (std::uint32_t) s.note); // the same burst on every hit of a note (a drum, not a hiss)
+    // WOBBLE: a vibrato that grows in over 80 ms, deeper and faster with it
+    wobbleSt = 1.5 * (double) p.wobble;
+    wobbleInc = (5.0 + 4.0 * (double) p.wobble) / sr;
+    wobblePhase = 0.0;
+    wobbleEnv = 0.0;
+    wobbleEnvStep = 1.0 / (0.08 * sr);
+    metalPhase = 0.0;
 
     phase = modPhase = 0.0; // phase reset on every hit
     n = 0;
@@ -151,6 +169,17 @@ double PewVoice::oscillator (double ph, double inc, gk::TptSvf& filter) noexcept
             }
             return std::sin (juce::MathConstants<double>::twoPi * ph + fmIndex * std::sin (juce::MathConstants<double>::twoPi * modPhase));
         }
+        case PewPreset::Osc::metal:
+        {
+            // ring modulation by an inharmonic partner (x 2.76): bell / cowbell partials
+            if (&filter == &lp)
+            {
+                metalPhase += inc * 2.76;
+                metalPhase -= std::floor (metalPhase);
+            }
+            const double a = std::sin (juce::MathConstants<double>::twoPi * ph);
+            return 0.55 * a + 0.8 * a * std::sin (juce::MathConstants<double>::twoPi * metalPhase);
+        }
     }
     return 0.0;
 }
@@ -167,7 +196,7 @@ float PewVoice::pitchPosition() const noexcept
 }
 
 
-float PewVoice::render() noexcept
+float PewVoice::render (double pitchMul) noexcept
 {
     if (! active)
         return 0.0f;
@@ -187,6 +216,15 @@ float PewVoice::render() noexcept
         f = fEnd + glide;
         glide *= glideCoeff;
     }
+    if (wobbleSt > 0.0)
+    {
+        wobblePhase += wobbleInc;
+        wobblePhase -= std::floor (wobblePhase);
+        wobbleEnv = juce::jmin (1.0, wobbleEnv + wobbleEnvStep);
+        f *= std::exp2 (wobbleSt * wobbleEnv * std::sin (juce::MathConstants<double>::twoPi * wobblePhase) / 12.0);
+    }
+    if (pitchMul != 1.0)
+        f = juce::jmin (f * pitchMul, 0.45 * sr);
     const double inc = f / sr;
     phase += inc; // advanced first: the very first sample is not a zero
     phase -= std::floor (phase);
@@ -214,11 +252,18 @@ float PewVoice::render() noexcept
         click = clickHp.processHighpass (rng.bipolar(), clickCoeffs) * e * e * clickGain;
     }
 
-    float y = gain * (float) (v * a + click);
+    double noise = 0.0;
+    if (noiseGain > 0.0f)
+    {
+        noise = noiseBp.processBandpass (noiseRng.bipolar(), noiseCoeffs) * noiseEnv * noiseGain * juce::jmin (1.0, (double) (n + 1) / attackLen);
+        noiseEnv *= noiseCoeff;
+    }
+
+    float y = gain * (float) (v * a + click + noise);
     ++n;
 
     // -60 dB: 5 ms fade, then the voice is free
-    if (releaseLeft < 0 && env < 0.001)
+    if (releaseLeft < 0 && env < 0.001 && noiseEnv * noiseGain < 0.001)
         releaseLeft = releaseLen;
     if (releaseLeft >= 0)
     {
@@ -233,6 +278,66 @@ float PewVoice::render() noexcept
             active = false;
     }
     return y;
+}
+
+//==============================================================================
+PewPreset PewPewDsp::applyPanel (const PewPreset& p, const float* k, int waveIndex) noexcept
+{
+    // Each knob at its default leaves its field untouched (the same sound,
+    // bit for bit, and the calibrated levels)
+    PewPreset e = p;
+    auto scale4 = [] (float knob) { return std::exp2 (4.0f * (knob - 0.5f)); }; // x0.25 .. x4, x1 at 50 %
+    // TOM
+    e.tuneOffset += k[tuneKnob];
+    if (k[decayKnob] != 0.5f)
+    {
+        e.decayMs *= scale4 (k[decayKnob]);
+        e.holdMs *= scale4 (k[decayKnob]);
+    }
+    if (k[glideKnob] != 0.5f)
+    {
+        e.pitchTauMs *= scale4 (k[glideKnob]);
+        e.glideMs *= scale4 (k[glideKnob]);
+    }
+    if (const float d = k[detuneKnob]; d < 0.5f)
+        e.detuneMix *= 2.0f * d;
+    else if (d > 0.5f)
+    {
+        const float x = 2.0f * d - 1.0f;
+        e.detuneMix += (1.0f - e.detuneMix) * x;
+        e.detuneCents += (e.detuneCents < 0.0f ? -25.0f : 25.0f) * x;
+    }
+    // COLOUR
+    if (const float d = k[driveKnob]; d < 0.5f)
+        e.drive *= 2.0f * d;
+    else if (d > 0.5f)
+        e.drive += (1.0f - e.drive) * (2.0f * d - 1.0f);
+    if (const float c = k[clickKnob]; c < 0.5f)
+        e.clickDb = c <= 0.0f ? -200.0f : e.clickDb + gainToDb (2.0f * c);
+    else if (c > 0.5f)
+        e.clickDb = juce::jmin (0.0f, e.clickDb + gainToDb (1.0f + 15.0f * (2.0f * c - 1.0f)));
+    e.noise = juce::jmin (1.0f, e.noise + k[noiseKnob]);
+    // FX (voice part)
+    e.wobble = juce::jmin (1.0f, e.wobble + k[wobbleKnob]);
+    // PLAY
+    if (const float v = k[velKnob]; v < 0.5f)
+        e.velCurve *= 2.0f * v;
+    else if (v > 0.5f)
+        e.velCurve *= 1.0f + 3.0f * (v - 0.5f);
+    e.keyTrack = k[keyTrackKnob];
+    // WAVE: 0 keeps the preset's oscillator
+    using Osc = PewPreset::Osc;
+    const Osc waves[] { Osc::sine, Osc::triangle, Osc::square, Osc::fm, Osc::metal };
+    if (waveIndex >= 1 && waveIndex <= 5)
+        e.osc = waves[waveIndex - 1];
+    return e;
+}
+
+float PewPewDsp::amountForHit() const noexcept
+{
+    // the mod wheel pushes PEW towards 100 % for the next hits
+    const float a = amountForVoices.getCurrent();
+    return modWheel > 0.0f ? a + modWheel * (1.0f - a) : a;
 }
 
 //==============================================================================
@@ -275,8 +380,13 @@ void PewPewDsp::prepare (double newSampleRate, int maxBlockSize, int newNumChann
     echoLp = gk::TptSvf::Coeffs::make (3000.0, sampleRate, 0.7071);
     delayFadeStep = (float) (1.0 / (delayCrossfadeSeconds * sampleRate));
     panicLen = juce::jmax (1, (int) std::round (panicFadeSeconds * sampleRate));
-    for (auto* s : { &roomMix, &echoMix, &amountForVoices, &feedback, &volume })
+    for (auto* s : { &roomMix, &echoMix, &amountForVoices, &feedback, &volume, &toneGain, &echoRight })
         s->prepare (sampleRate, smoothSeconds);
+    toneCoeffs = gk::TptSvf::Coeffs::make (1500.0, sampleRate, 0.7071);
+    bendCoeff = 1.0 - std::exp (-1.0 / (0.005 * sampleRate));
+    bendTarget = bendNow = 0.0;
+    modWheel = 0.0f;
+    appliedRoomSize = -1.0f;
 
     for (auto& v : voices)
         v = PewVoice();
@@ -286,7 +396,7 @@ void PewPewDsp::prepare (double newSampleRate, int maxBlockSize, int newNumChann
     soundRecently = false;
     silentSamples = std::int64_t (1) << 40;
     panicLeft = -1;
-    for (auto* s : { &roomMix, &echoMix, &amountForVoices, &feedback, &volume })
+    for (auto* s : { &roomMix, &echoMix, &amountForVoices, &feedback, &volume, &toneGain, &echoRight })
         s->invalidate();
     amountReady = false;
     delayTime = delayTimeOld = 0.0;
@@ -302,6 +412,7 @@ void PewPewDsp::clearEffects()
     delayWrite = 0;
     echoLpL.reset();
     echoLpR.reset();
+    toneSplit.reset();
 }
 
 void PewPewDsp::reset()
@@ -345,6 +456,8 @@ void PewPewDsp::setKnobs (const float* values, int n)
     room = n > roomKnob ? clamp01 (values[roomKnob]) : 0.0f;
     echo = n > echoKnob ? clamp01 (values[echoKnob]) : 0.0f;
     volumeDb = n > volumeKnob ? values[volumeKnob] : 0.0f;
+    for (int i = 0; i < juce::jmin (n, (int) numKnobs); ++i)
+        knobs[(size_t) i] = values[i];
 }
 
 void PewPewDsp::moveToTail (PewVoice& v)
@@ -388,7 +501,8 @@ void PewPewDsp::noteOn (int note, float velocity, float amountNow, bool up, bool
         moveToTail (*target);
     }
     PewVoice::Start s;
-    s.preset = &presets[(size_t) presetIndex];
+    voicePreset = applyPanel (presets[(size_t) presetIndex], knobs.data(), wave);
+    s.preset = &voicePreset;
     s.note = note;
     s.velocity = velocity;
     s.amount = amountNow;
@@ -407,11 +521,20 @@ void PewPewDsp::renderVoices (float* out, int from, int to)
 {
     for (int i = from; i < to; ++i)
     {
+        double bend = 1.0;
+        if (bendNow != bendTarget)
+        {
+            bendNow += (bendTarget - bendNow) * bendCoeff;
+            if (std::abs (bendTarget - bendNow) < 1.0e-6)
+                bendNow = bendTarget;
+        }
+        if (bendNow != 0.0)
+            bend = std::exp2 (bendNow / 12.0);
         float s = 0.0f;
         for (auto& v : voices)
-            s += v.render();
+            s += v.render (bend);
         for (auto& v : tails)
-            s += v.render();
+            s += v.render (bend);
         out[i] = s;
     }
 }
@@ -421,10 +544,14 @@ void PewPewDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, co
     juce::ScopedNoDenormals noDenormals;
     const auto& p = presets[(size_t) presetIndex];
 
-    if (appliedReverbPreset != presetIndex)
+    // SPACE: the room size, from small (0 %) through the preset's (50 %) to huge
+    const float sp = knobs[spaceKnob];
+    const float roomSize = sp == 0.5f ? p.roomSize : sp < 0.5f ? 0.2f + (p.roomSize - 0.2f) * 2.0f * sp : p.roomSize + (0.98f - p.roomSize) * (2.0f * sp - 1.0f);
+    if (appliedReverbPreset != presetIndex || std::abs (roomSize - appliedRoomSize) > 1.0e-4f)
     {
+        appliedRoomSize = roomSize;
         juce::Reverb::Parameters rp;
-        rp.roomSize = p.roomSize;
+        rp.roomSize = roomSize;
         rp.damping = p.damping;
         rp.wetLevel = 1.0f;
         rp.dryLevel = 0.0f;
@@ -487,9 +614,10 @@ void PewPewDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, co
                 break;
             advanceTo (at);
             r->velocity *= rollDecay;
-            noteOn (r->note, r->velocity, amountForVoices.getCurrent(), r->up, r->longer);
+            noteOn (r->note, r->velocity, amountForHit(), r->up, r->longer);
             telemetry.lastTriggerSample.store (clock0 + at, std::memory_order_relaxed);
             r->nextExact += r->step;
+            r->step *= r->stepFactor; // RUSH: the roll speeds up (or slows down)
             r->next = (std::int64_t) std::llround (r->nextExact);
             --r->left;
         }
@@ -509,7 +637,7 @@ void PewPewDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, co
             if (msg.isNoteOn()) // (velocity 0 counts as a note-off: ignored, the pew is a one-shot)
             {
                 const bool up = toggleAt (upToggle, at), longer = toggleAt (longToggle, at);
-                noteOn (msg.getNoteNumber(), msg.getFloatVelocity(), amountForVoices.getCurrent(), up, longer);
+                noteOn (msg.getNoteNumber(), msg.getFloatVelocity(), amountForHit(), up, longer);
                 telemetry.lastTriggerSample.store (clock0 + at, std::memory_order_relaxed);
                 if (toggleAt (rollToggle, at))
                 {
@@ -526,10 +654,21 @@ void PewPewDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, co
                     slot->next = (std::int64_t) std::llround (slot->nextExact);
                     slot->note = msg.getNoteNumber();
                     slot->velocity = msg.getFloatVelocity();
-                    slot->left = rollHits - 1;
+                    // HITS and RUSH (panel): 5 sixteenths at an even pace by default
+                    slot->left = juce::jlimit (2, 16, juce::roundToInt (knobs[hitsKnob])) - 1;
+                    slot->stepFactor = 1.0 - 0.12 * (double) juce::jlimit (-1.0f, 1.0f, knobs[rushKnob]);
                     slot->up = up;
                     slot->longer = longer;
                 }
+            }
+            else if (msg.isPitchWheel())
+                bendTarget = bendRangeSemitones * juce::jlimit (-1.0, 1.0, (msg.getPitchWheelValue() - 8192) / 8192.0);
+            else if (msg.isControllerOfType (1))
+                modWheel = (float) msg.getControllerValue() / 127.0f;
+            else if (msg.isResetAllControllers())
+            {
+                bendTarget = 0.0;
+                modWheel = 0.0f;
             }
             else if (msg.isAllNotesOff() || msg.isAllSoundOff())
             {
@@ -545,6 +684,16 @@ void PewPewDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, co
     }
     fireRolls (numSamples);
     advanceTo (numSamples);
+
+    // --- TONE: a high shelf on the voices (+-12 dB above 1.5 kHz) -------------
+    toneGain.setTarget (dbToGain (24.0f * (knobs[toneKnob] - 0.5f)));
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const float low = (float) toneSplit.processLowpass (d[i], toneCoeffs); // (always running: no jump when it moves)
+        const float g = toneGain.next();
+        if (g != 1.0f)
+            d[i] = low + g * (d[i] - low);
+    }
 
     // --- Sends -------------------------------------------------------------
     for (int c = 0; c < 2; ++c)
@@ -574,7 +723,11 @@ void PewPewDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, co
         {
             roomMix.setTarget (room * p.reverbMax);
             echoMix.setTarget (echo * 0.5f);
-            feedback.setTarget (p.delayFeedback);
+            // FEEDBACK: none (0 %), the preset's (50 %), up to 0.9;
+            // WIDTH: the echo's right input, mono (0 %) .. the preset's light ping-pong (50 %) .. full ping-pong
+            const float fbk = knobs[feedbackKnob], w = knobs[widthKnob];
+            feedback.setTarget (fbk == 0.5f ? p.delayFeedback : fbk < 0.5f ? p.delayFeedback * 2.0f * fbk : p.delayFeedback + (0.9f - p.delayFeedback) * (2.0f * fbk - 1.0f));
+            echoRight.setTarget (w == 0.5f ? 0.4f : w < 0.5f ? 1.0f - 0.6f * 2.0f * w : 0.4f * (2.0f - 2.0f * w));
             volume.setTarget (volumeDb <= -59.9f ? 0.0f : dbToGain (volumeDb)); // VOL: -inf at the bottom
         }
         const float x = d[i];
@@ -593,7 +746,7 @@ void PewPewDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, co
         }
         const float fb = feedback.next();
         lineL[(size_t) delayWrite] = x + fb * (float) echoLpL.processLowpass (dr, echoLp);
-        lineR[(size_t) delayWrite] = 0.4f * x + fb * (float) echoLpR.processLowpass (dl, echoLp);
+        lineR[(size_t) delayWrite] = echoRight.next() * x + fb * (float) echoLpR.processLowpass (dl, echoLp);
         if (++delayWrite >= delayLen)
             delayWrite = 0;
 

@@ -8,6 +8,10 @@
 //       --div: 0 = 1/16, 1 = 1/8 dotted, 2 = 1/8, 3 = 1/4. Output: stereo 24-bit WAV.
 //   gb_render sweep [--out-dir renders/pew_pew] [--bpm 124] [--sr 48000]
 //       the pattern for every preset at 0 / 50 / 100 %, ROOM and ECHO at 30 %
+//   gb_render levels [--target -20]
+//       RMS and peak of the pattern for every preset (50 %, ROOM / ECHO 30 %,
+//       the calibration of the presets' "level", DECISIONS.md) and the level
+//       that would put it at the target
 
 #include "PewPewProcessor.h"
 #include "PewPatterns.h"
@@ -301,6 +305,32 @@ int main (int argc, char** argv)
                 writeWav (dir.getChildFile (name), out, s.sr);
                 std::cout << "wrote " << name << " (peak " << juce::Decibels::gainToDecibels (out.getMagnitude (0, out.getNumSamples())) << " dBFS)\n";
             }
+        return 0;
+    }
+
+    if (cmd == "levels")
+    {
+        const double target = args.num ("target", -20.0);
+        const auto pattern = pp::testPatternBeats();
+        const auto pm = pp::PewPewProcessor::loadBuiltInPresets();
+        for (int p = 0; p < pm.size(); ++p)
+        {
+            Settings s;
+            s.preset = p;
+            s.amount = 0.5f;
+            s.reverb = s.delay = 0.3f;
+            s.bpm = bpm;
+            const auto out = renderPattern (pattern, s);
+            double e = 0.0;
+            for (int c = 0; c < out.getNumChannels(); ++c)
+                for (int i = 0; i < out.getNumSamples(); ++i)
+                    e += (double) out.getSample (c, i) * out.getSample (c, i);
+            const double rmsDb = 10.0 * std::log10 (e / (out.getNumChannels() * out.getNumSamples()) + 1.0e-20);
+            const double peakDb = juce::Decibels::gainToDecibels (out.getMagnitude (0, out.getNumSamples()));
+            const double level = (double) pm[p].json.getProperty ("level", 1.0);
+            std::cout << pm[p].name << ": rms " << rmsDb << " dB, peak " << peakDb << " dBFS, level " << level << " -> "
+                      << level * std::pow (10.0, (target - rmsDb) / 20.0) << "\n";
+        }
         return 0;
     }
 

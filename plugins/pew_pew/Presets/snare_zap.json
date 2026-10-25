@@ -1,0 +1,23 @@
+{
+  "name": "Disco Snare Zap",
+  "osc": "triangle",
+  "baseHz": 220.0,
+  "sweepOct": 1.6,
+  "endOct": -0.2,
+  "pitchTauMs": 15,
+  "decayMs": 120,
+  "noise": 1.0,
+  "clickDb": -14,
+  "drive": 0.3,
+  "velCurve": 1.4,
+  "roomSize": 0.55,
+  "damping": 0.45,
+  "reverbMax": 0.5,
+  "delayFeedback": 0.3,
+  "toggles": {
+    "up": false,
+    "long": false,
+    "roll": false
+  },
+  "level": 2.842
+}

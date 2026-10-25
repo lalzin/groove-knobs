@@ -1,0 +1,24 @@
+{
+  "name": "8-bit Coin",
+  "osc": "square",
+  "lpHz": 6000,
+  "baseHz": 523.3,
+  "glide": "linear",
+  "sweepOct": 0.0,
+  "endOct": 1.0,
+  "glideMs": 60,
+  "holdMs": 70,
+  "decayMs": 160,
+  "clickDb": -60,
+  "velCurve": 1.0,
+  "roomSize": 0.3,
+  "damping": 0.6,
+  "reverbMax": 0.3,
+  "delayFeedback": 0.3,
+  "toggles": {
+    "up": false,
+    "long": false,
+    "roll": false
+  },
+  "level": 0.705
+}

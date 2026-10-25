@@ -284,20 +284,22 @@
         "en": "The disco pew, as a one-knob instrument"
       },
       "description": {
-        "fr": "Un instrument MIDI : chaque note joue un tom électronique qui glisse, du tom plat (0 %) au pew le plus fou (100 %). Le « disco lazer » de la fin des années 70, joué au clavier ou dans un drum rack. ROOM, ECHO calé sur le tempo (triolets compris), VOL, chips UP / LONG / ROLL, et MODE SOLO (un pew à la fois) ou MULTI.",
-        "en": "A MIDI instrument: every note plays an electronic tom that sweeps, from a plain tom (0 %) to the wildest pew (100 %). The late-70s disco lazer, played from a keyboard or a drum rack. ROOM, tempo-synced ECHO (triplets included), VOL, UP / LONG / ROLL chips, and SOLO (one pew at a time) or MULTI mode."
+        "fr": "Un instrument MIDI : chaque note joue un tom électronique qui glisse, du tom plat (0 %) au pew le plus fou (100 %). Le « disco lazer » de la fin des années 70, joué au clavier ou dans un drum rack. ROOM, ECHO calé sur le tempo (triolets compris), VOL, chips UP / LONG / ROLL, MODE SOLO (un pew à la fois) ou MULTI, et « ⋯ » pour tout le reste : la forme d'onde, la hauteur, la durée, le bruit, le wobble, l'écho, le roulement.",
+        "en": "A MIDI instrument: every note plays an electronic tom that sweeps, from a plain tom (0 %) to the wildest pew (100 %). The late-70s disco lazer, played from a keyboard or a drum rack. ROOM, tempo-synced ECHO (triplets included), VOL, UP / LONG / ROLL chips, SOLO (one pew at a time) or MULTI mode, and \"⋯\" for everything else: waveform, pitch, length, noise, wobble, echo, roll."
       },
       "features": {
         "fr": [
           "Instrument VSTi / AU, latence nulle",
-          "10 presets, Laser Pew en tête",
+          "18 presets, Laser Pew en tête (Simmons, 8-bit, UFO, Dub Siren…)",
           "ROOM, ECHO synchro, VOL, SOLO / MULTI",
+          "« ⋯ » : WAVE (sinus, triangle, carré, FM, métal) et 16 réglages, pitch bend et molette",
           "Tomi frappe son tambour à chaque note"
         ],
         "en": [
           "VSTi / AU instrument, zero latency",
-          "10 presets, led by Laser Pew",
+          "18 presets, led by Laser Pew (Simmons, 8-bit, UFO, Dub Siren…)",
           "ROOM, synced ECHO, VOL, SOLO / MULTI",
+          "\"⋯\": WAVE (sine, triangle, square, FM, metal) and 16 controls, pitch bend and mod wheel",
           "Tomi hits his drum on every note"
         ]
       },
@@ -311,7 +313,15 @@
         "Bubble Pop",
         "Arcade Zap",
         "Disco Cowbell",
-        "Siren Sweep"
+        "Siren Sweep",
+        "Simmons Tom",
+        "8-bit Coin",
+        "UFO Wobble",
+        "Disco Snare Zap",
+        "Zap Burst",
+        "Metal Ping",
+        "Reverse Riser",
+        "Dub Siren"
       ],
       "downloads": {
         "macos": {

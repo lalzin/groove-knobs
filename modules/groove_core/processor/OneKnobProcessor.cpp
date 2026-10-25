@@ -182,7 +182,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
     }
     for (const auto& t : cfg.switches)
         layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { t.id, 1 }, t.name, t.defaultOn));
-    for (const auto& k : cfg.knobs)
+    auto addKnob = [&layout] (const KnobSpec& k)
     {
         juce::NormalisableRange<float> range (k.minimum, k.maximum);
         range.skew = k.skew;
@@ -210,9 +210,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
                                                       return x.containsIgnoreCase ("inf") ? minimum : x.getFloatValue();
                                                   return juce::jlimit (minimum, maximum, x.getFloatValue() / 100.0f);
                                               })));
-    }
+    };
+    for (const auto& k : cfg.knobs)
+        if (! k.late)
+            addKnob (k);
     for (const auto& c : cfg.choices)
         layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { c.id, 1 }, c.name, c.options, c.defaultIndex));
+    for (const auto& k : cfg.knobs)
+        if (k.late)
+            addKnob (k);
     layout.add (std::make_unique<juce::AudioParameterBool> (bypassId, "Bypass", false));
     return layout;
 }

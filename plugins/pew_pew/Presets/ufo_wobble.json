@@ -1,0 +1,26 @@
+{
+  "name": "UFO Wobble",
+  "osc": "sine",
+  "baseHz": 330.0,
+  "glide": "linear",
+  "sweepOct": 0.0,
+  "endOct": -0.6,
+  "glideMs": 900,
+  "holdMs": 200,
+  "decayMs": 900,
+  "wobble": 0.8,
+  "detuneCents": 8,
+  "detuneMix": 0.5,
+  "clickDb": -60,
+  "velCurve": 1.2,
+  "roomSize": 0.75,
+  "damping": 0.3,
+  "reverbMax": 0.55,
+  "delayFeedback": 0.45,
+  "toggles": {
+    "up": false,
+    "long": false,
+    "roll": false
+  },
+  "level": 0.555
+}

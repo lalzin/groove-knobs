@@ -257,6 +257,8 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
     }
     for (size_t k = 0; k < (cfg.editorBuildsControls ? cfg.knobs.size() : 0); ++k)
     {
+        if (cfg.knobs[k].late)
+            continue; // added later: the plugin's editor shows it (e.g. in a "⋯" panel)
         const float along = cfg.knobs.size() > 1 ? juce::jmin (1.0f, (float) k) : 0.5f; // left: start of the arc, right: its end
         smallKnobs.push_back (std::make_unique<SmallKnob> (proc.getKnobParameter ((int) k), palette, cfg.knobs[k].caption, palette.arcColour (along)));
         canvas->addAndMakeVisible (*smallKnobs.back());

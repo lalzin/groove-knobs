@@ -1,0 +1,24 @@
+{
+  "name": "Zap Burst",
+  "osc": "fm",
+  "baseHz": 880.0,
+  "fmRatio": 3.5,
+  "fmIndex": 8.0,
+  "fmTauMs": 30,
+  "sweepOct": 2.0,
+  "endOct": 0.0,
+  "pitchTauMs": 10,
+  "decayMs": 120,
+  "clickDb": -24,
+  "velCurve": 1.3,
+  "roomSize": 0.5,
+  "damping": 0.4,
+  "reverbMax": 0.4,
+  "delayFeedback": 0.45,
+  "level": 1.617,
+  "toggles": {
+    "up": false,
+    "long": false,
+    "roll": false
+  }
+}

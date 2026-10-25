@@ -1,0 +1,21 @@
+{
+  "name": "Metal Ping",
+  "osc": "metal",
+  "baseHz": 440.0,
+  "sweepOct": 0.3,
+  "endOct": -0.1,
+  "pitchTauMs": 40,
+  "decayMs": 600,
+  "clickDb": -28,
+  "velCurve": 1.3,
+  "roomSize": 0.65,
+  "damping": 0.35,
+  "reverbMax": 0.5,
+  "delayFeedback": 0.4,
+  "toggles": {
+    "up": false,
+    "long": false,
+    "roll": false
+  },
+  "level": 0.829
+}

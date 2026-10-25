@@ -24,13 +24,36 @@ namespace
         // (-inf .. +6 dB, 0 dB at three quarters of the travel)
         cfg.knobs = { { "reverb", "Room", "ROOM", 0.0f },
                       { "delay", "Echo", "ECHO", 0.0f },
-                      { "volume", "Volume", "VOL", 0.0f, -60.0f, 6.0f, 3.02f, "dB" } };
+                      { "volume", "Volume", "VOL", 0.0f, -60.0f, 6.0f, 3.02f, "dB" },
+                      // The "⋯" panel (PewPewDsp::PanelKnob order; published after the
+                      // choices: the earlier parameters keep their places). Each default
+                      // leaves the preset as it is.
+                      { "tune", "Tune", "TUNE", 0.0f, -12.0f, 12.0f, 1.0f, "st" },
+                      { "decay", "Decay", "DECAY", 0.5f },
+                      { "glide", "Glide", "GLIDE", 0.5f },
+                      { "detune", "Detune", "DETUNE", 0.5f },
+                      { "drive", "Drive", "DRIVE", 0.5f },
+                      { "click", "Click", "CLICK", 0.5f },
+                      { "noise", "Noise", "NOISE", 0.0f },
+                      { "tone", "Tone", "TONE", 0.5f },
+                      { "wobble", "Wobble", "WOBBLE", 0.0f },
+                      { "space", "Space", "SPACE", 0.5f },
+                      { "feedback", "Feedback", "FEEDBACK", 0.5f },
+                      { "width", "Width", "WIDTH", 0.5f },
+                      { "vel", "Velocity", "VEL", 0.5f },
+                      { "keytrack", "Key track", "KEY TRACK", 1.0f },
+                      { "hits", "Roll hits", "HITS", 5.0f, 2.0f, 16.0f, 1.0f, "hits" },
+                      { "rush", "Roll rush", "RUSH", 0.0f, -1.0f, 1.0f, 1.0f, "%" } };
+        for (size_t k = PewPewDsp::tuneKnob; k < cfg.knobs.size(); ++k)
+            cfg.knobs[k].late = true;
         // shortest to longest (saved by name: older sessions keep their value)
         // MODE: MULTI (default, up to 8 overlap) or SOLO (one pew at a time,
         // each note cuts the previous one); last, so the earlier parameters
         // keep their places; shown by the editor's own SOLO | MULTI switch
         cfg.choices = { { "delayDiv", "Echo division", "SYNC", { "1/16 T", "1/16", "1/8 T", "1/8", "1/8 D", "1/4" }, 4 },
-                        { "mode", "Mode", "MODE", { "Multi", "Solo" }, 0, true } };
+                        { "mode", "Mode", "MODE", { "Multi", "Solo" }, 0, true },
+                        // WAVE (the "⋯" panel): the preset's oscillator, or another
+                        { "wave", "Wave", "WAVE", { "Preset", "Sine", "Triangle", "Square", "FM", "Metal" }, 0, true } };
         cfg.knobLowLabel = "PLAIN";
         cfg.knobHighLabel = "PEW";
         cfg.engineAlwaysRuns = true;   // voices and tails keep ringing at any knob position
@@ -54,6 +77,14 @@ gk::PresetManager PewPewProcessor::loadBuiltInPresets()
         { PPPresets::arcade_zap_json, PPPresets::arcade_zap_jsonSize },
         { PPPresets::disco_cowbell_json, PPPresets::disco_cowbell_jsonSize },
         { PPPresets::siren_sweep_json, PPPresets::siren_sweep_jsonSize },
+        { PPPresets::simmons_tom_json, PPPresets::simmons_tom_jsonSize },
+        { PPPresets::coin_8bit_json, PPPresets::coin_8bit_jsonSize },
+        { PPPresets::ufo_wobble_json, PPPresets::ufo_wobble_jsonSize },
+        { PPPresets::snare_zap_json, PPPresets::snare_zap_jsonSize },
+        { PPPresets::zap_burst_json, PPPresets::zap_burst_jsonSize },
+        { PPPresets::metal_ping_json, PPPresets::metal_ping_jsonSize },
+        { PPPresets::reverse_riser_json, PPPresets::reverse_riser_jsonSize },
+        { PPPresets::dub_siren_json, PPPresets::dub_siren_jsonSize },
     };
     gk::PresetManager pm;
     for (const auto& e : entries)

@@ -1,0 +1,26 @@
+{
+  "name": "Reverse Riser",
+  "osc": "sine",
+  "baseHz": 261.6,
+  "glide": "linear",
+  "sweepOct": 0.0,
+  "endOct": -1.0,
+  "glideMs": 600,
+  "holdMs": 300,
+  "decayMs": 500,
+  "detuneCents": 10,
+  "detuneMix": 0.6,
+  "drive": 0.25,
+  "clickDb": -60,
+  "velCurve": 1.2,
+  "roomSize": 0.8,
+  "damping": 0.3,
+  "reverbMax": 0.6,
+  "delayFeedback": 0.45,
+  "toggles": {
+    "up": true,
+    "long": true,
+    "roll": false
+  },
+  "level": 0.591
+}
