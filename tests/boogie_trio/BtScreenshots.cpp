@@ -19,11 +19,12 @@ bool writePng (const juce::Image& img, const juce::File& file)
     return os.openedOk() && juce::PNGImageFormat().writeImageToStream (img, os);
 }
 
-juce::Image shoot (bt::BoogieTrioProcessor& proc, float scale)
+juce::Image shoot (bt::BoogieTrioProcessor& proc, float scale, bool panelOpen = false)
 {
     proc.editorScale.store (juce::jmin (2.0f, scale)); // the editor caps its zoom at 200 %
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
-    auto* editor = dynamic_cast<gk::OneKnobEditor*> (ed.get());
+    auto* editor = dynamic_cast<bt::BoogieTrioEditor*> (ed.get());
+    editor->setPanelOpen (panelOpen);
     editor->snapForSnapshot();
     return editor->createComponentSnapshot (editor->getLocalBounds(), true, juce::jmax (1.0f, scale / 2.0f));
 }
@@ -148,6 +149,10 @@ int main (int argc, char** argv)
         chipRows.push_back (std::move (row));
     }
     writePng (sheetOf (chipRows), outDir.getChildFile ("chips_sheet.png"));
+    // The "⋯" panel open
+    setParam (proc.getAmountParameter(), 0.75f);
+    for (float scale : { 1.0f, 2.0f })
+        writePng (shoot (proc, scale, true), outDir.getChildFile (juce::String ("panel") + (scale > 1.5f ? "@2x" : "") + ".png"));
     std::cout << "screenshots written to " << outDir.getFullPathName() << std::endl;
     return 0;
 }

@@ -126,27 +126,46 @@ void BoogieTrioDsp::setToggleValues (const float* const* perSample, int numToggl
         toggleData[t] = perSample[t];
 }
 
+void BoogieTrioDsp::setKnobs (const float* values, int n)
+{
+    for (int i = 0; i < juce::jmin (n, (int) numKnobs); ++i)
+        knobs[(size_t) i] = clamp01 (values[i]);
+}
+
 void BoogieTrioDsp::controlTick (float amount) noexcept
 {
     const auto& p = presets[(size_t) presetIndex];
     const auto t = computeTargets (p, amount);
+    const auto k = [this] (Knob id) { return knobs[(size_t) id]; };
+    // What the panel adds comes in with the chorus mix (knob 0: nothing)
+    const float ramp = smoothstep (0.0f, 0.6f, clamp01 (amount));
+
+    // VOICES: LFO rate x0.35 .. x2.8, chorus depth x0 .. x2, vibrato x0 .. x1
+    // then up to +0.5 ms more (6 Hz if the preset has none), tape drift
+    const float rate = std::exp2 (3.0f * (k (rateKnob) - 0.5f));
+    const float vib = 2.0f * k (vibratoKnob);
+    const float vibExtra = juce::jmax (0.0f, vib - 1.0f) * 0.5f * ramp;
+    const float depth = juce::jmin (t.chorusDepthMs * 2.0f * k (depthKnob), p.baseDelayMs - 0.6f);
     baseDelayMs.setTarget (p.baseDelayMs);
-    chorusDepthMs.setTarget (t.chorusDepthMs);
-    vibratoDepthMs.setTarget (t.vibratoDepthMs);
-    chorusHz.setTarget (p.chorusHz);
-    vibratoHz.setTarget (p.vibratoHz);
-    mix.setTarget (t.mix);
-    width.setTarget (t.width);
-    hpfLogHz.setTarget (std::log (p.wetHpfHz));
+    chorusDepthMs.setTarget (juce::jmax (0.0f, depth));
+    vibratoDepthMs.setTarget (t.vibratoDepthMs * juce::jmin (1.0f, vib) + vibExtra);
+    chorusHz.setTarget (p.chorusHz * rate);
+    vibratoHz.setTarget ((p.vibratoHz > 0.1f ? p.vibratoHz : 6.0f) * rate);
+    mix.setTarget (juce::jmin (1.0f, t.mix * 2.0f * k (mixKnob)));
+    width.setTarget (t.width * 2.0f * k (widthKnob));
+    // COLOUR: wet low cut x0.35 .. x2.8, tone +-6 dB, feedback, room
+    hpfLogHz.setTarget (std::log (juce::jlimit (40.0f, 1500.0f, p.wetHpfHz * std::exp2 (3.0f * (k (lowCutKnob) - 0.5f)))));
 
     fxAmount.setTarget (t.fx);
-    feedback.setTarget (p.feedback * t.fx);
-    drift.setTarget (p.driftMs * t.fx);
-    tremolo.setTarget (p.tremoloDepth * t.fx);
+    const float fbSign = p.feedback < 0.0f ? -1.0f : 1.0f;
+    feedback.setTarget (juce::jlimit (-0.8f, 0.8f, p.feedback * t.fx + fbSign * 0.6f * k (feedbackKnob) * ramp));
+    drift.setTarget (juce::jmin (4.0f, p.driftMs * t.fx + 2.0f * k (driftKnob) * ramp));
+    // MOTION: tremolo / autopan and phaser at the preset's rates
+    tremolo.setTarget (juce::jmin (1.0f, p.tremoloDepth * t.fx + 0.7f * k (tremoloKnob) * ramp));
     gate.setTarget (p.gateDepth * t.fx);
-    roomMix.setTarget (p.roomMix * t.fx);
-    toneDb.setTarget (p.toneDb * t.fx);
-    phaserMix.setTarget (p.phaserMix * t.fx);
+    roomMix.setTarget (juce::jmin (1.0f, p.roomMix * t.fx + 0.6f * k (spaceKnob) * ramp));
+    toneDb.setTarget (juce::jlimit (-12.0f, 12.0f, p.toneDb * t.fx + 12.0f * (k (toneKnob) - 0.5f) * ramp));
+    phaserMix.setTarget (juce::jmin (1.0f, p.phaserMix * t.fx + 0.7f * k (phaserKnob) * ramp));
 }
 
 void BoogieTrioDsp::applyRoomSettings() noexcept

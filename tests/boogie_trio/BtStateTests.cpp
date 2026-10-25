@@ -48,8 +48,11 @@ TEST_CASE ("BT 7c. Parameters: order, ids, defaults", "[bt][state]")
     BoogieTrioProcessor p;
     const auto& params = p.getParameters();
     REQUIRE (params.size() >= 5);
-    const char* ids[] { "amount", "preset", "vintage", "wide", "bypass" };
-    for (int i = 0; i < 5; ++i)
+    // the "⋯" panel's knobs come between the chips and bypass (always last)
+    const char* ids[] { "amount", "preset", "vintage", "wide", "rate", "depth", "vibrato", "drift",
+                        "tone", "lowcut", "feedback", "space", "tremolo", "phaser", "mix", "width", "bypass" };
+    REQUIRE (params.size() == 17);
+    for (int i = 0; i < 17; ++i)
     {
         auto* rp = dynamic_cast<juce::RangedAudioParameter*> (params[i]);
         REQUIRE (rp != nullptr);
@@ -57,7 +60,7 @@ TEST_CASE ("BT 7c. Parameters: order, ids, defaults", "[bt][state]")
     }
     CHECK (p.getAmountParameter().getDefaultValue() == Catch::Approx (0.0f));
     CHECK (p.getAmountParameter().getText (0.5f, 32) == "50 %");
-    CHECK (p.getNumPrograms() == 8);
+    CHECK (p.getNumPrograms() == 15);
     CHECK (p.getProgramName (0) == "Disco Strings");
     CHECK (p.getBypassParameter() == &p.getBypassParameterObject());
     CHECK (p.getPresetParameter().isMetaParameter());

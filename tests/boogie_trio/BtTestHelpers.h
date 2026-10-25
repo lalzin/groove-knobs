@@ -9,7 +9,7 @@ namespace bttest
 using namespace gktest;
 using bt::BoogieTrioProcessor;
 
-constexpr int numPresets = 8;
+constexpr int numPresets = 15;
 
 /** Bus layouts under test: mono → mono, stereo → stereo, mono → stereo. */
 enum class Layout { mono, stereo, monoToStereo };

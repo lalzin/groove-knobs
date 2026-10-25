@@ -4,6 +4,7 @@
 - **Crackle** entre dans la suite : le grain lo-fi en un knob (voir les versions de test ci-dessous). L'installateur de la suite (macOS et Windows) contient les huit plugins.
 - **French Filter** : 7 presets de plus (16) — Clean Cut (le filtre DJ propre), Sub Diver, Dub Wash, Stereo Swirl, Hard Pump, Crunch Loop, Laser Riser.
 - **Kick Lock** : la S-curve et MIX 100 % par défaut.
+- **Boogie Trio** : « ⋯ » (en bas à droite) ouvre MORE — VOICES (RATE, DEPTH, VIBRATO, DRIFT), COLOUR (TONE, LOW CUT, FEEDBACK, SPACE), MOTION (TREMOLO, PHASER, MIX, WIDTH) ; réglages neutres par défaut (le son d'avant). 7 presets de plus (15) : Tape Flutter, Leslie Spin, Glass Flanger, Autopan Groove, Dream Hall, Chop Shop, Dark Ensemble.
 - La mascotte de chaque plugin en icône de son application (macOS, Windows) et de ses installateurs Windows.
 - **Sing It Back** : les notes en lettres (C D E…) ou en solfège (Do Ré Mi…), au choix dans le menu de la tonalité.
 - **Slapper** : FUNK répond tout de suite, y compris sur les notes qui sonnent déjà (avant : l'ancien réglage restait un instant) ; Pluck ne bouge plus qu'avec FUNK ; plus de notes oubliées en MIDI (une touche rejouée avant d'être relâchée est toujours jouée) ; « ⋯ » (sous MONO / POLY) ouvre SLIDE (le portamento, coupé par défaut : chaque note est pincée), GHOST (le seuil des ghost notes), HUMAN, VEL (la sensibilité à la vélocité), PICK, STRING, BODY, RELEASE, SUB, BEND (l'ampleur du pitch bend), OCTAVE.

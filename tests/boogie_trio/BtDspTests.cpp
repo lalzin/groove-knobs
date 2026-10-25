@@ -78,6 +78,48 @@ TEST_CASE ("BT 2. Stability: no NaN/Inf and output peak below 0 dBFS", "[bt][dsp
                     }
 }
 
+TEST_CASE ("BT 2b. Stability: the \"⋯\" knobs at their extremes, swept while playing", "[bt][dsp][stability]")
+{
+    const double sr = 48000.0;
+    const int n = (int) (2.0 * sr);
+    const auto in = ts::whiteNoise (2, n, 0.7f, 5u);
+    for (int preset = 0; preset < numPresets; ++preset)
+        for (int corner = 0; corner < 3; ++corner) // all at 0, all at 1, swept 0 -> 1
+        {
+            CAPTURE (preset, corner);
+            auto proc = makeProc (Layout::stereo, sr, preset, 1.0f, 1, 1);
+            const int numKnobs = (int) proc->getConfig().knobs.size();
+            REQUIRE (numKnobs == bt::BoogieTrioDsp::numKnobs);
+            const auto out = run (*proc, in, 2, { 64 }, [&] (int pos)
+                                  {
+                                      const float v = corner == 2 ? (float) pos / (float) n : (float) corner;
+                                      for (int k = 0; k < numKnobs; ++k)
+                                          setParam (proc->getKnobParameter (k), v);
+                                  });
+            REQUIRE (allFinite (out));
+            REQUIRE (out.getMagnitude (0, n) < 1.0f);
+        }
+}
+
+TEST_CASE ("BT 2c. The \"⋯\" knobs keep the null test at amount 0", "[bt][dsp][null]")
+{
+    const double sr = 48000.0;
+    const auto in = ts::whiteNoise (2, (int) (0.5 * sr), 0.5f, 7u);
+    for (int preset = 0; preset < numPresets; ++preset)
+    {
+        CAPTURE (preset);
+        auto proc = makeProc (Layout::stereo, sr, preset, 0.0f, 1, 1);
+        for (int k = 0; k < (int) proc->getConfig().knobs.size(); ++k)
+            setParam (proc->getKnobParameter (k), 1.0f);
+        const auto out = run (*proc, in, 2, { 512 });
+        float maxDiff = 0.0f;
+        for (int c = 0; c < 2; ++c)
+            for (int i = 0; i < in.getNumSamples(); ++i)
+                maxDiff = juce::jmax (maxDiff, std::abs (out.getSample (c, i) - in.getSample (c, i)));
+        CHECK (maxDiff == 0.0f);
+    }
+}
+
 //==============================================================================
 namespace
 {

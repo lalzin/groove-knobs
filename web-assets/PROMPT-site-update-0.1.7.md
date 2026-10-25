@@ -12,7 +12,8 @@
    Fenêtre 420 × 520 comme les autres.
 2. **Toute la suite passe en 0.1.7** ; l'installateur de la suite contient les huit (`suite.includes`).
    Slapper : FUNK instantané, plus de notes oubliées en MIDI, nouveaux réglages « ⋯ ». Sing It Back :
-   notation en lettres au choix.
+   notation en lettres au choix. Boogie Trio : « ⋯ » avec 12 réglages, 15 presets (`features`,
+   `presets` mis à jour dans `plugins.json`). French Filter : 16 presets.
 3. Visuels : `crackle/` (ui-hero, ui-hero@3x, galerie `ui-effects`, `ui-radio`, `ui-crushed` avec
    légendes FR/EN dans `gallery`, mascot, poses, og, card-square, icon-512) ;
    `groove-knobs-banner.webp` / `groove-knobs-og.webp` : huit fenêtres.

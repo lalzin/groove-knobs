@@ -18,8 +18,9 @@
 - **Sing It Back** : les notes en lettres (C D E…) ou en solfège (Do Ré Mi…).
 - **French Filter** : 7 presets de plus (Clean Cut, Sub Diver, Dub Wash, Stereo Swirl, Hard Pump, Crunch Loop, Laser Riser).
 - **Kick Lock** : la S-curve et MIX 100 % par défaut.
+- **Boogie Trio** : « ⋯ » ouvre 12 réglages (RATE, DEPTH, VIBRATO, DRIFT, TONE, LOW CUT, FEEDBACK, SPACE, TREMOLO, PHASER, MIX, WIDTH) ; 7 presets de plus (Tape Flutter, Leslie Spin, Glass Flanger, Autopan Groove, Dream Hall, Chop Shop, Dark Ensemble).
 - Chaque application a l'icône de sa mascotte.
-- *Crackle (new): lo-fi grain in one knob — natural vinyl crackle, tape (wow, flutter, hiss, dropouts), six RC-20-style saturation types with FOCUS, AM radio, bitcrush; every effect adjustable under "⋯" (AUTO follows GRAIN), NOISE level; 12 presets at the input's loudness. Slapper: FUNK answers at once, no more missed MIDI notes, SLIDE / GHOST / VEL / RELEASE / SUB / BEND / OCTAVE under "⋯". Sing It Back: letter note names (C D E) or solfège.*
+- *Crackle (new): lo-fi grain in one knob — natural vinyl crackle, tape (wow, flutter, hiss, dropouts), six RC-20-style saturation types with FOCUS, AM radio, bitcrush; every effect adjustable under "⋯" (AUTO follows GRAIN), NOISE level; 12 presets at the input's loudness. Slapper: FUNK answers at once, no more missed MIDI notes, SLIDE / GHOST / VEL / RELEASE / SUB / BEND / OCTAVE under "⋯". Sing It Back: letter note names (C D E) or solfège. Boogie Trio: 12 more controls under "⋯" and 7 new presets (15).*
 
 ### Windows (10 / 11, 64 bits)
 **Toute la suite d'un coup** : `GrooveKnobs-…-Windows-Setup.exe` (les huit plugins, chacun décochable). *The whole suite at once: `GrooveKnobs-…-Windows-Setup.exe`.*

@@ -145,24 +145,33 @@
       "features": {
         "fr": [
           "Chorus 3 voix, centre mono intact",
-          "8 presets (gate, phaser, trémolo, bande…)",
+          "15 presets (gate, phaser, trémolo, Leslie, flanger, bande…)",
           "VINTAGE et WIDE",
+          "« ⋯ » : 12 réglages (vitesse, profondeur, vibrato, tone, feedback, réverbe, trémolo, phaser…)",
           "Velvet et ses clones à l'écran"
         ],
         "en": [
           "3-voice chorus, mono-safe centre",
-          "8 presets (gate, phaser, tremolo, tape…)",
+          "15 presets (gate, phaser, tremolo, Leslie, flanger, tape…)",
           "VINTAGE and WIDE",
+          "\"⋯\": 12 controls (rate, depth, vibrato, tone, feedback, space, tremolo, phaser…)",
           "Velvet and his clones on screen"
         ]
       },
       "presets": [
-        "Disco Strings",
+        "Autopan Groove",
+        "Chop Shop",
+        "Dark Ensemble",
         "Disco Gate",
+        "Disco Strings",
+        "Dream Hall",
         "Funk Keys",
+        "Glass Flanger",
         "Jet Set",
+        "Leslie Spin",
         "Lush Pad",
         "Moon Phaser",
+        "Tape Flutter",
         "Velvet",
         "Warble"
       ],

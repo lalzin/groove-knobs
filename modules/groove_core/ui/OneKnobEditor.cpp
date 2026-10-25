@@ -242,7 +242,7 @@ OneKnobEditor::OneKnobEditor (OneKnobProcessor& p, Palette pal, juce::String t, 
         // Plugins with toggles show them as clickable chips in the same place
         // (with small knobs, the chips stack under the first one: the ring's
         // opening is too narrow for more than two)
-        toggleChips = std::make_unique<ToggleChips> (proc, palette, false, ! cfg.knobs.empty());
+        toggleChips = std::make_unique<ToggleChips> (proc, palette, false, cfg.editorBuildsControls && ! cfg.knobs.empty());
         canvas->addAndMakeVisible (*toggleChips);
     }
     if (! cfg.switches.empty() && cfg.editorBuildsControls)

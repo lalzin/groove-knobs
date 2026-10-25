@@ -54,6 +54,14 @@ public:
     static constexpr int maxChannels = 2;
     static constexpr int controlInterval = 8;
     static constexpr int vintageToggle = 0, wideToggle = 1;
+    /** The "⋯" panel's knobs (OneKnobConfig::knobs order). Neutral at their
+        defaults (the calibrated makeup holds); what they add grows with the
+        knob like the chorus mix (0 = the input, bit-exact). */
+    enum Knob { rateKnob, depthKnob, vibratoKnob, driftKnob,       // VOICES
+                toneKnob, lowCutKnob, feedbackKnob, spaceKnob,     // COLOUR
+                tremoloKnob, phaserKnob, mixKnob, widthKnob,       // MOTION
+                numKnobs };
+    static constexpr float knobDefaults[numKnobs] { 0.5f, 0.5f, 0.5f, 0.0f, 0.5f, 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.5f, 0.5f };
     static constexpr float voiceOffsetMs[numVoices] { -0.3f, 0.0f, 0.3f };
     static constexpr float widePan = 0.85f, narrowPan = 0.35f; // mono output only (legacy panning constants)
     static constexpr float sideGain = 1.6f;    // "Wider"-style side level at full knob (pronounced chorus)
@@ -71,6 +79,7 @@ public:
     int getLatencySamples() const override { return 0; }
     void setPreset (int index) override { presetIndex = juce::jlimit (0, (int) presets.size() - 1, index); }
     void setToggleValues (const float* const* perSample, int numToggles) override;
+    void setKnobs (const float* values, int numKnobs) override;
     void processWet (juce::AudioBuffer<float>& buffer, int numSamples, const float* amount, const gk::BlockTiming& timing) override;
     float getModulationPhase() const noexcept override { return modPhase.load (std::memory_order_relaxed); }
 
@@ -90,6 +99,9 @@ private:
     double sampleRate = 44100.0;
     int numChannels = 2;
     std::uint32_t counter = 0;
+
+    std::array<float, numKnobs> knobs { knobDefaults[0], knobDefaults[1], knobDefaults[2], knobDefaults[3], knobDefaults[4], knobDefaults[5],
+                                        knobDefaults[6], knobDefaults[7], knobDefaults[8], knobDefaults[9], knobDefaults[10], knobDefaults[11] };
 
     const float* toggleData[2] { nullptr, nullptr };
     int numToggleData = 0;
