@@ -69,13 +69,13 @@
       "features": {
         "fr": [
           "Knob bipolaire LP / HP, centre transparent",
-          "9 presets à deux côtés",
+          "16 presets à deux côtés",
           "Pump calé sur le kick, growl, phaser",
           "Mascotte animée qui réagit au son"
         ],
         "en": [
           "Bipolar LP / HP knob, transparent centre",
-          "9 two-sided presets",
+          "16 two-sided presets",
           "Kick-locked pump, growl, phaser",
           "Animated mascot that reacts to the sound"
         ]
@@ -89,7 +89,14 @@
         "Sounds Better",
         "Space",
         "Sunrise Sweep",
-        "Touch 98"
+        "Touch 98",
+        "Clean Cut",
+        "Sub Diver",
+        "Dub Wash",
+        "Stereo Swirl",
+        "Hard Pump",
+        "Crunch Loop",
+        "Laser Riser"
       ],
       "downloads": {
         "macos": {

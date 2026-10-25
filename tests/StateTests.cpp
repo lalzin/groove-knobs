@@ -54,7 +54,7 @@ TEST_CASE ("6b. State: invalid or newer data is ignored", "[state]")
 TEST_CASE ("6c. Programs mirror the preset parameter", "[state]")
 {
     FrenchFilterProcessor p;
-    REQUIRE (p.getNumPrograms() == 9);
+    REQUIRE (p.getNumPrograms() == 16);
     CHECK (p.getProgramName (0) == "Filtered Disco");
     CHECK (p.getProgramName (3) == "Acid Disco");
     CHECK (p.getProgramName (7) == "Lady Groove");

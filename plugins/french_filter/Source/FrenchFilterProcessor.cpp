@@ -33,6 +33,13 @@ gk::PresetManager FrenchFilterProcessor::loadBuiltInPresets()
         { FFPresets::sounds_better_json, FFPresets::sounds_better_jsonSize },
         { FFPresets::lady_groove_json, FFPresets::lady_groove_jsonSize },
         { FFPresets::space_json, FFPresets::space_jsonSize },
+        { FFPresets::clean_cut_json, FFPresets::clean_cut_jsonSize },
+        { FFPresets::sub_diver_json, FFPresets::sub_diver_jsonSize },
+        { FFPresets::dub_wash_json, FFPresets::dub_wash_jsonSize },
+        { FFPresets::stereo_swirl_json, FFPresets::stereo_swirl_jsonSize },
+        { FFPresets::hard_pump_json, FFPresets::hard_pump_jsonSize },
+        { FFPresets::crunch_loop_json, FFPresets::crunch_loop_jsonSize },
+        { FFPresets::laser_riser_json, FFPresets::laser_riser_jsonSize },
     };
 
     gk::PresetManager pm;

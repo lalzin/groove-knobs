@@ -16,6 +16,9 @@
 - **Crackle** (nouveau) : le grain lo-fi en un knob, GRAIN — craquements de vinyle naturels, cassette (wow, flutter, souffle, coupures), saturation (six types : lampe, transformateur, haut-parleur, bande, repliement, écrêtage, avec FOCUS), radio AM, bitcrush. Chaque effet a son knob dans « ⋯ » (AUTO : il suit GRAIN tant qu'on ne le touche pas), NOISE règle le niveau des bruits. 12 presets au volume de l'entrée. Mascotte : Hiss la cassette.
 - **Slapper** : FUNK répond tout de suite ; plus de notes oubliées en MIDI (une note rejouée avant d'être relâchée est toujours jouée) ; « ⋯ » : SLIDE (portamento, coupé par défaut), GHOST, HUMAN, VEL, PICK, STRING, BODY, RELEASE, SUB, BEND, OCTAVE ; Pluck ne bouge plus qu'avec FUNK.
 - **Sing It Back** : les notes en lettres (C D E…) ou en solfège (Do Ré Mi…).
+- **French Filter** : 7 presets de plus (Clean Cut, Sub Diver, Dub Wash, Stereo Swirl, Hard Pump, Crunch Loop, Laser Riser).
+- **Kick Lock** : la S-curve et MIX 100 % par défaut.
+- Chaque application a l'icône de sa mascotte.
 - *Crackle (new): lo-fi grain in one knob — natural vinyl crackle, tape (wow, flutter, hiss, dropouts), six RC-20-style saturation types with FOCUS, AM radio, bitcrush; every effect adjustable under "⋯" (AUTO follows GRAIN), NOISE level; 12 presets at the input's loudness. Slapper: FUNK answers at once, no more missed MIDI notes, SLIDE / GHOST / VEL / RELEASE / SUB / BEND / OCTAVE under "⋯". Sing It Back: letter note names (C D E) or solfège.*
 
 ### Windows (10 / 11, 64 bits)

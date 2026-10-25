@@ -199,7 +199,7 @@ private:
     // parameters
     bool lock = false, phaseOn = true, precise = false;
     float targetPhase = 0.0f, offsetMs = 0.0f, subCutoff = 120.0f, depth = 1.0f, waveStart = 0.0f, thresholdDb = -18.0f;
-    int shape = exponential, release = 2, lockMode = continuous, trigger = triggerAuto, linkChannel = 1;
+    int shape = sCurve, release = 2, lockMode = continuous, trigger = triggerAuto, linkChannel = 1;
     std::int64_t lastSidechainKick = -1000000; // the last kick on the sidechain (Auto: the beats take over 2 s after)
     double lastBeatFloor = 0.0;
     bool beatValid = false;

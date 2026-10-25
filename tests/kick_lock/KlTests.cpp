@@ -32,6 +32,8 @@ std::unique_ptr<KickLockProcessor> makeKl (double sr, float mix, bool lock, floa
     setParam (p->getMixParameter(), mix);
     setParam (p->getLockParameter(), lock ? 1.0f : 0.0f);
     setParam (p->getDepthParameter(), depth);
+    // the measured ducking assumes the exponential curve (the default is now the S-curve)
+    setParam (p->getShapeParameter(), (float) KickLockDsp::exponential);
     // most tests feed the kick through the sidechain bus: TRIGGER Sidechain
     // (Auto follows Kick Lock Send, else the tempo; tested on their own)
     setParam (p->getTriggerParameter(), (float) KickLockDsp::triggerSidechain);
@@ -487,10 +489,11 @@ TEST_CASE ("KL 15. State round trip, the defaults, the reset button", "[kl][stat
     CHECK (b.getReleaseParameter().getIndex() == 4);
     CHECK (b.getLockModeParameter().getIndex() == 1);
     CHECK (b.editorScale.load() == Catch::Approx (1.5f));
-    // defaults: MIX 60 % first, LOCK off, release 1/8, 120 Hz, -18 dB
+    // defaults: MIX 100 % first, the S-curve, LOCK off, release 1/8, 120 Hz, -18 dB
     KickLockProcessor c;
     CHECK (dynamic_cast<juce::RangedAudioParameter*> (c.getParameters()[0])->getParameterID() == "mix");
-    CHECK (plain (c.getMixParameter()) == Catch::Approx (0.6f));
+    CHECK (plain (c.getMixParameter()) == Catch::Approx (1.0f));
+    CHECK (c.getShapeParameter().getIndex() == KickLockDsp::sCurve);
     CHECK_FALSE (c.getLockParameter().get());
     CHECK (c.getReleaseParameter().getCurrentChoiceName() == "1/8");
     CHECK (c.getLockModeParameter().getCurrentChoiceName() == "Hold");
@@ -498,9 +501,9 @@ TEST_CASE ("KL 15. State round trip, the defaults, the reset button", "[kl][stat
     CHECK (plain (c.getThresholdParameter()) == Catch::Approx (-18.0f));
     // the reset button
     b.resetAllToDefaults();
-    CHECK (plain (b.getMixParameter()) == Catch::Approx (0.6f).margin (1.0e-4));
+    CHECK (plain (b.getMixParameter()) == Catch::Approx (1.0f).margin (1.0e-4)); // (100 % wet, S-curve: the defaults)
     CHECK_FALSE (b.getLockParameter().get());
-    CHECK (b.getShapeParameter().getIndex() == 0);
+    CHECK (b.getShapeParameter().getIndex() == KickLockDsp::sCurve);
     // the sidechain bus exists and is called so (hosts route a track to it)
     CHECK (c.getBusCount (true) == 2);
     CHECK (c.getBus (true, 1)->getName() == "Sidechain");
@@ -617,7 +620,7 @@ TEST_CASE ("KL 20. Custom curve (LFOTool style): the gain follows the points, sa
     CHECK (gainAt (0.9) == Catch::Approx (0.5f).margin (0.02));  // second half
     CHECK (gainAt (1.5) == Catch::Approx (0.5f).margin (0.02));  // the last value held after the release
 
-    // saved and restored with the session; the reset button brings the exponential back
+    // saved and restored with the session; the reset button brings the default (S-curve) back
     juce::MemoryBlock state;
     p->getStateInformation (state);
     KickLockProcessor b;
@@ -627,8 +630,8 @@ TEST_CASE ("KL 20. Custom curve (LFOTool style): the gain follows the points, sa
     CHECK (b.getCustomCurve()[2].y == Catch::Approx (0.5f).margin (1.0e-3));
     CHECK (b.getShapeParameter().getIndex() == KickLockDsp::custom);
     b.resetAllToDefaults();
-    CHECK (b.getCustomCurve().size() == 2);
-    CHECK (b.getShapeParameter().getIndex() == KickLockDsp::exponential);
+    CHECK (b.getCustomCurve().size() == KickLockDsp::presetCurve (KickLockDsp::sCurve).size()); // (the custom curve starts from the S-curve)
+    CHECK (b.getShapeParameter().getIndex() == KickLockDsp::sCurve);
 }
 
 TEST_CASE ("KL 21. No kick, the host playing: ducking on the beats (TRIGGER Auto / Beat), no phase analysis; a kick takes over", "[kl][trigger]")
