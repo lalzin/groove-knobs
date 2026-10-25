@@ -15,7 +15,7 @@
     "downloads": {
       "macos": {
         "file": "GrooveKnobs-0.1.7-macOS.pkg",
-        "bytes": 262756893,
+        "bytes": 262787928,
         "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
         "formats": [
           "VST3",
@@ -101,7 +101,7 @@
       "downloads": {
         "macos": {
           "file": "FrenchFilter-0.1.7-macOS.pkg",
-          "bytes": 37416835,
+          "bytes": 37447721,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
@@ -443,7 +443,7 @@
       "downloads": {
         "macos": {
           "file": "KickLock-0.1.7-macOS.pkg",
-          "bytes": 75126373,
+          "bytes": 75126523,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
