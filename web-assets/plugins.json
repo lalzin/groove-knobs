@@ -15,7 +15,7 @@
     "downloads": {
       "macos": {
         "file": "GrooveKnobs-0.1.7-macOS.pkg",
-        "bytes": 262864981,
+        "bytes": 262963962,
         "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
         "formats": [
           "VST3",
@@ -326,7 +326,7 @@
       "downloads": {
         "macos": {
           "file": "PewPew-0.1.7-macOS.pkg",
-          "bytes": 33955369,
+          "bytes": 34054332,
           "requirements": "macOS 10.13+, Apple Silicon & Intel (universal)",
           "formats": [
             "VST3",
