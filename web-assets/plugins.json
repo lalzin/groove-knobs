@@ -26,7 +26,7 @@
       },
       "windows": {
         "file": "GrooveKnobs-0.1.7-Windows-Setup.exe",
-        "bytes": null,
+        "bytes": 73952164,
         "requirements": "Windows 10/11 64-bit",
         "formats": [
           "VST3",
@@ -112,7 +112,7 @@
         },
         "windows": {
           "file": "FrenchFilter-0.1.7-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 14735797,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -189,7 +189,7 @@
         },
         "windows": {
           "file": "BoogieTrio-0.1.7-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 6136563,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -256,7 +256,7 @@
         },
         "windows": {
           "file": "Backwash-0.1.7-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 6636369,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -337,7 +337,7 @@
         },
         "windows": {
           "file": "PewPew-0.1.7-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 13349614,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -406,7 +406,7 @@
         },
         "windows": {
           "file": "SingItBack-0.1.7-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 11781280,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -477,7 +477,7 @@
         },
         "windows": {
           "file": "KickLock-0.1.7-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 24230762,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -654,7 +654,7 @@
         },
         "windows": {
           "file": "Slapper-0.1.7-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 9305477,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -759,7 +759,7 @@
         },
         "windows": {
           "file": "Crackle-0.1.7-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 6706935,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
