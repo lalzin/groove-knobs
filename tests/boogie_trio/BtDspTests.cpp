@@ -78,7 +78,7 @@ TEST_CASE ("BT 2. Stability: no NaN/Inf and output peak below 0 dBFS", "[bt][dsp
                     }
 }
 
-TEST_CASE ("BT 2b. Stability: the \"⋯\" knobs at their extremes, swept while playing", "[bt][dsp][stability]")
+TEST_CASE ("BT 2b. Stability: the ... panel knobs at their extremes, swept while playing", "[bt][dsp][stability]")
 {
     const double sr = 48000.0;
     const int n = (int) (2.0 * sr);
@@ -101,7 +101,7 @@ TEST_CASE ("BT 2b. Stability: the \"⋯\" knobs at their extremes, swept while p
         }
 }
 
-TEST_CASE ("BT 2c. The \"⋯\" knobs keep the null test at amount 0", "[bt][dsp][null]")
+TEST_CASE ("BT 2c. The ... panel knobs keep the null test at amount 0", "[bt][dsp][null]")
 {
     const double sr = 48000.0;
     const auto in = ts::whiteNoise (2, (int) (0.5 * sr), 0.5f, 7u);

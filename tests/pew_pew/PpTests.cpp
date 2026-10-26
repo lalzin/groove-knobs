@@ -829,7 +829,7 @@ double maxDifference (const Buffer& a, const Buffer& b)
 }
 } // namespace
 
-TEST_CASE ("PP 21. The \"⋯\" knobs: defaults leave the sound as it was, each one does something, extremes stay clean", "[pp][panel]")
+TEST_CASE ("PP 21. The ... panel knobs: defaults leave the sound as it was, each one does something, extremes stay clean", "[pp][panel]")
 {
     const double sr = 48000.0;
     const auto beats = pp::testPatternBeats();
