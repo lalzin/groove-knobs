@@ -25,26 +25,30 @@
 // reads the input sample itself), and the Doppler delay is 0 at the path's
 // nearest point.
 
-#include "Shape.h"
+#include "Motion.h"
+#include "ShapeBank.h"
 #include <array>
 #include <cmath>
 #include <vector>
 
 namespace headspin
 {
-/** The parameters of step 1 (the others come with step 2: shapes, sync,
-    groove, retrigger). */
 struct Params
 {
+    float shape = 0.0f;       // 0..5: circle, oval, triangle, square, eight, star (morphing in between)
     float mix = 1.0f;         // 0..1
     float width = 1.0f;       // 0.2..1, left / right stretch
     float depth = 1.0f;       // 0.2..1, front / back stretch
     float rotationDeg = 0.0f; // -180..180, clockwise
     bool leftToRight = true;  // direction (clockwise seen from above)
+    bool sync = true;         // MODE: Sync (tempo divisions) or Hz
+    int division = division::oneBar;
     float rateHz = 0.5f;      // 0.01..20
     float startDeg = 0.0f;    // 0..360, starting point on the path
     float distance = 0.5f;    // 0..1, how much distance attenuates and adds room
     float levelDb = 0.0f;     // -12..+6
+    float groove = 0.0f;      // 0..1: a rest on every beat
+    Motion::Retrigger retrigger = Motion::Retrigger::off;
 };
 
 /** Where the sound is (for the UI and the tests). */
@@ -78,9 +82,16 @@ public:
     void reset();
     void setParams (const Params& p) { target = p; }
 
-    /** Processes in place: left / right (right may be the same buffer as
-        left for a mono input; the output is always two channels). */
-    void process (const float* inL, const float* inR, float* outL, float* outR, int n);
+    /** Message thread: builds the path for the current SHAPE if it changed
+        (the audio thread picks it up at its next block, crossfaded). */
+    void updateShape() { store.request (target.shape); }
+
+    /** inL / inR: the input (the same pointer twice for a mono input); the
+        output is always two channels. `transport`: the host's tempo and
+        position at the first sample; `noteOns`: sample offsets of the MIDI
+        note-ons in this block (RETRIGGER MIDI). */
+    void process (const float* inL, const float* inR, float* outL, float* outR, int n, const Transport& transport = {},
+                  const int* noteOns = nullptr, int numNoteOns = 0);
 
     /** Where the source is now. */
     Position position() const;
@@ -169,12 +180,23 @@ private:
         }
     };
 
+    static constexpr double shapeFadeSeconds = 0.020, jumpGlideSeconds = 0.012;
+
+    Point pathPoint (double u) const;   // the (crossfaded) table, before stretch / rotation
+    Point glidedPoint (double u) const; // + the glide after a jump
+    Position transform (Point p) const; // stretch, rotation, azimuth, distance
+
     double sr = 48000.0;
     Params target;
-    Smooth sMix, sWidth, sDepth, sRot, sRate, sDist, sLevel;
+    ShapeStore store;
+    int currentSlot = 0, previousSlot = -1;
+    double shapeFade = 1.0, shapeFadeStep = 0.0;
+    Motion motion;
+    double glide = 1.0, glideStep = 0.0;
+    Point glideFrom, lastPoint;
+    Smooth sMix, sWidth, sDepth, sRot, sRate, sDist, sLevel, sDoppler;
     double phase = 0.0;
     bool started = false;
-    ShapeTable shape;
     double width = 1.0, depth = 1.0, rotation = 0.0;
     FracDelay delay; // the mono source: Doppler + interaural delays, read once per ear
     // head shadow (one-pole / one-zero per ear): previous input and output

@@ -88,11 +88,19 @@ static std::vector<float> shaker (size_t n)
     return y;
 }
 
-static Stereo run (const std::vector<float>& mono, Params p, const std::function<void (Params&, size_t)>& change = {})
+struct Host
+{
+    double bpm = 115.0;
+    bool playing = false;
+    std::vector<int> noteOns; // sample positions (RETRIGGER MIDI)
+};
+
+static Stereo run (const std::vector<float>& mono, Params p, const std::function<void (Params&, size_t)>& change = {}, const Host& host = {})
 {
     Spinner s;
     s.prepare (sr);
     s.setParams (p);
+    s.updateShape();
     Stereo out { std::vector<float> (mono.size()), std::vector<float> (mono.size()) };
     const int block = 256;
     for (size_t i = 0; i < mono.size(); i += block)
@@ -101,9 +109,18 @@ static Stereo run (const std::vector<float>& mono, Params p, const std::function
         {
             change (p, i);
             s.setParams (p);
+            s.updateShape(); // (the message thread, in the plugin)
         }
         const int len = (int) std::min ((size_t) block, mono.size() - i);
-        s.process (mono.data() + i, mono.data() + i, out.l.data() + i, out.r.data() + i, len);
+        Transport t;
+        t.bpm = host.bpm;
+        t.playing = host.playing;
+        t.ppq = (double) i / sr * host.bpm / 60.0;
+        int notes[64], count = 0;
+        for (int at : host.noteOns)
+            if (at >= (int) i && at < (int) i + len && count < 64)
+                notes[count++] = at - (int) i;
+        s.process (mono.data() + i, mono.data() + i, out.l.data() + i, out.r.data() + i, len, t, notes, count);
     }
     return out;
 }
@@ -130,7 +147,7 @@ int main (int argc, char** argv)
     const auto shake = shaker (n);
 
     struct Job { const char* name; const std::vector<float>* src; Params p; };
-    auto P = [] (float rate, bool l2r = true) { Params p; p.rateHz = rate; p.leftToRight = l2r; return p; };
+    auto P = [] (float rate, bool l2r = true) { Params p; p.sync = false; p.rateHz = rate; p.leftToRight = l2r; return p; };
     Params oval = P (0.5f); oval.depth = 0.35f;
     Params ovalRot = oval; ovalRot.rotationDeg = 45.0f;
     Params far = P (0.25f); far.distance = 1.0f; far.depth = 1.0f;
@@ -164,11 +181,132 @@ int main (int argc, char** argv)
     const auto flip = run (guitar, P (0.5f), [] (Params& p, size_t i) { p.leftToRight = (i / (2 * sr)) % 2 == 0; });
     writeWav (out + "/headspin_step1_guitar_direction_flips.wav", flip);
 
-    // --- Checks -----------------------------------------------------------
-    // 1. The side over one turn, a 1 kHz sine at 0.25 Hz: L - R balance in 8 steps
     std::vector<float> sine (n);
     for (size_t i = 0; i < n; ++i)
         sine[i] = 0.5f * (float) std::sin (2.0 * M_PI * 1000.0 * i / sr);
+    // --- Step 2: shapes, morph, sync, groove, retrigger ------------------------
+    Host playing;
+    playing.playing = true; // 115 BPM, the guitar loop's tempo
+    auto S = [] (float shape, int div) { Params p; p.shape = shape; p.sync = true; p.division = div; return p; };
+    const int bar = division::oneBar, twoBars = 6, quarter = 15, eighth = 18;
+    for (int k = 0; k < shapes::count; ++k)
+    {
+        const auto o = run (guitar, S ((float) k, bar), {}, playing);
+        writeWav (out + "/headspin_step2_shape_" + shapes::name (k) + "_1bar.wav", o);
+    }
+    writeWav (out + "/headspin_step2_morph_sweep_circle_to_star.wav",
+              run (guitar, S (0.0f, bar), [] (Params& p, size_t i) { p.shape = (float) (5.0 * i / n); }, playing));
+    {
+        struct Preset { const char* name; Params p; };
+        Params merry = S (0.0f, twoBars);
+        Params pingPong = S (1.0f, quarter);
+        Params trance = S (2.0f, eighth);
+        Params behind = S (1.0f, bar); behind.rotationDeg = 90.0f; behind.distance = 0.8f; // the oval turned: deep
+        Params spin = S (0.0f, bar); spin.sync = false; spin.rateHz = 8.0f;
+        Params eight = S (4.0f, bar);
+        Params reverse = S (0.0f, twoBars); reverse.leftToRight = false; reverse.groove = 0.5f;
+        const Preset presets[] { { "merry_go_round", merry }, { "ping_pong_club", pingPong }, { "triangle_trance", trance }, { "behind_you", behind },
+                                 { "headspin", spin }, { "figure_eight", eight }, { "reverse_ride", reverse } };
+        for (const auto& pr : presets)
+            writeWav (out + "/headspin_step2_preset_" + pr.name + ".wav", run (guitar, pr.p, {}, playing));
+    }
+    for (float g : { 0.5f, 1.0f })
+    {
+        Params p = S (0.0f, bar);
+        p.groove = g;
+        writeWav (out + "/headspin_step2_groove" + std::to_string ((int) (g * 100)) + "_circle_1bar.wav", run (guitar, p, {}, playing));
+    }
+    {
+        Params p = S (0.0f, bar);
+        p.retrigger = Motion::Retrigger::transient;
+        p.startDeg = 270.0f; // every transient starts on the left
+        writeWav (out + "/headspin_step2_retrigger_transient.wav", run (guitar, p, {}, playing));
+        Host notes = playing;
+        for (int k = 0; k < 16; ++k)
+            notes.noteOns.push_back ((int) (k * 2.0 * 60.0 / 115.0 * sr)); // every half note
+        p.retrigger = Motion::Retrigger::midi;
+        writeWav (out + "/headspin_step2_retrigger_midi_halfnotes.wav", run (guitar, p, {}, notes));
+    }
+
+    // Constant speed along each path (the spec: < 2 % on the triangle)
+    {
+        ShapeBank bank;
+        std::printf ("speed along the path (max deviation from the mean, 2048 steps):");
+        for (double sv : { 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 2.5 })
+        {
+            ShapeTable t;
+            bank.buildMorph (sv, t);
+            const int steps = 2048;
+            std::vector<double> len;
+            double mean = 0.0;
+            for (int k = 0; k < steps; ++k)
+            {
+                const auto a = t.at ((double) k / steps), b = t.at ((double) (k + 1) / steps);
+                len.push_back (std::hypot (b.x - a.x, b.y - a.y));
+                mean += len.back() / steps;
+            }
+            double dev = 0.0;
+            for (double l : len)
+                dev = std::fmax (dev, std::fabs (l - mean) / mean);
+            std::printf (" %s %.2f %%", sv == 2.5 ? "triangle-square" : shapes::name ((int) sv), 100.0 * dev);
+        }
+        std::printf ("\n");
+    }
+    // Sync: 64 bars at 124 BPM, blocks of 512: the phase against the bar
+    {
+        Spinner s;
+        s.prepare (sr);
+        Params p = S (0.0f, bar);
+        s.setParams (p);
+        s.updateShape();
+        std::vector<float> z (512), oz (512);
+        const double bpm = 124.0;
+        const size_t total = (size_t) std::llround (64 * 4 * 60.0 / bpm * sr);
+        double worst = 0.0;
+        for (size_t i = 0; i < total; i += 512)
+        {
+            Transport t;
+            t.bpm = bpm;
+            t.playing = true;
+            t.ppq = (double) i / sr * bpm / 60.0;
+            s.process (z.data(), z.data(), oz.data(), oz.data(), 512, t);
+            const double ppqEnd = (double) (i + 512) / sr * bpm / 60.0;
+            const double expected = ppqEnd / 4.0, got = s.getPhase();
+            double err = std::fmod (std::fabs (got - expected), 1.0);
+            err = std::fmin (err, 1.0 - err);
+            worst = std::fmax (worst, err);
+        }
+        std::printf ("sync, 64 bars at 124 BPM: worst phase error %.2e turn (%.4f deg)\n", worst, worst * 360.0);
+    }
+    // No click: the largest sample step with instant changes, against the steady render
+    {
+        auto maxStep = [] (const Stereo& o)
+        {
+            float m = 0.0f;
+            for (size_t i = 1; i < o.l.size(); ++i)
+                m = std::fmax (m, std::fmax (std::fabs (o.l[i] - o.l[i - 1]), std::fabs (o.r[i] - o.r[i - 1])));
+            return m;
+        };
+        // a 1 kHz sine: its own steps are known (~0.07 at full wet), anything above is a click
+        const auto& src = sine;
+        const auto steady = run (src, S (0.0f, bar), {}, playing);
+        const auto shapeJumps = run (src, S (0.0f, bar), [] (Params& p, size_t i) { p.shape = (float) ((i / (sr / 2)) % 6); }, playing);
+        const auto dirFlips = run (src, S (0.0f, bar), [] (Params& p, size_t i) { p.leftToRight = (i / (sr / 3)) % 2 == 0; }, playing);
+        const auto modeFlips = run (src, S (0.0f, bar), [] (Params& p, size_t i) { p.sync = (i / (sr / 2)) % 2 == 0; p.rateHz = 3.0f; }, playing);
+        Params rp = S (0.0f, quarter);
+        rp.retrigger = Motion::Retrigger::transient;
+        rp.startDeg = 90.0f;
+        Host clicks = playing;
+        for (int k = 0; k < 16; ++k)
+            clicks.noteOns.push_back ((int) ((0.37 + k * 0.9) * sr));
+        rp.retrigger = Motion::Retrigger::midi;
+        const auto retrig = run (src, rp, {}, clicks);
+        std::printf ("largest step: steady %.3f, shape changed every 0.5 s %.3f, direction every 0.33 s %.3f, Hz / Sync every 0.5 s %.3f, MIDI retrigger %.3f\n",
+                     maxStep (steady), maxStep (shapeJumps), maxStep (dirFlips), maxStep (modeFlips), maxStep (retrig));
+    }
+
+    // --- Checks -----------------------------------------------------------
+    // 1. The side over one turn, a 1 kHz sine at 0.25 Hz: L - R balance in 8 steps
     for (bool l2r : { true, false })
     {
         Params p = P (0.25f, l2r);

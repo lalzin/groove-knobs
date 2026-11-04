@@ -30,13 +30,39 @@ public:
 
     /** Builds the table from a closed curve c(u), u in [0, 1): sampled
         finely, then resampled at equal arc length. */
-    void build (const std::function<Point (double)>& curve)
+    /** `rounding`: corners rounded over this fraction of the curve's
+        parameter (a moving average, twice): the sound turns a corner instead
+        of changing direction at once, and the arc-length table holds a
+        constant speed everywhere (a sharp corner would be cut by one chord). */
+    void build (const std::function<Point (double)>& curve, double rounding = 0.0)
     {
         constexpr int fine = 16384;
         std::vector<Point> p (fine + 1);
         std::vector<double> len (fine + 1, 0.0);
-        for (int i = 0; i <= fine; ++i)
-            p[(size_t) i] = curve ((double) (i % fine) / fine);
+        for (int i = 0; i < fine; ++i)
+            p[(size_t) i] = curve ((double) i / fine);
+        if (const int half = (int) (0.5 * rounding * fine); half > 0)
+            for (int pass = 0; pass < 2; ++pass)
+            {
+                std::vector<Point> q (fine);
+                double sx = 0.0, sy = 0.0;
+                for (int k = -half; k <= half; ++k)
+                {
+                    sx += p[(size_t) ((k + fine) % fine)].x;
+                    sy += p[(size_t) ((k + fine) % fine)].y;
+                }
+                const double w = 1.0 / (2 * half + 1);
+                for (int i = 0; i < fine; ++i)
+                {
+                    q[(size_t) i] = { sx * w, sy * w };
+                    const auto& add = p[(size_t) ((i + half + 1) % fine)];
+                    const auto& sub = p[(size_t) ((i - half + fine) % fine)];
+                    sx += add.x - sub.x;
+                    sy += add.y - sub.y;
+                }
+                std::copy (q.begin(), q.end(), p.begin());
+            }
+        p[fine] = p[0];
         for (int i = 1; i <= fine; ++i)
             len[(size_t) i] = len[(size_t) i - 1] + std::hypot (p[(size_t) i].x - p[(size_t) i - 1].x, p[(size_t) i].y - p[(size_t) i - 1].y);
         perimeter = len[fine];
