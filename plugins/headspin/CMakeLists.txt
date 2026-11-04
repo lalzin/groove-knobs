@@ -65,6 +65,7 @@ juce_add_plugin(HeadSpin
     PLUGIN_MANUFACTURER_CODE    ${GK_MANUFACTURER_CODE}
     PLUGIN_CODE                 ${HS_PLUGIN_CODE}
     FORMATS                     VST3 AU Standalone
+    ICON_BIG                    ${CMAKE_CURRENT_SOURCE_DIR}/Assets/app_icon.png  # Kiko (app icon, macOS and Windows)
     IS_SYNTH                    FALSE
     NEEDS_MIDI_INPUT            TRUE   # RETRIGGER MIDI
     NEEDS_MIDI_OUTPUT           FALSE

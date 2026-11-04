@@ -1,13 +1,13 @@
 ﻿; Groove Knobs — Windows installer for the whole suite (Inno Setup 6).
 ; Built by scripts/make_installer_win.ps1 (-Plugin All or Suite), or:
-;   iscc /DMyAppVersion=0.1.7 /DBuildRoot=<...>\build-win\plugins installer\windows\GrooveKnobsSuite.iss
+;   iscc /DMyAppVersion=0.1.8 /DBuildRoot=<...>\build-win\plugins installer\windows\GrooveKnobsSuite.iss
 ; One component per plug-in (VST3 + standalone), all selected; the same files
 ; and folders as the single installers, so either can update the other.
 
 #define MyAppName "Groove Knobs"
 #define MyPublisher "LALZIN"
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.7"
+  #define MyAppVersion "0.1.8"
 #endif
 #ifndef BuildRoot
   #define BuildRoot "..\..\build-win\plugins"
@@ -73,6 +73,9 @@ Name: "sl\app"; Description: "Standalone application"; Types: full
 Name: "cr"; Description: "Crackle — one-knob lo-fi grain: vinyl, tape, radio, bitcrush"; Types: full vst3 custom
 Name: "cr\vst3"; Description: "VST3"; Types: full vst3 custom
 Name: "cr\app"; Description: "Standalone application"; Types: full
+Name: "hs"; Description: "Head Spin — the sound goes round your head, on a shape"; Types: full vst3 custom
+Name: "hs\vst3"; Description: "VST3"; Types: full vst3 custom
+Name: "hs\app"; Description: "Standalone application"; Types: full
 
 [Files]
 Source: "icons\GrooveKnobs.ico"; DestDir: "{app}"; Flags: ignoreversion
@@ -93,6 +96,8 @@ Source: "{#BuildRoot}\slapper\Slapper_artefacts\Release\VST3\Slapper.vst3\*"; De
 Source: "{#BuildRoot}\slapper\Slapper_artefacts\Release\Standalone\Slapper.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: sl\app
 Source: "{#BuildRoot}\crackle\Crackle_artefacts\Release\VST3\Crackle.vst3\*"; DestDir: "{commoncf64}\VST3\Crackle.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: cr\vst3
 Source: "{#BuildRoot}\crackle\Crackle_artefacts\Release\Standalone\Crackle.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: cr\app
+Source: "{#BuildRoot}\headspin\HeadSpin_artefacts\Release\VST3\Head Spin.vst3\*"; DestDir: "{commoncf64}\VST3\Head Spin.vst3"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: hs\vst3
+Source: "{#BuildRoot}\headspin\HeadSpin_artefacts\Release\Standalone\Head Spin.exe"; DestDir: "{app}"; Flags: ignoreversion; Components: hs\app
 Source: "..\common\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\common\THIRD_PARTY_NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\common\LilitaOne-OFL.txt"; DestDir: "{app}"; Flags: ignoreversion
@@ -106,6 +111,7 @@ Name: "{autoprograms}\Groove Knobs\Sing It Back"; Filename: "{app}\Sing It Back.
 Name: "{autoprograms}\Groove Knobs\Kick Lock"; Filename: "{app}\Kick Lock.exe"; Components: kl\app
 Name: "{autoprograms}\Groove Knobs\Slapper"; Filename: "{app}\Slapper.exe"; Components: sl\app
 Name: "{autoprograms}\Groove Knobs\Crackle"; Filename: "{app}\Crackle.exe"; Components: cr\app
+Name: "{autoprograms}\Groove Knobs\Head Spin"; Filename: "{app}\Head Spin.exe"; Components: hs\app
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{commoncf64}\VST3\French Filter.vst3"; Components: ff\vst3
@@ -117,9 +123,10 @@ Type: filesandordirs; Name: "{commoncf64}\VST3\Kick Lock.vst3"; Components: kl\v
 Type: filesandordirs; Name: "{commoncf64}\VST3\Kick Lock Send.vst3"; Components: kl\vst3
 Type: filesandordirs; Name: "{commoncf64}\VST3\Slapper.vst3"; Components: sl\vst3
 Type: filesandordirs; Name: "{commoncf64}\VST3\Crackle.vst3"; Components: cr\vst3
+Type: filesandordirs; Name: "{commoncf64}\VST3\Head Spin.vst3"; Components: hs\vst3
 
 [Messages]
-en.WelcomeLabel2=This will install the Groove Knobs suite {#MyAppVersion} on your computer: French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back, Kick Lock, Slapper and Crackle (choose them on the next pages).%n%nby LALZIN — with groove and love ♥
-fr.WelcomeLabel2=La suite Groove Knobs {#MyAppVersion} va être installée sur votre ordinateur : French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back, Kick Lock, Slapper et Crackle (à choisir aux étapes suivantes).%n%nby LALZIN — with groove and love ♥
+en.WelcomeLabel2=This will install the Groove Knobs suite {#MyAppVersion} on your computer: French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back, Kick Lock, Slapper, Crackle and Head Spin (choose them on the next pages).%n%nby LALZIN — with groove and love ♥
+fr.WelcomeLabel2=La suite Groove Knobs {#MyAppVersion} va être installée sur votre ordinateur : French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back, Kick Lock, Slapper, Crackle et Head Spin (à choisir aux étapes suivantes).%n%nby LALZIN — with groove and love ♥
 en.FinishedLabel=Groove Knobs is installed.%n%nIn Ableton Live: Options > Preferences > Plug-Ins, enable "Use VST3 Plug-In System Folders", then Rescan. Pew Pew and Slapper are instruments (MIDI track). Kick Lock goes on the bass, Kick Lock Send on the kick's track.%n%nby LALZIN — with groove and love ♥
 fr.FinishedLabel=Groove Knobs est installé.%n%nDans Ableton Live : Options > Préférences > Plug-Ins, activez « Use VST3 Plug-In System Folders », puis Rescan. Pew Pew et Slapper sont des instruments (piste MIDI). Kick Lock va sur la basse, Kick Lock Send sur la piste du kick.%n%nby LALZIN — with groove and love ♥

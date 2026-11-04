@@ -1,4 +1,4 @@
-# Groove Knobs — French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back, Kick Lock, Slapper, Crackle
+# Groove Knobs — French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back, Kick Lock, Slapper, Crackle, Head Spin
 
 La suite **Groove Knobs** (LALZIN) : des plugins à un seul knob pour la funky house et la disco. **French Filter** (le filtre French Touch), **Boogie Trio** (chorus triple de string machine), **Backwash** (reverb inversée calée sur le tempo), **Pew Pew** (le pew disco, instrument) et **Sing It Back** (une foule qui chante avec ta voix).
 VST3 / AU / Standalone, macOS (universel) et Windows.
@@ -279,3 +279,11 @@ Effet : **le grain lo-fi en un knob**, GRAIN (0 = le son intact, au bit près). 
 - Chaque effet a son knob dans « ⋯ » (TAPE, VINYL, RADIO, SATURATION, DIGITAL), avec **AUTO** : il suit GRAIN (sa courbe, `GrainMap.h`) tant qu'on ne le touche pas. **NOISE** : le niveau des bruits ajoutés seulement.
 - 12 presets, volume calibré sur de la musique (`cr_render calibrate`). Tests : `ctest -R cr_`.
 
+# Head Spin
+
+Effet : **le son tourne autour de ta tête**, vue de dessus, sur une forme ; **MIX** en knob principal (0 = le son intact, au bit près). Mascotte : **Kiko**, le b-boy (vu de dessus au centre, de face à gauche).
+
+- **Formes** : rond, ovale, triangle, carré, huit, étoile, et **CUSTOM** — ton dessin au crayon dans la vue de dessus (remis dans le sens horaire, départ devant, lissé, hors de la tête, sauvé avec la session). Morphing continu entre voisines (glisser sur les icônes). Vitesse constante le long du trajet (abscisse curviligne, coins arrondis). À la souris : tirer la forme l'étire (LARGEUR / PROFONDEUR), tirer à l'extérieur ou avec alt la tourne (ROTATION), double-clic : remise à zéro.
+- **Mouvement** : SENS (gauche → droite = horaire vu de dessus, le son passe devant), MODE Sync (8 mesures à 1/32, normal / pointé / triolet, calé sur la mesure) ou Hz (0,01–20), DÉPART, GROOVE (une pause sur chaque temps), RELANCE (une note MIDI ou une attaque ramène le son au départ, glissé de 12 ms).
+- **Rendu** : modèle de tête sphérique (Woodworth, ombre de Brown-Duda par oreille, pavillon avant / arrière, distance 1/r et salle, Doppler limité à ±2 %) ; **RENDER** Enceintes (panoramique + indices) ou Casque (binaural) ; **3D** pousse l'avant / l'arrière et la distance au-delà du réel (devant : présence ; derrière : étouffé, plus de salle) ; DISTANCE, LEVEL ; indicateur de somme mono. Latence nulle, aucune allocation dans le traitement.
+- 7 presets (Merry-Go-Round, Ping Pong Club, Triangle Trance, Behind You, Headspin, Figure Eight, Reverse Ride). Tests : `ctest -R hs_`. Prototype et rendus : `prototypes/headspin/render`. Poses de Kiko : `scripts/make_kiko_frames.sh`.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.8 — 2026-11-04 (toute la suite, neuf plugins)
+- **Head Spin** entre dans la suite : le son tourne autour de ta tête, vue de dessus, sur une forme (six formes et le dessin libre au crayon, morphing, étirer / tourner à la souris), calé sur le tempo ou en Hz ; modèle de tête pour les enceintes ou le casque (binaural), 3D, GROOVE, RELANCE ; 7 presets ; Kiko le b-boy en mascotte. L'installateur de la suite (macOS et Windows) contient les neuf plugins. Les autres plugins passent en 0.1.8 sans changement de son.
+
+## Head Spin 0.1.0-test1…test4 — 2026-11-04 (versions de test, hors suite)
+- Le moteur de trajectoire (abscisse curviligne : vitesse constante), le mode Enceintes d'après le modèle de tête sphérique (Woodworth, ombre Brown-Duda par oreille, pavillon, distance, Doppler), les six formes et leur morphing, Sync calé sur la mesure, GROOVE, RELANCE ; l'interface façon Kick Lock avec Kiko ; la forme libre (crayon) ; le knob 3D.
+
 ## 0.1.7 — 2026-10-23 (toute la suite, huit plugins)
 - **Crackle** entre dans la suite : le grain lo-fi en un knob (voir les versions de test ci-dessous). L'installateur de la suite (macOS et Windows) contient les huit plugins.
 - **French Filter** : 7 presets de plus (16) — Clean Cut (le filtre DJ propre), Sub Diver, Dub Wash, Stereo Swirl, Hard Pump, Crunch Loop, Laser Riser.
