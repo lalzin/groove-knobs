@@ -201,6 +201,77 @@ int main (int argc, char** argv)
         }
         std::printf ("\n");
     }
+    // 1c. Loudness: wet (MIX 1) against the input, the guitar going round, several paths
+    {
+        auto rmsDb = [] (const std::vector<float>& x) { return 10.0 * std::log10 (energy (x, sr, x.size()) / (double) (x.size() - sr)); };
+        const double inDb = rmsDb (guitar);
+        float inPeak = 0.0f;
+        for (float v : guitar)
+            inPeak = std::fmax (inPeak, std::fabs (v));
+        std::printf ("input peak %.2f; the dry (L+R power) is +3.0 dB against the input\n", inPeak);
+        for (auto pr : { std::pair<const char*, Params> { "circle 0.25 Hz", P (0.25f) }, { "circle 4 Hz", P (4.0f) }, { "oval", oval } })
+        {
+            const auto o = run (guitar, pr.second);
+            const double outDb = 10.0 * std::log10 ((energy (o.l, sr, n) + energy (o.r, sr, n)) / (double) (n - sr)); // L + R power
+            std::printf ("loudness %-14s: wet (L+R power) %+.1f dB against the input\n", pr.first, outDb - inDb);
+        }
+    }
+    // 1d. The cues, measured: white noise held at one place (rate 0), the
+    // level of each ear above 3 kHz and in 2-6 kHz, and the room's share
+    {
+        std::vector<float> noise (n);
+        std::mt19937 rng (3);
+        std::uniform_real_distribution<float> u (-0.3f, 0.3f);
+        for (auto& v : noise)
+            v = u (rng);
+        auto bandDb = [] (const std::vector<float>& x, double lo, double hi)
+        {
+            // crude band energy: one-pole high-pass at lo then low-pass at hi
+            double hpState = 0.0, prev = 0.0, lp = 0.0, e = 0.0;
+            const double aH = std::exp (-2.0 * M_PI * lo / sr), aL = 1.0 - std::exp (-2.0 * M_PI * hi / sr);
+            for (size_t i = 0; i < x.size(); ++i)
+            {
+                hpState = aH * (hpState + x[i] - prev);
+                prev = x[i];
+                lp += aL * (hpState - lp);
+                if (i > (size_t) sr)
+                    e += lp * lp;
+            }
+            return 10.0 * std::log10 (e + 1e-30);
+        };
+        std::printf ("held noise (DISTANCE 0.5): ear levels L / R, above 3 kHz | 2-6 kHz | below 1 kHz\n");
+        for (float az : { 0.0f, 45.0f, 90.0f, 135.0f, 180.0f })
+        {
+            Params p = P (0.0f);
+            p.startDeg = az;
+            const auto o = run (noise, p);
+            std::printf ("  %3.0f deg: HF %+.1f / %+.1f  mid %+.1f / %+.1f  low %+.1f / %+.1f\n", az, bandDb (o.l, 3000, 20000), bandDb (o.r, 3000, 20000),
+                         bandDb (o.l, 2000, 6000), bandDb (o.r, 2000, 6000), bandDb (o.l, 20, 1000), bandDb (o.r, 20, 1000));
+        }
+    }
+    // 1e. Doppler: a 1 kHz sine on the oval (DEPTH 0.35) at 1 Hz, DISTANCE 1: the pitch swing
+    {
+        Params p = oval;
+        p.rateHz = 1.0f;
+        p.distance = 1.0f;
+        const auto o = run (sine, p);
+        double lo = 1e9, hi = 0.0, last = -1.0;
+        for (size_t i = (size_t) sr; i < n; ++i)
+        {
+            const float a = o.l[i - 1] + o.r[i - 1], b = o.l[i] + o.r[i];
+            if (a < 0.0f && b >= 0.0f)
+            {
+                const double t = (double) (i - 1) + a / (a - b);
+                if (last > 0.0)
+                {
+                    const double hz = sr / (t - last);
+                    if (hz > 900 && hz < 1100) { lo = std::fmin (lo, hz); hi = std::fmax (hi, hz); }
+                }
+                last = t;
+            }
+        }
+        std::printf ("Doppler, oval at 1 Hz, DISTANCE 1: 1 kHz goes %.1f .. %.1f Hz\n", lo, hi);
+    }
     // 2. MIX 0: the input, exactly
     {
         Params p = P (3.0f);

@@ -1,19 +1,29 @@
 #pragma once
 // HEAD SPIN — step 1: the trajectory engine and the "speakers" rendering.
 //
-//   in (mono or stereo) ─┬───────────────────────────────────────────── dry ─┐
-//                        └─> mono ─> position on the path (phase, stretch,  │
-//                            rotation) ─> azimuth θ, distance r ─┐           ├─> MIX (constant power) ─> LEVEL ─> out
-//                                                                │           │
-//      for each ear: constant-power gain (sin θ) ─> interaural  ─┤           │
-//      delay (far ear, up to 0.6 ms, 3rd-order Lagrange) ─> head ─┤           │
-//      shadow (far ear, 6 dB/oct low-pass 20 kHz → 3 kHz) ─>      │           │
-//      behind the head: highs down a little ─> 1/r gain ──────────┴─> wet ───┘
-//                                         └─> small room (send grows with r and behind)
+// The source moves on the path around a spherical head (the structural model
+// of Brown & Duda, 1998, revised by later work), each ear rendered on its own:
 //
-// θ: 0 = front, +90° = right; r = 1 on the circle through the ears.
-// No latency: the near ear is never delayed (a delay of 0 reads the input
-// sample itself), MIX 0 gives the input back exactly.
+//   in ─> mono ─┬─> per-ear fractional delay: Doppler (the source's distance,
+//               │   one line, read twice) + Woodworth interaural delay
+//               │   (the far ear, up to ~0.65 ms), 3rd-order Lagrange
+//               ├─> per-ear head shadow: Brown-Duda one-pole / one-zero filter,
+//               │   its zero set by the angle between the source and that ear
+//               │   (the ear facing it gets brighter, the shadowed one darker)
+//               ├─> pinna front / back cue (parametric, after Iida): a little
+//               │   "concha" peak around 4 kHz in front, a dip there and less
+//               │   air above 8 kHz behind
+//               ├─> constant-power amplitude panning (sin θ), stronger
+//               │   level difference when the source comes close (near field)
+//               └─> distance: direct level 1/r, direct-to-reverberant ratio
+//                   falling with distance (a small room fed at a near-constant
+//                   level), Doppler from the same distance
+//   MIX (constant power, MIX 0 = the input exactly) ─> LEVEL ─> out
+//
+// θ: 0 = front, +90° = right; r = 1 on the circle through the ears. Zero
+// latency: only the difference between the ears is delayed (the earlier ear
+// reads the input sample itself), and the Doppler delay is 0 at the path's
+// nearest point.
 
 #include "Shape.h"
 #include <array>
@@ -48,9 +58,21 @@ struct Position
 class Spinner
 {
 public:
-    static constexpr double maxItdSeconds = 0.0006; // a head ~ 20 cm across
-    static constexpr double shadowMinHz = 3000.0, shadowMaxHz = 20000.0;
+    static constexpr double headRadius = 0.0875;     // m (the usual spherical head)
+    static constexpr double speedOfSound = 343.0;    // m/s
+    static constexpr double pathScale = 1.0;         // m: the ears' circle (r = 1) is 1 m away, for the Doppler
+    static constexpr double maxDopplerShift = 0.02;  // +-2 % of pitch at most (musical, at any speed)
+    static constexpr double maxDopplerSeconds = 0.012;
+    static constexpr double shadowAmount = 0.7;      // the head model's level difference, scaled (loudspeakers: the
+                                                     // listener's own head shadows too)
     static constexpr double smoothSeconds = 0.020;
+
+    /** Woodworth / Brown-Duda: the delay at an ear for a source at angle
+        phi (radians) from that ear's axis, relative to the head's centre. */
+    static double earDelaySeconds (double phi) noexcept;
+    /** Brown-Duda head shadow: the zero's coefficient alpha (0.1 .. 2) for a
+        source at angle phi (radians, 0 = facing the ear). */
+    static double shadowAlpha (double phi) noexcept;
 
     void prepare (double sampleRate);
     void reset();
@@ -154,8 +176,15 @@ private:
     bool started = false;
     ShapeTable shape;
     double width = 1.0, depth = 1.0, rotation = 0.0;
-    FracDelay delayL, delayR;
-    double shadowL = 0.0, shadowR = 0.0, backL = 0.0, backR = 0.0;
+    FracDelay delay; // the mono source: Doppler + interaural delays, read once per ear
+    // head shadow (one-pole / one-zero per ear): previous input and output
+    double hsXL = 0.0, hsYL = 0.0, hsXR = 0.0, hsYR = 0.0, hsG = 1.0;
+    // pinna cue: a TPT state-variable band-pass at 4 kHz and a one-pole above 8 kHz, per ear
+    struct Svf { double ic1 = 0.0, ic2 = 0.0; };
+    Svf pinnaL, pinnaR;
+    double svfG = 0.0, svfK = 1.0, svfA1 = 1.0, svfA2 = 0.0, svfA3 = 0.0;
+    double airL = 0.0, airR = 0.0, airCoeff = 0.0;
+    double nearestRadius = 1.0; // of the current path (the Doppler delay is 0 there)
     Room room;
 };
 } // namespace headspin
