@@ -48,6 +48,7 @@ struct Params
     float distance = 0.5f;    // 0..1, how much distance attenuates and adds room
     float levelDb = 0.0f;     // -12..+6
     float groove = 0.0f;      // 0..1: a rest on every beat
+    bool headphones = false;  // RENDER: binaural for headphones (the structural head model, whole) or loudspeakers
     float focus = 0.7f;       // 3D: 0 = the plain head model, 1 = front / back and distance pushed for loudspeakers
     Motion::Retrigger retrigger = Motion::Retrigger::off;
 };
@@ -207,7 +208,7 @@ private:
     Motion motion;
     double glide = 1.0, glideStep = 0.0;
     Point glideFrom, lastPoint;
-    Smooth sMix, sWidth, sDepth, sRot, sRate, sDist, sLevel, sDoppler, sRefRadius;
+    Smooth sMix, sWidth, sDepth, sRot, sRate, sDist, sLevel, sDoppler, sRefRadius, sHeadphones;
     double phase = 0.0;
     bool started = false;
     double width = 1.0, depth = 1.0, rotation = 0.0;

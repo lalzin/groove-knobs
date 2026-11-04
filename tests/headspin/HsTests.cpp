@@ -160,7 +160,7 @@ TEST_CASE ("HS 3. Constant speed along every shape (spec: < 2 % on the triangle)
     }
 }
 
-TEST_CASE ("HS 4. No click when the shape, the direction or the mode changes", "[hs][click]")
+TEST_CASE ("HS 4. No click when the shape, the direction, the mode or the render changes", "[hs][click]")
 {
     // a 1 kHz sine: its own steps are known; changes every 0.3 s must not add a bigger one
     auto steadyProc = makeProc (0);
@@ -171,6 +171,7 @@ TEST_CASE ("HS 4. No click when the shape, the direction or the mode changes", "
         { "shape", [] (HeadSpinProcessor& p, int pos) { setParam (p.getKnob (HeadSpinDsp::shapeKnob), (float) ((pos / (int) (0.3 * sr)) % 4)); p.updateShapeNow(); } },
         { "direction", [] (HeadSpinProcessor& p, int pos) { setParam (p.getChoice (HeadSpinDsp::directionChoice), (float) ((pos / (int) (0.3 * sr)) % 2)); } },
         { "mode", [] (HeadSpinProcessor& p, int pos) { setParam (p.getChoice (HeadSpinDsp::rateModeChoice), (float) ((pos / (int) (0.3 * sr)) % 2)); } },
+        { "render", [] (HeadSpinProcessor& p, int pos) { setParam (p.getChoice (HeadSpinDsp::renderChoice), (float) ((pos / (int) (0.3 * sr)) % 2)); } },
     };
     for (const auto& c : cases)
     {

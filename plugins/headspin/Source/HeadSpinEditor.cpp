@@ -363,7 +363,7 @@ HeadSpinEditor::HeadSpinEditor (HeadSpinProcessor& p)
     retrigger->setTooltip ("Puts the sound back on its START point: on every MIDI note, or on every transient of the input");
     addToCanvas (*retrigger, { 214, 320, 88, 38 });
     render = std::make_unique<gk::ChoiceSelector> (p.getChoice (HeadSpinDsp::renderChoice), "RENDER", blue, pal);
-    render->setTooltip ("Speakers: the head model for loudspeakers. Headphones: binaural (HRTF) — coming next, Speakers meanwhile");
+    render->setTooltip ("Speakers: panned between the loudspeakers with the head's cues. Headphones: binaural, each ear its own delay and shadow (a structural head model)");
     addToCanvas (*render, { 214, 372, 88, 38 });
     mono = std::make_unique<MonoCheck> (pal);
     addToCanvas (*mono, { 462, 396, 90, 22 });

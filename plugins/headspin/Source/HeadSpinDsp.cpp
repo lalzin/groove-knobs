@@ -50,7 +50,7 @@ void HeadSpinDsp::setChoices (const int* c, int n)
     params.leftToRight = c[directionChoice] == 0;
     params.sync = c[rateModeChoice] == 1;
     params.division = c[rateSyncChoice];
-    // (render: Speakers only until the headphone mode, step 4)
+    params.headphones = c[renderChoice] == 1;
     params.retrigger = c[retriggerChoice] == 1 ? headspin::Motion::Retrigger::midi
                      : c[retriggerChoice] == 2 ? headspin::Motion::Retrigger::transient
                                                : headspin::Motion::Retrigger::off;

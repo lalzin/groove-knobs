@@ -39,7 +39,7 @@ double Spinner::shadowAlpha (double phi) noexcept
 void Spinner::prepare (double sampleRate)
 {
     sr = sampleRate;
-    for (auto* s : { &sMix, &sWidth, &sDepth, &sRot, &sRate, &sDist, &sLevel, &sDoppler, &sRefRadius })
+    for (auto* s : { &sMix, &sWidth, &sDepth, &sRot, &sRate, &sDist, &sLevel, &sDoppler, &sRefRadius, &sHeadphones })
         s->prepare (sr, smoothSeconds);
     shapeFadeStep = 1.0 / (shapeFadeSeconds * sr);
     glideStep = 1.0 / (jumpGlideSeconds * sr);
@@ -60,7 +60,7 @@ void Spinner::prepare (double sampleRate)
 
 void Spinner::reset()
 {
-    for (auto* s : { &sMix, &sWidth, &sDepth, &sRot, &sRate, &sDist, &sLevel, &sDoppler, &sRefRadius })
+    for (auto* s : { &sMix, &sWidth, &sDepth, &sRot, &sRate, &sDist, &sLevel, &sDoppler, &sRefRadius, &sHeadphones })
         s->init = false;
     const double ac = headRadius / speedOfSound;
     delay.prepare ((int) std::ceil ((maxDopplerSeconds + ac * (1.0 + 0.5 * pi)) * sr) + 8);
@@ -229,7 +229,10 @@ void Spinner::process (const float* inL, const float* inR, float* outL, float* o
         // (the high-frequency power of the two ears together is kept constant:
         // the difference between the ears, the cue, is the model's; the
         // brightness of the whole does not change as the source goes round)
-        double alphaL = std::pow (shadowAlpha (phiL), shadowAmount), alphaR = std::pow (shadowAlpha (phiR), shadowAmount);
+        // (headphones: the model whole; loudspeakers: scaled, the listener's own head shadows too)
+        const double hp = sHeadphones.next (target.headphones ? 1.0 : 0.0); // (a switch fades over ~20 ms)
+        const double shadowDepth = shadowAmount + (1.0 - shadowAmount) * hp;
+        double alphaL = std::pow (shadowAlpha (phiL), shadowDepth), alphaR = std::pow (shadowAlpha (phiR), shadowDepth);
         const double hfNorm = std::sqrt (2.0 / (alphaL * alphaL + alphaR * alphaR));
         alphaL *= hfNorm;
         alphaR *= hfNorm;
@@ -272,9 +275,12 @@ void Spinner::process (const float* inL, const float* inR, float* outL, float* o
         // 4. Constant-power panning from sin θ; close to the head the level
         //    difference grows (near field)
         const double nearField = std::clamp ((0.6 - rr) / 0.4, 0.0, 1.0);
+        // Headphones (binaural, the structural head model): each ear gets its
+        // own signal as it is (its delay, its shadow), no panning between
+        // loudspeakers; the near-field level difference stays
         const double pan = 0.25 * pi * (1.0 + panDepth * side);
         const double nfL = 1.0 - 0.3 * nearField * side, nfR = 1.0 + 0.3 * nearField * side;
-        const double gL = std::cos (pan) * nfL, gR = std::sin (pan) * nfR;
+        const double gL = (std::cos (pan) + hp * (std::sqrt (0.5) - std::cos (pan))) * nfL, gR = (std::sin (pan) + hp * (std::sqrt (0.5) - std::sin (pan))) * nfR;
 
         // 5. Distance: direct level 1/r (DISTANCE sets how strongly, +-6 dB at
         //    most); the room is fed at a near-constant level, so the
