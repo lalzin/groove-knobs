@@ -6,16 +6,29 @@ namespace ballroom
 namespace
 {
     constexpr double pi = 3.14159265358979323846;
-    // the eight lengths at LATE SIZE 100 %, in samples at 48 kHz: primes
-    // (mutually prime), ~31 to ~74 ms, spread so no two are near a ratio
-    constexpr double baseSamples48k[LateFdn::numLines] { 1493, 1823, 2083, 2389, 2707, 2939, 3259, 3539 };
-    constexpr double maxModSeconds = 0.0012;
-    double sizeFactor (double size) { return 0.25 + 0.75 * std::clamp (size, 0.0, 1.0); } // 25 % .. 100 % of the base
+    constexpr double longestLine48k = 5077.0; // (Space)
+    double sizeFactor (const ModeShape& s, double size) { return s.sizeMin + (1.0 - s.sizeMin) * std::clamp (size, 0.0, 1.0); }
+
+    /** The 8-point Hadamard transform, normalised (orthogonal: no energy change). */
+    void hadamard8 (std::array<double, 8>& x)
+    {
+        for (int h = 1; h < 8; h <<= 1)
+            for (int i = 0; i < 8; i += 2 * h)
+                for (int j = i; j < i + h; ++j)
+                {
+                    const double a = x[(size_t) j], b = x[(size_t) (j + h)];
+                    x[(size_t) j] = a + b;
+                    x[(size_t) (j + h)] = a - b;
+                }
+        for (auto& v : x)
+            v *= 0.35355339059327373; // 1 / sqrt (8)
+    }
 } // namespace
 
-double LateFdn::lineSeconds (int line, double size)
+double LateFdn::lineSeconds (Mode m, int line, double size)
 {
-    return baseSamples48k[line] / 48000.0 * sizeFactor (size);
+    const auto& s = modeShape (m);
+    return s.lineSamples48k[(size_t) line] / 48000.0 * sizeFactor (s, size);
 }
 
 void LateFdn::Delay::prepare (int maxSamples)
@@ -28,28 +41,27 @@ void LateFdn::Delay::prepare (int maxSamples)
     w = 0;
 }
 
-float LateFdn::Delay::read (double d) const
-{
-    const int k0 = std::max (0, (int) std::floor (d) - 1);
-    const double t = d - k0;
-    const double x0 = tap (k0), x1 = tap (k0 + 1), x2 = tap (k0 + 2), x3 = tap (k0 + 3);
-    return (float) (-(t - 1) * (t - 2) * (t - 3) / 6.0 * x0 + t * (t - 2) * (t - 3) / 2.0 * x1 - t * (t - 1) * (t - 3) / 2.0 * x2
-                    + t * (t - 1) * (t - 2) / 6.0 * x3);
-}
-
 double LateFdn::Wander::next (double rateHz, double sampleRate)
 {
-    // a new random target every 1 / rate seconds, reached along a half cosine
-    phase += rateHz / sampleRate;
-    if (phase >= 1.0)
+    // a new random target every 1 / rate seconds, reached along a half cosine;
+    // the curve is computed every 16 samples and followed in straight lines
+    // between (a cosine per sample per line was most of the CPU)
+    if (--countdown <= 0)
     {
-        phase -= std::floor (phase);
-        value = target;
-        seed = seed * 1664525u + 1013904223u;
-        target = (double) (seed >> 8) / 8388608.0 - 1.0;
+        countdown = 16;
+        phase += 16.0 * rateHz / sampleRate;
+        if (phase >= 1.0)
+        {
+            phase -= std::floor (phase);
+            value = target;
+            seed = seed * 1664525u + 1013904223u;
+            target = (double) (seed >> 8) / 8388608.0 - 1.0;
+        }
+        const double aim = value + (0.5 - 0.5 * std::cos (pi * phase)) * (target - value);
+        step = (aim - current) / 16.0;
     }
-    const double f = 0.5 - 0.5 * std::cos (pi * phase);
-    return value + f * (target - value);
+    current += step;
+    return current;
 }
 
 void LateFdn::Shelf::set (bool high, double fc, double gain, double sampleRate)
@@ -78,7 +90,7 @@ void LateFdn::Shelf::set (bool high, double fc, double gain, double sampleRate)
 void LateFdn::prepare (double sampleRate)
 {
     sr = sampleRate;
-    const int maxLen = (int) std::ceil (baseSamples48k[numLines - 1] * sr / 48000.0 + maxModSeconds * sr) + 8;
+    const int maxLen = (int) std::ceil (longestLine48k * sr / 48000.0 + 3.0 * maxModSeconds * sr) + 8;
     for (int i = 0; i < numLines; ++i)
     {
         lines[(size_t) i].prepare (maxLen);
@@ -87,11 +99,23 @@ void LateFdn::prepare (double sampleRate)
     const double apMs[2][4] { { 4.77, 3.59, 12.73, 9.31 }, { 4.93, 3.71, 12.47, 9.73 } };
     for (int s = 0; s < 2; ++s)
         for (int k = 0; k < 4; ++k)
-            diffusers[(size_t) s][(size_t) k].buf.assign ((size_t) std::lround (apMs[s][k] * 0.001 * sr), 0.0f);
+        {
+            auto& ap = diffusers[(size_t) s][(size_t) k];
+            ap.len = (int) std::lround (apMs[s][k] * 0.001 * sr);
+            ap.buf.assign ((size_t) ap.len, 0.0f);
+        }
     const double a = std::exp (-1.0 / (0.05 * sr)); // parameter smoothing ~50 ms
-    for (auto* s : { &sSize, &sDecay, &sBass, &sHigh, &sDepth, &sCross, &sFreeze })
+    for (auto* s : { &sDecay, &sBass, &sHigh, &sDepth, &sCross, &sFreeze })
         s->a = a;
-    sSize.a = std::exp (-1.0 / (0.25 * sr)); // the size moves slower (it bends the pitch while it moves)
+    configure (mode, 0.6);
+}
+
+void LateFdn::configure (Mode m, double size)
+{
+    mode = m;
+    shape = &modeShape (m);
+    for (int k = 0; k < numLines; ++k)
+        lenSamples[(size_t) k] = shape->lineSamples48k[(size_t) k] * sr / 48000.0 * sizeFactor (*shape, size);
     reset();
 }
 
@@ -111,38 +135,38 @@ void LateFdn::reset()
                 f.ic1 = f.ic2 = 0.0;
     apState = {};
     controlCountdown = 0;
-    for (auto* s : { &sSize, &sDecay, &sBass, &sHigh, &sDepth, &sCross, &sFreeze })
+    for (auto* s : { &sDecay, &sBass, &sHigh, &sDepth, &sCross, &sFreeze })
         s->init = false;
 }
 
 void LateFdn::process (const float* inL, const float* inR, float* outL, float* outR, int n)
 {
-    const float apGain = (float) (0.72 * std::clamp (target.diffusion, 0.0, 1.0));
+    const float apGain = (float) (shape->inputDiffusion * std::clamp (target.diffusion, 0.0, 1.0));
+    const int numAp = std::clamp (shape->inputAllpasses, 0, 4);
     for (int i = 0; i < n; ++i)
     {
-        const double size = sSize.next (target.size);
         const double decay = std::max (0.05, std::exp (sDecay.next (std::log (std::max (0.05, target.decaySeconds)))));
-        const double bassMult = sBass.next (target.bassMult), highMult = sHigh.next (target.highMult);
+        const double bassMult = sBass.next (target.bassMult * shape->lowWarmth), highMult = sHigh.next (target.highMult);
         const double depth = sDepth.next (target.modDepth), cross = sCross.next (target.cross);
         const double freeze = sFreeze.next (target.freeze ? 1.0 : 0.0);
 
         // input: diffused, cut when frozen
         float dl = (float) ((1.0 - freeze) * inL[i]), dr = (float) ((1.0 - freeze) * inR[i]);
-        for (auto& ap : diffusers[0])
-            dl = ap.process (dl, apGain);
-        for (auto& ap : diffusers[1])
-            dr = ap.process (dr, apGain);
+        for (int k = 0; k < numAp; ++k)
+        {
+            dl = diffusers[0][(size_t) k].process (dl, apGain);
+            dr = diffusers[1][(size_t) k].process (dr, apGain);
+        }
         const float injEven = (float) ((1.0 - 0.5 * cross) * dl + 0.5 * cross * dr);
         const float injOdd = (float) ((1.0 - 0.5 * cross) * dr + 0.5 * cross * dl);
 
-        const double sf = sizeFactor (size);
         // control rate: each line's gains (RT60 per band; frozen: 1) and its shelves
         if (--controlCountdown <= 0)
         {
             controlCountdown = 32;
             for (int k = 0; k < numLines; ++k)
             {
-                const double lSec = baseSamples48k[k] / 48000.0 * sf;
+                const double lSec = lenSamples[(size_t) k] / sr;
                 auto gainFor = [lSec, freeze] (double rt) { const double g = std::pow (10.0, -3.0 * lSec / rt); return g + freeze * (1.0 - g); };
                 const double gm = gainFor (decay), gl = gainFor (decay * bassMult), gh = gainFor (decay * highMult);
                 midGain[(size_t) k] = gm;
@@ -156,11 +180,10 @@ void LateFdn::process (const float* inL, const float* inR, float* outL, float* o
         // the lines' outputs, absorbed
         std::array<double, numLines> x {};
         double sum = 0.0;
-        const double modSamples = (1.0 - freeze) * depth * maxModSeconds * sr; // (frozen: still)
+        const double modSamples = (1.0 - freeze) * depth * shape->lateModScale * maxModSeconds * sr; // (frozen: still)
         for (int k = 0; k < numLines; ++k)
         {
-            const double len = baseSamples48k[k] * sr / 48000.0 * sf;
-            double d = len + modSamples * wander[(size_t) k].next (target.modRateHz, sr);
+            double d = lenSamples[(size_t) k] + modSamples * wander[(size_t) k].next (target.modRateHz, sr);
             d += freeze * (std::round (d) - d); // frozen: whole samples (the interpolation would lose a little each pass)
             // allpass interpolation: M whole samples + a fraction in [0.5, 1.5)
             d = std::max (1.5, d);
@@ -177,8 +200,13 @@ void LateFdn::process (const float* inL, const float* inR, float* outL, float* o
             x[(size_t) k] = v;
             sum += x[(size_t) k];
         }
-        // Householder feedback (energy preserving): x - (2 / N) sum
-        const double s2 = 2.0 / numLines * sum;
+        // the feedback matrix (energy preserving): Householder x - (2 / N) sum, or Hadamard
+        std::array<double, numLines> fb = x;
+        if (shape->hadamard)
+            hadamard8 (fb);
+        else
+            for (auto& v : fb)
+                v -= 2.0 / numLines * sum;
         denormal = denormal * 1664525u + 1013904223u;
         const float tiny = (denormal & 1u) ? 1.0e-20f : -1.0e-20f;
         float l = 0.0f, r = 0.0f;
@@ -186,7 +214,7 @@ void LateFdn::process (const float* inL, const float* inR, float* outL, float* o
         {
             const float sign = (k / 2) % 2 == 0 ? 1.0f : -1.0f;
             const float inj = (k % 2 == 0 ? injEven : injOdd) * sign;
-            lines[(size_t) k].push ((float) (x[(size_t) k] - s2) + inj + tiny);
+            lines[(size_t) k].push ((float) fb[(size_t) k] + inj + tiny);
             if (k % 2 == 0)
                 l += sign * (float) x[(size_t) k];
             else
