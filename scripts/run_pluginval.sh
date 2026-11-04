@@ -18,6 +18,7 @@ case "$PLUGIN" in
   "Kick Lock Send") ART="$BUILD/plugins/kick_lock_send/KickLockSend_artefacts/Release" ;;
   "Slapper")       ART="$BUILD/plugins/slapper/Slapper_artefacts/Release" ;;
   "Crackle")       ART="$BUILD/plugins/crackle/Crackle_artefacts/Release" ;;
+  "Head Spin")     ART="$BUILD/plugins/headspin/HeadSpin_artefacts/Release" ;;
   *) echo "unknown plugin: $PLUGIN"; exit 2 ;;
 esac
 
