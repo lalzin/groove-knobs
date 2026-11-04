@@ -26,6 +26,12 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
 
+    /** DRAW: the next stroke drawn round Kiko becomes the custom shape
+        (SHAPE 6); the mode ends when it is used. */
+    void setDrawMode (bool on);
+    bool isDrawMode() const noexcept { return drawMode; }
+    std::function<void()> onDrawModeChanged;
+
     /** Every frame (from the editor): reads the telemetry, moves the trail and the head. */
     void tick (double dt);
     /** Screenshots: no motion, a full trail. */
@@ -59,7 +65,11 @@ private:
     float headTurn = 0.0f, spinAngle = 0.0f, spinAmount = 0.0f;
     double time = 0.0;
 
-    enum class Drag { none, stretch, rotate };
+    bool drawMode = false;
+    std::vector<headspin::Point> stroke; // the drawing in progress, in units
+    int seenCustomVersion = -1;
+
+    enum class Drag { none, stretch, rotate, draw };
     Drag drag = Drag::none;
     juce::Point<double> grabLocal; // the grabbed point, in the shape's own frame (before rotation)
     float startWidth = 1.0f, startDepth = 1.0f, startRotation = 0.0f;

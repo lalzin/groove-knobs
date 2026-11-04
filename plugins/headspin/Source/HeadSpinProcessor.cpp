@@ -39,14 +39,14 @@ namespace
         cfg.tailSeconds = 0.5;         // the small room
         const auto shapeText = [] (float v)
         {
-            const char* names[] { "Circle", "Oval", "Triangle", "Square", "Eight", "Star" };
-            const int a = juce::jlimit (0, 5, (int) std::floor (v + 1.0e-4f));
+            const char* names[] { "Circle", "Oval", "Triangle", "Square", "Eight", "Star", "Custom" };
+            const int a = juce::jlimit (0, 6, (int) std::floor (v + 1.0e-4f));
             const float f = v - (float) a;
-            if (f < 0.01f || a == 5)
+            if (f < 0.01f || a == 6)
                 return juce::String (names[a]);
             return juce::String (names[a]) + " > " + names[a + 1] + " " + juce::String (juce::roundToInt (f * 100.0f)) + " %";
         };
-        cfg.knobs = { { "shape", "Shape", "SHAPE", 0.0f, 0.0f, 5.0f, 1.0f, "" },
+        cfg.knobs = { { "shape", "Shape", "SHAPE", 0.0f, 0.0f, 6.0f, 1.0f, "" }, // 6: the custom shape (drawn)
                       { "width", "Width", "WIDTH", 1.0f, 0.2f, 1.0f, 1.0f, "%" },
                       { "depth", "Depth", "DEPTH", 1.0f, 0.2f, 1.0f, 1.0f, "%" },
                       { "rotation", "Rotation", "ROTATION", 0.0f, -180.0f, 180.0f, 1.0f, "°" },
@@ -158,6 +158,36 @@ void HeadSpinProcessor::applyPreset (int index)
         set (getChoiceParameter (c), (float) (i >= 0 ? i : spec.defaultIndex));
     }
     updateShapeNow();
+}
+
+void HeadSpinProcessor::setCustomShape (const std::vector<headspin::Point>& drawing)
+{
+    useCustomShape (headspin::ShapeBank::normaliseDrawing (drawing));
+}
+
+void HeadSpinProcessor::useCustomShape (std::vector<headspin::Point> normalised)
+{
+    customShape = std::move (normalised);
+    ++customVersion;
+    getDsp().setCustomShape (customShape, getKnob (HeadSpinDsp::shapeKnob).convertFrom0to1 (getKnob (HeadSpinDsp::shapeKnob).getValue()));
+}
+
+void HeadSpinProcessor::saveExtraState (juce::ValueTree& state)
+{
+    // the custom shape: "x,y;x,y;..." (units, 3 decimals)
+    juce::String s;
+    for (const auto& p : customShape)
+        s << juce::String (p.x, 3) << "," << juce::String (p.y, 3) << ";";
+    state.setProperty ("customShape", s, nullptr);
+}
+
+void HeadSpinProcessor::loadExtraState (const juce::ValueTree& state)
+{
+    std::vector<headspin::Point> pts;
+    for (const auto& pair : juce::StringArray::fromTokens (state.getProperty ("customShape").toString(), ";", ""))
+        if (const auto xy = juce::StringArray::fromTokens (pair, ",", ""); xy.size() == 2)
+            pts.push_back ({ xy[0].getDoubleValue(), xy[1].getDoubleValue() });
+    useCustomShape (pts.size() >= 8 ? std::move (pts) : std::vector<headspin::Point>()); // (saved normalised: used as is)
 }
 
 void HeadSpinProcessor::setStateInformation (const void* data, int sizeInBytes)

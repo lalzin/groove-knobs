@@ -134,7 +134,7 @@ TEST_CASE ("HS 2. Direction: left to right goes left, front, right; right to lef
 TEST_CASE ("HS 3. Constant speed along every shape (spec: < 2 % on the triangle)", "[hs][shape]")
 {
     headspin::ShapeBank bank;
-    for (int step = 0; step <= 20; ++step) // the six shapes and the morphs in between, every 0.25
+    for (int step = 0; step <= 24; ++step) // the seven shapes (custom: a circle until drawn) and the morphs in between, every 0.25
     {
         const double s = step * 0.25;
         CAPTURE (s);
@@ -331,4 +331,70 @@ TEST_CASE ("HS 9. RETRIGGER MIDI: a note puts the sound back on its start point"
     run (1, note);
     run (3, none); // the glide (12 ms) is over
     CHECK (p->getDsp().getTelemetry().azimuthDeg.load() == Catch::Approx (90.0f).margin (12.0f));
+}
+
+TEST_CASE ("HS 10. CUSTOM: a hand drawing becomes a clean path (clockwise, from the front, constant speed), saved with the session", "[hs][custom]")
+{
+    // a wobbly rounded square drawn anticlockwise, starting at the back,
+    // cutting across the head once (pushed out to r 0.3)
+    std::vector<headspin::Point> drawing;
+    juce::Random rng (5);
+    for (int k = 0; k < 140; ++k)
+    {
+        const double a = juce::MathConstants<double>::pi - 2.0 * juce::MathConstants<double>::pi * k / 140.0; // anticlockwise seen from above
+        const double dent = 1.0 - 0.9 * std::exp (-std::pow ((k - 70) / 6.0, 2.0)); // the hand cuts across the head here
+        const double r = dent / std::pow (std::pow (std::abs (std::cos (a)), 4.0) + std::pow (std::abs (std::sin (a)), 4.0), 0.25);
+        drawing.push_back ({ r * std::sin (-a) + 0.02 * (rng.nextDouble() - 0.5), r * std::cos (-a) + 0.02 * (rng.nextDouble() - 0.5) });
+    }
+    const auto pts = headspin::ShapeBank::normaliseDrawing (drawing);
+    REQUIRE (pts.size() == 256);
+    // clockwise: the signed area is negative (x right, y front)
+    double area = 0.0;
+    for (size_t k = 0; k < pts.size(); ++k)
+        area += pts[k].x * pts[(k + 1) % pts.size()].y - pts[(k + 1) % pts.size()].x * pts[k].y;
+    CHECK (area < 0.0);
+    // starts in front, never inside the head
+    CHECK (std::abs (std::atan2 (pts[0].x, pts[0].y)) < 0.1);
+    for (const auto& q : pts)
+        CHECK (std::hypot (q.x, q.y) >= 0.29); // (evened out after the clamp)
+    // the path at constant speed
+    headspin::ShapeBank bank;
+    bank.setCustom (pts);
+    headspin::ShapeTable t;
+    bank.buildMorph (6.0, t);
+    constexpr int steps = 2048;
+    std::vector<double> len;
+    double mean = 0.0;
+    for (int k = 0; k < steps; ++k)
+    {
+        const auto a = t.at ((double) k / steps), b = t.at ((double) (k + 1) / steps);
+        len.push_back (std::hypot (b.x - a.x, b.y - a.y));
+        mean += len.back() / steps;
+    }
+    double dev = 0.0;
+    for (double l : len)
+        dev = std::max (dev, std::abs (l - mean) / mean);
+    INFO ("speed deviation " << dev);
+    CHECK (dev < 0.02);
+
+    // the processor: SHAPE 6 is it, the session keeps it
+    HeadSpinProcessor p;
+    p.setCustomShape (drawing);
+    setParam (p.getKnob (HeadSpinDsp::shapeKnob), 6.0f);
+    CHECK (p.getKnob (HeadSpinDsp::shapeKnob).getCurrentValueAsText() == "Custom");
+    juce::MemoryBlock state;
+    p.getStateInformation (state);
+    HeadSpinProcessor q;
+    q.setStateInformation (state.getData(), (int) state.getSize());
+    REQUIRE (q.getCustomShape().size() == p.getCustomShape().size());
+    double maxDiff = 0.0;
+    for (size_t k = 0; k < p.getCustomShape().size(); ++k)
+        maxDiff = std::max (maxDiff, std::hypot (p.getCustomShape()[k].x - q.getCustomShape()[k].x, p.getCustomShape()[k].y - q.getCustomShape()[k].y));
+    CHECK (maxDiff < 0.01);
+    // and it plays: the sound goes round it
+    q.prepareToPlay (sr, 512);
+    q.updateShapeNow();
+    Buffer in = sine (1.0);
+    const auto out = processBlocks (q, in, { 512 });
+    CHECK (allFinite (out));
 }

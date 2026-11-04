@@ -67,6 +67,34 @@ int main (int argc, char** argv)
             }
         }
     }
+    // a custom shape: a heart drawn round Kiko
+    {
+        hs::HeadSpinProcessor proc;
+        std::vector<headspin::Point> heart;
+        for (int k = 0; k < 200; ++k)
+        {
+            const double t = 2.0 * juce::MathConstants<double>::pi * k / 200.0;
+            heart.push_back ({ 0.075 * 16.0 * std::pow (std::sin (t), 3.0),
+                               0.075 * (13.0 * std::cos (t) - 5.0 * std::cos (2.0 * t) - 2.0 * std::cos (3.0 * t) - std::cos (4.0 * t)) + 0.1 });
+        }
+        proc.setCustomShape (heart);
+        proc.getKnob (hs::HeadSpinDsp::shapeKnob).setValueNotifyingHost (proc.getKnob (hs::HeadSpinDsp::shapeKnob).convertTo0to1 (6.0f));
+        proc.prepareToPlay (sr, 512);
+        proc.updateShapeNow();
+        juce::AudioBuffer<float> b (2, 512);
+        juce::MidiBuffer midi;
+        for (int k = 0; k < 40; ++k)
+        {
+            b.clear();
+            b.setSample (0, 0, 0.5f);
+            proc.processBlock (b, midi);
+        }
+        const auto img = shoot (proc, 1.0f);
+        writePng (img, dir.getChildFile ("custom_heart.png"));
+        writePng (shoot (proc, 2.0f), dir.getChildFile ("custom_heart@2x.png"));
+        shots.push_back (img);
+        names.add ("Custom (a heart drawn)");
+    }
     // contact sheet: 4 x 2
     const int w = shots[0].getWidth(), h = shots[0].getHeight(), pad = 10, label = 22;
     juce::Image sheet (juce::Image::RGB, 4 * (w + pad) + pad, 2 * (h + pad + label) + pad, true);

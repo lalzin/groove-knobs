@@ -91,6 +91,8 @@ public:
         picks it up at its next block, crossfaded). */
     void setShapeForBuild (float s) { shapeToBuild.store (s, std::memory_order_relaxed); }
     void updateShape() { store.request (shapeToBuild.load (std::memory_order_relaxed)); }
+    /** Message thread: the custom shape (normalised points; empty: a circle), then updateShape(). */
+    void setCustomShape (const std::vector<Point>& points) { store.setCustom (points); }
 
     /** inL / inR: the input (the same pointer twice for a mono input); the
         output is always two channels. `transport`: the host's tempo and

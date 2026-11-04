@@ -39,6 +39,12 @@ public:
     /** Message thread (a timer in the processor, the render tools): builds the
         path for SHAPE `shape` when it changed. */
     void updateShape (float shape);
+    /** Message thread: the custom shape (normalised), built at once. */
+    void setCustomShape (const std::vector<headspin::Point>& points, float shape)
+    {
+        spinner.setCustomShape (points);
+        updateShape (shape);
+    }
 
     Telemetry& getTelemetry() noexcept { return telemetry; }
 

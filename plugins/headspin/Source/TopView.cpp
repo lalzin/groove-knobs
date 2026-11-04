@@ -48,6 +48,12 @@ void TopView::rebuildPath()
 {
     const float shape = param (HeadSpinDsp::shapeKnob), w = param (HeadSpinDsp::widthKnob), d = param (HeadSpinDsp::depthKnob),
                 rot = param (HeadSpinDsp::rotationKnob);
+    if (proc.getCustomVersion() != seenCustomVersion)
+    {
+        seenCustomVersion = proc.getCustomVersion();
+        bank.setCustom (proc.getCustomShape());
+        builtShape = -1.0f;
+    }
     if (std::abs (shape - builtShape) > 1.0e-4f)
     {
         bank.buildMorph (shape, table); // (message thread, ~1 ms, only when SHAPE moves)
@@ -72,6 +78,18 @@ void TopView::rebuildPath()
             path.lineTo (q);
     }
     path.closeSubPath();
+}
+
+void TopView::setDrawMode (bool on)
+{
+    if (on == drawMode)
+        return;
+    drawMode = on;
+    stroke.clear();
+    setMouseCursor (on ? juce::MouseCursor::CrosshairCursor : juce::MouseCursor::DraggingHandCursor);
+    repaint();
+    if (onDrawModeChanged)
+        onDrawModeChanged();
 }
 
 void TopView::tick (double dt)
@@ -142,10 +160,29 @@ void TopView::paint (juce::Graphics& g)
     const auto toView = juce::AffineTransform::scale (s, -s).translated (centre);
     juce::Path p (path);
     p.applyTransform (toView);
-    g.setColour (palette (pink).withAlpha (0.18f * dim));
+    const float pathAlpha = drawMode ? 0.3f : 1.0f;
+    g.setColour (palette (pink).withAlpha (0.18f * dim * pathAlpha));
     g.strokePath (p, juce::PathStrokeType (9.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    g.setColour (palette (pink).withAlpha (0.85f * dim));
+    g.setColour (palette (pink).withAlpha (0.85f * dim * pathAlpha));
     g.strokePath (p, juce::PathStrokeType (2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    if (drawMode)
+    {
+        // the stroke being drawn, and how to do it
+        if (stroke.size() > 1)
+        {
+            juce::Path sp;
+            sp.startNewSubPath (toScreen (stroke[0].x, stroke[0].y));
+            for (size_t i = 1; i < stroke.size(); ++i)
+                sp.lineTo (toScreen (stroke[i].x, stroke[i].y));
+            g.setColour (palette (white).withAlpha (0.25f));
+            g.strokePath (sp, juce::PathStrokeType (8.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            g.setColour (palette (white));
+            g.strokePath (sp, juce::PathStrokeType (2.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+        g.setFont (gk::GrooveFonts::font (10.5f).withExtraKerningFactor (0.06f));
+        g.setColour (palette (white).withAlpha (0.85f));
+        g.drawText ("DRAW THE PATH ROUND KIKO, IN ONE STROKE", b.withHeight (18.0f).translated (0.0f, b.getHeight() - 20.0f), juce::Justification::centred);
+    }
 
     // Kiko, from above
     paintKiko (g, centre, s);
@@ -206,6 +243,8 @@ void TopView::paintKiko (juce::Graphics& g, juce::Point<float> c, float unit)
 
 void TopView::mouseMove (const juce::MouseEvent& e)
 {
+    if (drawMode)
+        return;
     const auto u = toUnits (e.position);
     setMouseCursor (std::hypot (u.x, u.y) > 1.5 ? juce::MouseCursor::UpDownLeftRightResizeCursor : juce::MouseCursor::DraggingHandCursor);
 }
@@ -213,6 +252,14 @@ void TopView::mouseMove (const juce::MouseEvent& e)
 void TopView::mouseDown (const juce::MouseEvent& e)
 {
     const auto u = toUnits (e.position);
+    if (drawMode)
+    {
+        drag = Drag::draw;
+        stroke.clear();
+        stroke.push_back ({ u.x, u.y });
+        repaint();
+        return;
+    }
     startWidth = param (HeadSpinDsp::widthKnob);
     startDepth = param (HeadSpinDsp::depthKnob);
     startRotation = param (HeadSpinDsp::rotationKnob);
@@ -234,6 +281,16 @@ void TopView::mouseDown (const juce::MouseEvent& e)
 void TopView::mouseDrag (const juce::MouseEvent& e)
 {
     const auto u = toUnits (e.position);
+    if (drag == Drag::draw)
+    {
+        const auto& last = stroke.back();
+        if (std::hypot (u.x - last.x, u.y - last.y) > 0.015)
+        {
+            stroke.push_back ({ u.x, u.y });
+            repaint();
+        }
+        return;
+    }
     if (drag == Drag::rotate)
     {
         double deg = startRotation + (std::atan2 (u.x, u.y) - startAngle) * 180.0 / pi;
@@ -255,6 +312,27 @@ void TopView::mouseDrag (const juce::MouseEvent& e)
 
 void TopView::mouseUp (const juce::MouseEvent&)
 {
+    if (drag == Drag::draw)
+    {
+        drag = Drag::none;
+        double length = 0.0;
+        for (size_t i = 1; i < stroke.size(); ++i)
+            length += std::hypot (stroke[i].x - stroke[i - 1].x, stroke[i].y - stroke[i - 1].y);
+        if (stroke.size() < 12 || length < 1.0)
+        {
+            stroke.clear(); // too short: draw again
+            repaint();
+            return;
+        }
+        // the drawing becomes the custom shape, and SHAPE goes to it
+        proc.setCustomShape (stroke);
+        auto& shape = proc.getKnob (HeadSpinDsp::shapeKnob);
+        shape.beginChangeGesture();
+        shape.setValueNotifyingHost (shape.convertTo0to1 ((float) headspin::shapes::custom));
+        shape.endChangeGesture();
+        setDrawMode (false);
+        return;
+    }
     if (drag == Drag::rotate)
         proc.getKnob (HeadSpinDsp::rotationKnob).endChangeGesture();
     else if (drag == Drag::stretch)
@@ -267,6 +345,8 @@ void TopView::mouseUp (const juce::MouseEvent&)
 
 void TopView::mouseDoubleClick (const juce::MouseEvent&)
 {
+    if (drawMode)
+        return;
     for (auto k : { HeadSpinDsp::widthKnob, HeadSpinDsp::depthKnob, HeadSpinDsp::rotationKnob })
     {
         auto& p = proc.getKnob (k);

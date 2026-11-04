@@ -77,16 +77,21 @@ private:
     const gk::Palette& palette;
 };
 
-/** The six shapes: click one; drag across them to morph in between. */
+/** The shapes, 4 x 2: the six, CUSTOM (the drawn one: its icon is the
+    drawing) and the pencil (DRAW: the next stroke round Kiko in the view
+    becomes CUSTOM). Click a shape; drag across them to morph in between. */
 class HeadSpinEditor::ShapeSelector final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    ShapeSelector (HeadSpinProcessor& p, const gk::Palette& pal) : param (p.getKnob (HeadSpinDsp::shapeKnob)), palette (pal)
+    ShapeSelector (HeadSpinProcessor& p, TopView& v, const gk::Palette& pal) : proc (p), view (v), param (p.getKnob (HeadSpinDsp::shapeKnob)), palette (pal)
     {
         setTitle ("Shape");
-        setTooltip ("SHAPE: click one, or drag across them to morph from one to the next");
+        setTooltip ("SHAPE: click one, or drag across them to morph from one to the next. The pencil: draw your own path round Kiko "
+                    "in the view (one stroke); it becomes CUSTOM");
         setMouseCursor (juce::MouseCursor::PointingHandCursor);
     }
+
+    static constexpr int pencil = 7;
 
     void paint (juce::Graphics& g) override
     {
@@ -94,63 +99,118 @@ public:
         g.setFont (gk::GrooveFonts::font (9.5f).withExtraKerningFactor (0.14f));
         g.setColour (palette (pink).withAlpha (0.9f));
         g.drawText ("SHAPE", getLocalBounds().removeFromTop (13).toFloat(), juce::Justification::centred);
-        for (int k = 0; k < 6; ++k)
+        for (int k = 0; k < 8; ++k)
         {
             const auto cell = cellBounds (k);
-            const float closeness = juce::jmax (0.0f, 1.0f - std::abs (value - (float) k)); // lit by how close SHAPE is
-            g.setColour (palette (closeness > 0.5f ? pink : palette.surface).withAlpha (closeness > 0.5f ? 0.25f + 0.5f * closeness : 1.0f));
+            const bool isPencil = k == pencil;
+            const float closeness = isPencil ? (view.isDrawMode() ? 1.0f : 0.0f) : juce::jmax (0.0f, 1.0f - std::abs (value - (float) k));
+            g.setColour (palette (closeness > 0.5f ? (isPencil ? blue : pink) : palette.surface).withAlpha (closeness > 0.5f ? 0.25f + 0.5f * closeness : 1.0f));
             g.fillRoundedRectangle (cell, 7.0f);
             g.setColour (palette (palette.outline));
             g.drawRoundedRectangle (cell, 7.0f, 1.5f);
             g.setColour (palette (closeness > 0.0f ? white : white.withAlpha (0.55f)));
-            g.strokePath (shapeIcon (k, cell.reduced (3.0f)), juce::PathStrokeType (closeness > 0.5f ? 2.2f : 1.5f, juce::PathStrokeType::curved));
+            const auto inner = cell.reduced (4.0f);
+            if (isPencil)
+                drawPencil (g, inner);
+            else if (k == headspin::shapes::custom)
+                g.strokePath (customIcon (inner), juce::PathStrokeType (closeness > 0.5f ? 2.0f : 1.4f, juce::PathStrokeType::curved));
+            else
+                g.strokePath (shapeIcon (k, inner), juce::PathStrokeType (closeness > 0.5f ? 2.2f : 1.5f, juce::PathStrokeType::curved));
         }
     }
 
     void mouseDown (const juce::MouseEvent& e) override
     {
-        param.beginChangeGesture();
         dragged = false;
         downAt = e.position;
+        onPencil = cellAt (e.position) == pencil;
+        if (! onPencil)
+            param.beginChangeGesture();
     }
     void mouseDrag (const juce::MouseEvent& e) override
     {
-        if (e.position.getDistanceFrom (downAt) < 4.0f && ! dragged)
+        if (onPencil || (e.position.getDistanceFrom (downAt) < 4.0f && ! dragged))
             return;
         dragged = true;
-        set (valueAt (e.position, true));
+        set (valueAt (e.position));
     }
     void mouseUp (const juce::MouseEvent& e) override
     {
-        if (! dragged)
-            set ((float) juce::roundToInt (valueAt (e.position, false)));
+        if (onPencil)
+        {
+            if (cellAt (e.position) == pencil)
+                view.setDrawMode (! view.isDrawMode());
+            return;
+        }
+        if (! dragged && cellAt (e.position) >= 0 && cellAt (e.position) < pencil)
+            set ((float) cellAt (e.position));
         param.endChangeGesture();
     }
 
 private:
+    juce::Rectangle<float> area() const { return getLocalBounds().toFloat().withTrimmedTop (15.0f); }
     juce::Rectangle<float> cellBounds (int k) const
     {
-        const auto area = getLocalBounds().toFloat().withTrimmedTop (15.0f);
-        const float w = area.getWidth() / 3.0f, h = area.getHeight() / 2.0f;
-        return juce::Rectangle<float> (area.getX() + w * (float) (k % 3), area.getY() + h * (float) (k / 3), w, h).reduced (3.0f);
+        const auto a = area();
+        const float w = a.getWidth() / 4.0f, h = a.getHeight() / 2.0f;
+        return juce::Rectangle<float> (a.getX() + w * (float) (k % 4), a.getY() + h * (float) (k / 4), w, h).reduced (2.5f);
     }
-    /** The SHAPE under the mouse: a cell's index; dragging, the position
-        along the two rows read as one line (0 .. 5). */
-    float valueAt (juce::Point<float> p, bool continuous) const
+    int cellAt (juce::Point<float> p) const
     {
-        const auto area = getLocalBounds().toFloat().withTrimmedTop (15.0f);
-        const int row = p.y < area.getCentreY() ? 0 : 1;
-        const float col = juce::jlimit (0.0f, 2.999f, (p.x - area.getX()) / (area.getWidth() / 3.0f));
-        if (! continuous)
-            return (float) (row * 3 + (int) col);
-        return juce::jlimit (0.0f, 5.0f, (float) (row * 3) + col - 0.5f);
+        for (int k = 0; k < 8; ++k)
+            if (cellBounds (k).expanded (2.5f).contains (p))
+                return k;
+        return -1;
+    }
+    /** Dragging: the position along the two rows read as one line (0 .. 6). */
+    float valueAt (juce::Point<float> p) const
+    {
+        const auto a = area();
+        const int row = p.y < a.getCentreY() ? 0 : 1;
+        const float col = juce::jlimit (0.0f, 3.999f, (p.x - a.getX()) / (a.getWidth() / 4.0f));
+        return juce::jlimit (0.0f, 6.0f, (float) (row * 4) + col - 0.5f);
     }
     void set (float v) { param.setValueNotifyingHost (param.convertTo0to1 (v)); }
 
+    juce::Path customIcon (juce::Rectangle<float> r) const
+    {
+        const auto& pts = proc.getCustomShape();
+        juce::Path p;
+        if (pts.empty())
+        {
+            // not drawn yet: a dashed circle
+            juce::Path c;
+            c.addEllipse (r.withSizeKeepingCentre (r.getHeight() * 0.68f, r.getHeight() * 0.68f));
+            const float dashes[] { 3.0f, 3.0f };
+            juce::PathStrokeType (1.4f).createDashedStroke (p, c, dashes, 2);
+            return p;
+        }
+        for (size_t i = 0; i < pts.size(); i += 4)
+        {
+            const juce::Point<float> q (r.getCentreX() + (float) pts[i].x * r.getWidth() * 0.22f, r.getCentreY() - (float) pts[i].y * r.getHeight() * 0.22f);
+            if (i == 0)
+                p.startNewSubPath (q);
+            else
+                p.lineTo (q);
+        }
+        p.closeSubPath();
+        return p;
+    }
+    void drawPencil (juce::Graphics& g, juce::Rectangle<float> r) const
+    {
+        juce::Path pen;
+        const float l = r.getHeight() * 0.36f, w = r.getHeight() * 0.09f;
+        pen.addRectangle (-w, -l, 2.0f * w, 1.55f * l);
+        pen.addTriangle (-w, 0.55f * l, w, 0.55f * l, 0.0f, 0.95f * l);
+        g.fillPath (pen, juce::AffineTransform::rotation (0.7f).translated (r.getCentre()));
+    }
+
+    HeadSpinProcessor& proc;
+    TopView& view;
     juce::RangedAudioParameter& param;
     const gk::Palette& palette;
     juce::Point<float> downAt;
-    bool dragged = false;
+    bool dragged = false, onPencil = false;
 };
 
 /** DIRECTION: ↻ left to right (clockwise from above) / ↺ right to left. */
@@ -267,7 +327,8 @@ HeadSpinEditor::HeadSpinEditor (HeadSpinProcessor& p)
     addToCanvas (*view, { 206, 66, 348, 234 });
 
     // left: the shapes and the direction
-    shapes = std::make_unique<ShapeSelector> (p, pal);
+    shapes = std::make_unique<ShapeSelector> (p, *view, pal);
+    view->onDrawModeChanged = [this] { shapes->repaint(); };
     addToCanvas (*shapes, { 14, 268, 174, 112 });
     direction = std::make_unique<DirectionButton> (p.getChoice (HeadSpinDsp::directionChoice), pal);
     addToCanvas (*direction, { 22, 386, 158, 36 });
