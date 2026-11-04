@@ -1,0 +1,14 @@
+{
+  "name": "Behind You",
+  "params": {
+    "shape": 1,
+    "direction": "Left to right",
+    "rateMode": "Sync",
+    "rateSync": "1 bar",
+    "width": 1,
+    "depth": 1,
+    "rotation": 90,
+    "distance": 0.8,
+    "groove": 0
+  }
+}

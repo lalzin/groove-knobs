@@ -21,7 +21,7 @@ namespace headspin
 {
 namespace shapes
 {
-    constexpr double twoPi = 2.0 * M_PI;
+    constexpr double twoPi = 2.0 * headspin::pi;
 
     inline Point polygon (const Point* v, int count, double u)
     {
@@ -130,7 +130,8 @@ public:
                    {
                        const Point p = ta.at (u), q = tb.at (u);
                        return Point { p.x + f * (q.x - p.x), p.y + f * (q.y - p.y) };
-                   });
+                   },
+                   cornerRounding); // (a mix can fold into a cusp: rounded like the corners)
     }
 
 private:

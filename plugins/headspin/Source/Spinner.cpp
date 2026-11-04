@@ -5,7 +5,6 @@ namespace headspin
 {
 namespace
 {
-    constexpr double pi = M_PI;
     double wrapPi (double a) { return a - 2.0 * pi * std::floor ((a + pi) / (2.0 * pi)); }
 
     /** From p to q (f 0..1) round the head: the angle the short way, the
@@ -119,7 +118,7 @@ Position Spinner::position() const
 }
 
 void Spinner::process (const float* inL, const float* inR, float* outL, float* outR, int n, const Transport& transport, const int* noteOns,
-                        int numNoteOns)
+                        int numNoteOns, const float* mixPerSample)
 {
     started = true;
     // a new shape table: crossfade to it (both slots stay reserved meanwhile)
@@ -163,7 +162,8 @@ void Spinner::process (const float* inL, const float* inR, float* outL, float* o
 
     for (int i = 0; i < n; ++i)
     {
-        const double mix = sMix.next (target.mix);
+        // (MIX per sample from the host's ramp when given, else smoothed here)
+        const double mix = mixPerSample != nullptr ? (double) mixPerSample[i] : sMix.next (target.mix);
         width = sWidth.next (target.width);
         depth = sDepth.next (target.depth);
         rotation = sRot.next (target.rotationDeg) * pi / 180.0;

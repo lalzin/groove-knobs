@@ -1,0 +1,77 @@
+# ---------------------------------------------------------------------------
+# HEAD SPIN — a circular panner round a head seen from above, on a shape
+#   HeadSpinCode  INTERFACE target (plugin, hs_render, hs_tests)
+#   HeadSpin      the VST3 / AU / Standalone effect
+# ---------------------------------------------------------------------------
+
+juce_add_binary_data(HeadSpinPresets
+    HEADER_NAME HeadSpinPresets.h
+    NAMESPACE   HSPresets
+    SOURCES
+        Presets/merry_go_round.json
+        Presets/ping_pong_club.json
+        Presets/triangle_trance.json
+        Presets/behind_you.json
+        Presets/headspin.json
+        Presets/figure_eight.json
+        Presets/reverse_ride.json)
+set_target_properties(HeadSpinPresets PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(HeadSpinCode INTERFACE)
+target_sources(HeadSpinCode INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/Spinner.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/HeadSpinDsp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/HeadSpinProcessor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/HeadSpinEditor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/TopView.cpp)
+target_include_directories(HeadSpinCode INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
+target_link_libraries(HeadSpinCode INTERFACE
+    groove::groove_core
+    GrooveCoreAssets
+    HeadSpinPresets
+    juce::juce_audio_utils
+    juce::juce_dsp)
+target_compile_definitions(HeadSpinCode INTERFACE
+    HS_PRODUCT_NAME="${HS_PRODUCT_NAME}"
+    GK_SUITE_NAME="${GK_SUITE_NAME}"
+    GK_COMPANY_NAME="${GK_COMPANY_NAME}"
+    HS_VERSION_STRING="${HS_VERSION}"
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_VST3_CAN_REPLACE_VST2=0
+    JUCE_MODAL_LOOPS_PERMITTED=0)
+
+if(GK_COPY_PLUGINS)
+    set(_hs_copy TRUE)
+else()
+    set(_hs_copy FALSE)
+endif()
+
+juce_add_plugin(HeadSpin
+    PRODUCT_NAME                "${HS_PRODUCT_NAME}"
+    COMPANY_NAME                "${GK_COMPANY_NAME}"
+    BUNDLE_ID                   "${HS_BUNDLE_ID}"
+    VERSION                     "${HS_VERSION}"
+    PLUGIN_MANUFACTURER_CODE    ${GK_MANUFACTURER_CODE}
+    PLUGIN_CODE                 ${HS_PLUGIN_CODE}
+    FORMATS                     VST3 AU Standalone
+    IS_SYNTH                    FALSE
+    NEEDS_MIDI_INPUT            TRUE   # RETRIGGER MIDI
+    NEEDS_MIDI_OUTPUT           FALSE
+    IS_MIDI_EFFECT              FALSE
+    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT  "The standalone app processes your audio input."
+    HARDENED_RUNTIME_ENABLED    TRUE
+    HARDENED_RUNTIME_OPTIONS    com.apple.security.device.audio-input
+    AU_MAIN_TYPE                kAudioUnitType_Effect
+    VST3_CATEGORIES             Fx Spatial
+    DESCRIPTION                 "A circular panner round the head, on a shape (${GK_SUITE_NAME})"
+    COPY_PLUGIN_AFTER_BUILD     ${_hs_copy})
+
+target_sources(HeadSpin PRIVATE Source/PluginEntry.cpp)
+target_link_libraries(HeadSpin PRIVATE
+    HeadSpinCode
+    juce::juce_recommended_config_flags
+    juce::juce_recommended_lto_flags)
+gk_enable_warnings(HeadSpin)

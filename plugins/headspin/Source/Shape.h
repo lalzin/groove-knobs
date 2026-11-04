@@ -18,6 +18,9 @@
 
 namespace headspin
 {
+/** pi (M_PI is not standard: MSVC lacks it without _USE_MATH_DEFINES). */
+inline constexpr double pi = 3.14159265358979323846;
+
 struct Point
 {
     double x = 0.0, y = 0.0;
@@ -41,6 +44,8 @@ public:
         std::vector<double> len (fine + 1, 0.0);
         for (int i = 0; i < fine; ++i)
             p[(size_t) i] = curve ((double) i / fine);
+        if (rounding > 0.0)
+            evenOut (p, fine); // (rounded by arc length: a cusp, where the curve barely moves, gets rounded too)
         if (const int half = (int) (0.5 * rounding * fine); half > 0)
             for (int pass = 0; pass < 2; ++pass)
             {
@@ -79,6 +84,32 @@ public:
         }
     }
 
+    /** Resamples p[0..n-1] (closed) at equal arc length, in place. */
+    static void evenOut (std::vector<Point>& p, int n)
+    {
+        std::vector<double> len ((size_t) n + 1, 0.0);
+        for (int i = 1; i <= n; ++i)
+        {
+            const auto& a = p[(size_t) i - 1];
+            const auto& b = p[(size_t) (i % n)];
+            len[(size_t) i] = len[(size_t) i - 1] + std::hypot (b.x - a.x, b.y - a.y);
+        }
+        std::vector<Point> q ((size_t) n);
+        int j = 0;
+        for (int k = 0; k < n; ++k)
+        {
+            const double target = len[(size_t) n] * k / n;
+            while (j < n - 1 && len[(size_t) j + 1] < target)
+                ++j;
+            const double seg = len[(size_t) j + 1] - len[(size_t) j];
+            const double f = seg > 0.0 ? (target - len[(size_t) j]) / seg : 0.0;
+            const auto& a = p[(size_t) j];
+            const auto& b = p[(size_t) ((j + 1) % n)];
+            q[(size_t) k] = { a.x + f * (b.x - a.x), a.y + f * (b.y - a.y) };
+        }
+        std::copy (q.begin(), q.end(), p.begin());
+    }
+
     /** The point at phase u (any real: wraps), linear between table points. */
     Point at (double u) const noexcept
     {
@@ -95,7 +126,7 @@ public:
     /** The circle through both ears, starting in front, clockwise. */
     static Point circle (double u)
     {
-        const double a = 2.0 * M_PI * u;
+        const double a = 2.0 * pi * u;
         return { std::sin (a), std::cos (a) };
     }
 

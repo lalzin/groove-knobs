@@ -80,18 +80,27 @@ public:
 
     void prepare (double sampleRate);
     void reset();
-    void setParams (const Params& p) { target = p; }
+    void setParams (const Params& p)
+    {
+        target = p;
+        shapeToBuild.store (p.shape, std::memory_order_relaxed);
+    }
 
-    /** Message thread: builds the path for the current SHAPE if it changed
-        (the audio thread picks it up at its next block, crossfaded). */
-    void updateShape() { store.request (target.shape); }
+    /** Message thread: the SHAPE to build (when the parameters are set on
+        the audio thread), then builds it if it changed (the audio thread
+        picks it up at its next block, crossfaded). */
+    void setShapeForBuild (float s) { shapeToBuild.store (s, std::memory_order_relaxed); }
+    void updateShape() { store.request (shapeToBuild.load (std::memory_order_relaxed)); }
 
     /** inL / inR: the input (the same pointer twice for a mono input); the
         output is always two channels. `transport`: the host's tempo and
         position at the first sample; `noteOns`: sample offsets of the MIDI
         note-ons in this block (RETRIGGER MIDI). */
     void process (const float* inL, const float* inR, float* outL, float* outR, int n, const Transport& transport = {},
-                  const int* noteOns = nullptr, int numNoteOns = 0);
+                  const int* noteOns = nullptr, int numNoteOns = 0, const float* mixPerSample = nullptr);
+
+    /** The speed now, in turns per second (Hz, or from the tempo). */
+    double turnsPerSecond() const noexcept { return motion.turnsPerSecond(); }
 
     /** Where the source is now. */
     Position position() const;
@@ -105,7 +114,7 @@ private:
     {
         double a = 0.0, s1 = 0.0, v = 0.0;
         bool init = false;
-        void prepare (double sr, double seconds) { a = std::exp (-1.0 / (seconds / 4.74 * sr)); }
+        void prepare (double rate, double seconds) { a = std::exp (-1.0 / (seconds / 4.74 * rate)); }
         double next (double t)
         {
             if (! init) { s1 = v = t; init = true; }
@@ -150,12 +159,12 @@ private:
         std::array<std::vector<float>, 4> line;
         std::array<int, 4> pos {};
         std::array<float, 4> lp {};
-        void prepare (double sr)
+        void prepare (double rate)
         {
             const double ms[4] { 23.1, 29.7, 34.3, 41.9 };
             for (int i = 0; i < 4; ++i)
             {
-                line[(size_t) i].assign ((size_t) std::lround (ms[i] * 0.001 * sr), 0.0f);
+                line[(size_t) i].assign ((size_t) std::lround (ms[i] * 0.001 * rate), 0.0f);
                 pos[(size_t) i] = 0;
                 lp[(size_t) i] = 0.0f;
             }
@@ -189,6 +198,7 @@ private:
     double sr = 48000.0;
     Params target;
     ShapeStore store;
+    std::atomic<float> shapeToBuild { 0.0f };
     int currentSlot = 0, previousSlot = -1;
     double shapeFade = 1.0, shapeFadeStep = 0.0;
     Motion motion;

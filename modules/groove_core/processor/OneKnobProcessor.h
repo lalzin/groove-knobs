@@ -38,6 +38,9 @@ struct KnobSpec
         The knob's index (getKnobParameter, OneKnobEngine::setKnobs) is still
         its place in OneKnobConfig::knobs. */
     bool late = false;
+    /** Optional: the text hosts and the editor show for a value (e.g. a
+        shape's name, or dB without "-inf" at the minimum). */
+    std::function<juce::String (float)> textFromValue {};
 };
 
 /** Static description of a Groove Knobs plugin. */
@@ -78,6 +81,9 @@ struct OneKnobConfig
         own sound (no transparency zone, no makeup, no warm-up fade), and the
         engine receives the MIDI of each chunk (OneKnobEngine::setMidi). */
     bool isInstrument = false;
+    /** An effect that also takes MIDI (HEAD SPIN: a note restarts the
+        motion): the engine receives each chunk's MIDI (OneKnobEngine::setMidi). */
+    bool wantsMidi = false;
     /** Default of "amount" (< 0: 0, or the centre when bipolar). */
     float defaultAmount = -1.0f;
     /** Host ID / name of the main knob (empty: "amount" / "Amount"). */
@@ -182,7 +188,7 @@ public:
     using AudioProcessor::processBlockBypassed;
 
     double getTailLengthSeconds() const override { return config.tailSeconds; }
-    bool acceptsMidi() const override { return config.isInstrument; }
+    bool acceptsMidi() const override { return config.isInstrument || config.wantsMidi; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
     bool hasEditor() const override { return true; }

@@ -1,5 +1,6 @@
 // HEAD SPIN step 1 renders and checks.
 //   render <in-dir with guitar.wav (mono 48 kHz 24-bit)> <out-dir>
+// Build: c++ -std=c++20 -O2 -I../../plugins/headspin/Source -o render render.cpp ../../plugins/headspin/Source/Spinner.cpp
 // Writes WAVs (guitar and a shaker going round, several speeds, the other
 // direction, an oval, DISTANCE 0 / 1, a MIX sweep, a direction flip while
 // playing) and prints the checks: the side of the sound over one turn

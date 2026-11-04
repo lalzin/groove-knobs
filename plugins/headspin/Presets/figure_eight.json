@@ -1,0 +1,14 @@
+{
+  "name": "Figure Eight",
+  "params": {
+    "shape": 4,
+    "direction": "Left to right",
+    "rateMode": "Sync",
+    "rateSync": "1 bar",
+    "width": 1,
+    "depth": 1,
+    "rotation": 0,
+    "distance": 0.5,
+    "groove": 0
+  }
+}

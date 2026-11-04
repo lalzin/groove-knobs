@@ -193,8 +193,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
             juce::AudioParameterFloatAttributes()
                 .withMeta (k.meta)
                 .withLabel (k.unit)
-                .withStringFromValueFunction ([db, minimum, unit = k.unit] (float v, int)
+                .withStringFromValueFunction ([db, minimum, unit = k.unit, custom = k.textFromValue] (float v, int)
                                               {
+                                                  if (custom)
+                                                      return custom (v);
                                                   if (unit != "%" && ! db)
                                                       return juce::String (v, std::abs (v) < 10.0f && unit == "ms" ? 1 : 0) + " " + unit;
                                                   if (! db)
@@ -375,6 +377,8 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
             buffer.clear (ch, 0, numSamples);
         chunkMidi = midi;
     }
+    else if (config.wantsMidi)
+        chunkMidi = midi;
     if (! knobParams.empty())
     {
         std::array<float, 64> v {}; // plain values (% knobs: 0..1, dB knobs: dB)
@@ -581,7 +585,7 @@ void OneKnobProcessor::processChunk (juce::AudioBuffer<float>& buffer, int start
 
         if (! toggleParams.empty())
             engine->setToggleValues (togglePointers.data(), (int) toggleParams.size());
-        if (config.isInstrument && chunkMidi != nullptr)
+        if ((config.isInstrument || config.wantsMidi) && chunkMidi != nullptr)
             engine->setMidi (*chunkMidi, start, n);
         if (config.sidechain)
         {

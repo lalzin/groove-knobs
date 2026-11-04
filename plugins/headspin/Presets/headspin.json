@@ -1,0 +1,14 @@
+{
+  "name": "Headspin",
+  "params": {
+    "shape": 0,
+    "direction": "Left to right",
+    "rateMode": "Hz",
+    "rateHz": 8,
+    "width": 1,
+    "depth": 1,
+    "rotation": 0,
+    "distance": 0.5,
+    "groove": 0
+  }
+}

@@ -73,3 +73,10 @@ set(CR_PLUGIN_CODE         "Crkl")
 set(CR_AU_TYPE             "aufx")          # kAudioUnitType_Effect
 set(CR_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.crackle")
 set(CR_VERSION             "0.1.7")
+
+# HEAD SPIN (a circular panner round a head seen from above; in test, not in the suite yet)
+set(HS_PRODUCT_NAME        "Head Spin")
+set(HS_PLUGIN_CODE         "HdSp")
+set(HS_AU_TYPE             "aufx")          # kAudioUnitType_Effect
+set(HS_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.headspin")
+set(HS_VERSION             "0.1.0")

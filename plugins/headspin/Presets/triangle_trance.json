@@ -1,0 +1,14 @@
+{
+  "name": "Triangle Trance",
+  "params": {
+    "shape": 2,
+    "direction": "Left to right",
+    "rateMode": "Sync",
+    "rateSync": "1/8",
+    "width": 1,
+    "depth": 1,
+    "rotation": 0,
+    "distance": 0.5,
+    "groove": 0
+  }
+}
