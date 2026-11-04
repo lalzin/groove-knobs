@@ -1,11 +1,13 @@
 #include "HeadSpinEditor.h"
 #include "TopView.h"
+#include "KikoMascot.h"
 
 namespace hs
 {
 namespace
 {
-    const juce::Colour pink (0xffff4fa3), ink (0xff121212), white (0xffffffff);
+    // Kiko's colours: the cap's pink, the trousers' navy, the headphones' blue, white
+    const juce::Colour pink (0xffff2d78), navy (0xff1b2a5e), blue (0xff2456c8), white (0xffffffff), ink (0xff0e1226);
 
     /** A small drawing of shape `k` (0..5) in `r`. */
     juce::Path shapeIcon (int k, juce::Rectangle<float> r)
@@ -28,29 +30,52 @@ namespace
 gk::Palette HeadSpinEditor::makePalette()
 {
     gk::Palette p;
-    p.background = juce::Colour (0xff1c1c1e);
-    p.backgroundEdge = ink;
-    p.surface = juce::Colour (0xff2a2a2d);
-    p.outline = juce::Colour (0xff050505);
+    p.background = juce::Colour (0xff1a1f38); // a night navy (Kiko's trousers, darker)
+    p.backgroundEdge = juce::Colour (0xff0b0e1c);
+    p.surface = juce::Colour (0xff2a3156);
+    p.outline = juce::Colour (0xff070914);
     p.text = white;
     p.accent = pink;
     p.beret = pink; // power button, "LALZIN"
     p.track = white.withAlpha (0.12f);
     p.pointer = ink;
     p.plaque = white;
-    p.arcStops = { white, pink };
-    p.knobBands = { ink };
-    p.knobRings = { ink, pink, ink, pink, ink }; // a record seen from above
-    p.knobRim = pink;
-    p.pulse = pink;
+    p.arcStops = { white, pink };                  // MIX: white -> the cap's pink
+    p.knobBands = { pink, navy, pink, navy };       // the big knob: Kiko's stripes (Kick Lock's drum)
+    p.pulse = blue;
     p.arrowLeft = white;
     p.arrowRight = pink;
-    p.frameLeft = white;
-    p.frameRight = pink;
     p.lowLabel = white; // DRY
     p.highLabel = pink; // SPIN
     return p;
 }
+
+/** The panels behind the controls (Kick Lock's layout): left (Kiko, the
+    shapes, the direction), the view from above, MIX under it, the right
+    column (the motion). */
+class HeadSpinEditor::Panels final : public juce::Component
+{
+public:
+    explicit Panels (const gk::Palette& pal) : palette (pal) { setInterceptsMouseClicks (false, false); }
+    void paint (juce::Graphics& g) override
+    {
+        const juce::Rectangle<float> areas[] { { 6, 64, 190, 368 }, { 202, 64, 356, 238 }, { 202, 308, 356, 124 }, { 564, 64, 190, 368 } };
+        for (const auto& r : areas)
+        {
+            g.setColour (palette (juce::Colour (0xff222846)).withAlpha (0.92f));
+            g.fillRoundedRectangle (r, 12.0f);
+            g.setColour (palette (blue).withAlpha (0.35f));
+            g.drawRoundedRectangle (r.reduced (0.5f), 12.0f, 1.5f);
+        }
+        g.setFont (gk::GrooveFonts::font (9.5f).withExtraKerningFactor (0.16f));
+        g.setColour (palette (white).withAlpha (0.55f));
+        g.drawText ("MOTION", juce::Rectangle<float> (564, 66, 190, 14), juce::Justification::centred);
+        g.drawText ("FROM ABOVE", juce::Rectangle<float> (214, 68, 120, 14), juce::Justification::centredLeft);
+    }
+
+private:
+    const gk::Palette& palette;
+};
 
 /** The six shapes: click one; drag across them to morph in between. */
 class HeadSpinEditor::ShapeSelector final : public juce::Component, public juce::SettableTooltipClient
@@ -226,51 +251,60 @@ private:
 
 HeadSpinEditor::HeadSpinEditor (HeadSpinProcessor& p)
     : OneKnobEditor (p, makePalette(), HS_PRODUCT_NAME,
-                     [&p] (gk::AudioFeatures& f, const gk::Palette& palette) { return std::make_unique<TopView> (p, f, palette); }),
+                     [&p] (gk::AudioFeatures& f, const gk::Palette& palette) { return std::make_unique<KikoMascot> (p, f, palette); }),
       proc (p)
 {
-    view = dynamic_cast<TopView*> (&getMascot());
     auto& pal = getPalette();
-    // the view in the middle, MIX under it, the presets along the bottom
-    placeMascotAndKnob ({ 176, 50, 288, 236 }, juce::Rectangle<int> (104, 104).withCentre ({ 320, 340 }));
-    getPresetBar().setBounds (150, 394, 340, 46);
+    setBackgroundCached (true);
+    panels = std::make_unique<Panels> (pal);
+    addToCanvas (*panels, { 0, 0, getBaseWidth(), getBaseHeight() });
+    panels->toBack();
 
-    // left: the stretch and the turn, the level, the shapes and the direction
-    struct K { HeadSpinDsp::Knob knob; juce::Rectangle<int> at; float along; };
-    const K left[] { { HeadSpinDsp::widthKnob, { 10, 58, 66, 70 }, 0.2f },
-                     { HeadSpinDsp::depthKnob, { 82, 58, 66, 70 }, 0.4f },
-                     { HeadSpinDsp::rotationKnob, { 10, 134, 66, 70 }, 0.6f },
-                     { HeadSpinDsp::levelKnob, { 82, 134, 66, 70 }, 1.0f },
-                     // right: start, distance, groove
-                     { HeadSpinDsp::phaseKnob, { 492, 134, 66, 70 }, 0.3f },
-                     { HeadSpinDsp::distanceKnob, { 564, 134, 66, 70 }, 0.6f },
-                     { HeadSpinDsp::grooveKnob, { 492, 210, 66, 70 }, 1.0f } };
-    for (const auto& k : left)
+    // Kiko (small, left), MIX under the view from above; the presets along the bottom
+    placeMascotAndKnob ({ 14, 70, 174, 198 }, juce::Rectangle<int> (146, 146).withCentre ({ 380, 372 }));
+    getPresetBar().setBounds (190, 434, 380, 46);
+    view = std::make_unique<TopView> (p, pal);
+    addToCanvas (*view, { 206, 66, 348, 234 });
+
+    // left: the shapes and the direction
+    shapes = std::make_unique<ShapeSelector> (p, pal);
+    addToCanvas (*shapes, { 14, 268, 174, 112 });
+    direction = std::make_unique<DirectionButton> (p.getChoice (HeadSpinDsp::directionChoice), pal);
+    addToCanvas (*direction, { 22, 386, 158, 36 });
+
+    // right: the motion, two columns
+    struct K { HeadSpinDsp::Knob knob; juce::Rectangle<int> at; juce::Colour colour; };
+    const K ks[] { { HeadSpinDsp::phaseKnob, { 576, 156, 66, 70 }, white },
+                   { HeadSpinDsp::distanceKnob, { 666, 156, 66, 70 }, blue },
+                   { HeadSpinDsp::grooveKnob, { 576, 236, 66, 70 }, pink },
+                   { HeadSpinDsp::rotationKnob, { 666, 236, 66, 70 }, white },
+                   { HeadSpinDsp::widthKnob, { 576, 316, 66, 70 }, blue },
+                   { HeadSpinDsp::depthKnob, { 666, 316, 66, 70 }, blue },
+                   // under the view, right of MIX: the level
+                   { HeadSpinDsp::levelKnob, { 474, 318, 66, 70 }, white } };
+    for (const auto& k : ks)
     {
-        knobs.push_back (std::make_unique<gk::SmallKnob> (p.getKnob (k.knob), pal, p.getConfig().knobs[(size_t) k.knob].caption, pal.arcColour (k.along)));
+        knobs.push_back (std::make_unique<gk::SmallKnob> (p.getKnob (k.knob), pal, p.getConfig().knobs[(size_t) k.knob].caption, k.colour));
         addToCanvas (*knobs.back(), k.at);
     }
-    shapes = std::make_unique<ShapeSelector> (p, pal);
-    addToCanvas (*shapes, { 8, 214, 144, 104 });
-    direction = std::make_unique<DirectionButton> (p.getChoice (HeadSpinDsp::directionChoice), pal);
-    addToCanvas (*direction, { 12, 326, 136, 34 });
-
-    // right: the speed (RATE in Hz, or the DIVISION in Sync) and its switch
+    // the speed: RATE in Hz or the DIVISION in Sync (the same place), and its switch
     rateHz = std::make_unique<gk::SmallKnob> (p.getKnob (HeadSpinDsp::rateHzKnob), pal, "RATE", pink);
     rateSync = std::make_unique<gk::SmallKnob> (p.getChoice (HeadSpinDsp::rateSyncChoice), pal, "DIVISION", pink);
-    addToCanvas (*rateHz, { 492, 58, 66, 70 });
-    addToCanvas (*rateSync, { 492, 58, 66, 70 });
+    addToCanvas (*rateHz, { 576, 80, 66, 70 });
+    addToCanvas (*rateSync, { 576, 80, 66, 70 });
     mode = std::make_unique<gk::ChoiceSelector> (p.getChoice (HeadSpinDsp::rateModeChoice), "MODE", pink, pal);
     mode->setTooltip ("Hz: a speed in turns per second. Sync: a turn lasts a musical division of the host's tempo, locked to the bar");
-    addToCanvas (*mode, { 564, 74, 68, 38 });
+    addToCanvas (*mode, { 660, 96, 80, 38 });
+
+    // under the view, left of MIX: retrigger and render; right: the mono check
     retrigger = std::make_unique<gk::ChoiceSelector> (p.getChoice (HeadSpinDsp::retriggerChoice), "RETRIGGER", pink, pal);
     retrigger->setTooltip ("Puts the sound back on its START point: on every MIDI note, or on every transient of the input");
-    addToCanvas (*retrigger, { 564, 222, 68, 38 });
-    render = std::make_unique<gk::ChoiceSelector> (p.getChoice (HeadSpinDsp::renderChoice), "RENDER", white, pal);
+    addToCanvas (*retrigger, { 214, 320, 88, 38 });
+    render = std::make_unique<gk::ChoiceSelector> (p.getChoice (HeadSpinDsp::renderChoice), "RENDER", blue, pal);
     render->setTooltip ("Speakers: the head model for loudspeakers. Headphones: binaural (HRTF) — coming next, Speakers meanwhile");
-    addToCanvas (*render, { 498, 290, 128, 38 });
+    addToCanvas (*render, { 214, 372, 88, 38 });
     mono = std::make_unique<MonoCheck> (pal);
-    addToCanvas (*mono, { 512, 340, 100, 20 });
+    addToCanvas (*mono, { 462, 396, 90, 22 });
     editorTick (0.0);
 }
 

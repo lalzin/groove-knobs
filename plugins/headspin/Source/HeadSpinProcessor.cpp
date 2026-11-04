@@ -34,8 +34,8 @@ namespace
         cfg.transparencyZone = 0.01f;  // (MIX 0 is the input exactly in the engine already)
         cfg.presetSetsParameters = true;
         cfg.editorBuildsControls = false;
-        cfg.editorWidth = 640;
-        cfg.editorHeight = 440;
+        cfg.editorWidth = 760; // the canvas of Kick Lock, whose layout HEAD SPIN takes (Alan)
+        cfg.editorHeight = 480;
         cfg.tailSeconds = 0.5;         // the small room
         const auto shapeText = [] (float v)
         {

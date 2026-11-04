@@ -10,14 +10,14 @@ namespace hs
     grabbed follows the mouse), drag outside it or with alt to turn it
     (ROTATION); a double-click puts the three back.
 
-    It is the editor's "mascot" (the frame drives its animation every
-    frame); the head is drawn in code until Kiko's sprites (step 5). It
-    turns towards the sound, spins on itself above 4 turns / s, and its cap
-    flies off above 10. */
-class TopView final : public gk::MascotComponent
+    Kiko is in the middle, seen from above (Alan's drawing, turned so his
+    face points to the front): he turns his head towards the sound (up to
+    70°) and goes into a head spin above 4 turns / s (speed lines). The
+    small Kiko seen from the front is the editor's mascot (KikoMascot). */
+class TopView final : public juce::Component
 {
 public:
-    TopView (HeadSpinProcessor& p, gk::AudioFeatures& features, const gk::Palette& palette);
+    TopView (HeadSpinProcessor& p, const gk::Palette& palette);
 
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -37,11 +37,13 @@ private:
     juce::Point<float> toScreen (double x, double y) const noexcept;
     juce::Point<double> toUnits (juce::Point<float> p) const noexcept;
     void rebuildPath();
-    void paintHead (juce::Graphics& g, juce::Point<float> c, float radius);
+    void paintKiko (juce::Graphics& g, juce::Point<float> c, float unit);
     float param (HeadSpinDsp::Knob k);
     void setParam (HeadSpinDsp::Knob k, float plain);
 
     HeadSpinProcessor& proc;
+    const gk::Palette& palette;
+    juce::Image kiko, kikoScaled; // from above, face down as drawn; and pre-scaled to the screen
     headspin::ShapeBank bank;
     headspin::ShapeTable table;
     float builtShape = -1.0f;
@@ -54,7 +56,7 @@ private:
     bool trailFilled = false;
     juce::Point<float> dot { 0.0f, 1.0f };
 
-    float headTurn = 0.0f, spinAngle = 0.0f, spinAmount = 0.0f, capLift = 0.0f;
+    float headTurn = 0.0f, spinAngle = 0.0f, spinAmount = 0.0f;
     double time = 0.0;
 
     enum class Drag { none, stretch, rotate };

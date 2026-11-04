@@ -1,14 +1,15 @@
 #include "TopView.h"
+#include "KikoMascot.h"
 
 namespace hs
 {
 namespace
 {
-    const juce::Colour pink (0xffff4fa3), ink (0xff121212), white (0xffffffff);
+    const juce::Colour pink (0xffff2d78), ink (0xff0e1226), white (0xffffffff);
     constexpr float pi = juce::MathConstants<float>::pi;
 } // namespace
 
-TopView::TopView (HeadSpinProcessor& p, gk::AudioFeatures& features, const gk::Palette& pal) : MascotComponent (features, pal), proc (p)
+TopView::TopView (HeadSpinProcessor& p, const gk::Palette& pal) : proc (p), palette (pal), kiko (KikoMascot::loadTopView())
 {
     setTitle ("Top view");
     setDescription ("The sound's path around the head, seen from above. Drag it to stretch it, drag outside it or with alt to turn it, "
@@ -91,8 +92,6 @@ void TopView::tick (double dt)
     headTurn += (juce::jlimit (-70.0f, 70.0f, std::abs (az) > 110.0f ? 0.0f : az) - headTurn) * k;
     spinAmount += ((speed > 4.0f ? 1.0f : 0.0f) - spinAmount) * (1.0f - std::exp (-(float) dt / 0.3f));
     spinAngle = std::fmod (spinAngle + (float) dt * 360.0f * juce::jmin (speed, 3.0f) * spinAmount, 360.0f);
-    const float capTarget = speed > 10.0f ? 0.5f + 0.5f * std::sin ((float) time * 2.0f * pi / 1.6f) : 0.0f;
-    capLift += (capTarget - capLift) * (1.0f - std::exp (-(float) dt / 0.08f));
     repaint();
 }
 
@@ -119,7 +118,7 @@ void TopView::paint (juce::Graphics& g)
     const auto b = getLocalBounds().toFloat();
     const auto centre = b.getCentre();
     const float s = 0.5f * juce::jmin (b.getWidth(), b.getHeight()) / unitsToEdge;
-    const float bypass = getState().bypass;
+    const float bypass = proc.getBypassParameterObject().get() ? 1.0f : 0.0f;
     const float dim = 1.0f - 0.6f * bypass;
 
     // The floor: rings at r = 0.5, 1 (the ears' circle), 1.5, and the axes
@@ -148,8 +147,8 @@ void TopView::paint (juce::Graphics& g)
     g.setColour (palette (pink).withAlpha (0.85f * dim));
     g.strokePath (p, juce::PathStrokeType (2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-    // The head (Kiko, drawn in code until his sprites)
-    paintHead (g, centre, 0.34f * s);
+    // Kiko, from above
+    paintKiko (g, centre, s);
 
     // The trail (oldest faint and thin), then the dot
     const int count = trailFilled ? trailLength : trailHead + 1;
@@ -172,73 +171,37 @@ void TopView::paint (juce::Graphics& g)
     g.drawEllipse (juce::Rectangle<float> (11.0f, 11.0f).withCentre (d), 2.0f);
 }
 
-void TopView::paintHead (juce::Graphics& g, juce::Point<float> c, float r)
+void TopView::paintKiko (juce::Graphics& g, juce::Point<float> c, float unit)
 {
-    // seen from above, the nose up; turned by headTurn, spun by spinAngle
-    const float angle = (headTurn + spinAngle) * pi / 180.0f;
-    juce::Graphics::ScopedSaveState save (g);
-    g.addTransform (juce::AffineTransform::rotation (angle).translated (c));
-
-    // speed lines while spinning (drawn round the head, behind it)
+    // turned towards the sound (headTurn) and spinning (spinAngle); the
+    // drawing has his face down: +180° puts it to the front (up)
+    const float angle = (180.0f + headTurn + spinAngle) * pi / 180.0f;
+    // speed lines while spinning, round him
     if (spinAmount > 0.05f)
     {
-        g.setColour (palette (white).withAlpha (0.45f * spinAmount));
+        g.setColour (palette (white).withAlpha (0.5f * spinAmount));
         for (int k = 0; k < 3; ++k)
         {
             juce::Path arc;
-            const float a0 = (float) k * 2.0f * pi / 3.0f;
-            arc.addCentredArc (0.0f, 0.0f, r * 1.55f, r * 1.55f, 0.0f, a0, a0 + 1.1f, true);
+            const float a0 = (float) k * 2.0f * pi / 3.0f - spinAngle * pi / 180.0f;
+            arc.addCentredArc (c.x, c.y, 0.62f * unit, 0.62f * unit, 0.0f, a0, a0 + 1.0f, true);
             g.strokePath (arc, juce::PathStrokeType (2.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         }
     }
-    // shoulders
-    g.setColour (palette (white));
-    g.fillRoundedRectangle (juce::Rectangle<float> (-1.45f * r, -0.15f * r, 2.9f * r, 0.75f * r), 0.35f * r);
-    g.setColour (palette (ink));
-    g.drawRoundedRectangle (juce::Rectangle<float> (-1.45f * r, -0.15f * r, 2.9f * r, 0.75f * r), 0.35f * r, 2.5f);
-    // headphones: the band over the top, the cups on the ears
-    g.setColour (palette (ink));
-    for (float side : { -1.0f, 1.0f })
-    {
-        const auto cup = juce::Rectangle<float> (0.42f * r, 0.62f * r).withCentre ({ side * 0.98f * r, 0.0f });
-        g.fillRoundedRectangle (cup, 0.16f * r);
-        g.setColour (palette (pink));
-        g.drawRoundedRectangle (cup.reduced (0.07f * r), 0.12f * r, 2.0f);
-        g.setColour (palette (ink));
-    }
-    // the head, the nose (front, up)
-    g.setColour (palette (juce::Colour (0xfff2c09a)));
-    g.fillEllipse (-0.82f * r, -0.82f * r, 1.64f * r, 1.64f * r);
-    juce::Path nose;
-    nose.addTriangle (-0.16f * r, -0.74f * r, 0.16f * r, -0.74f * r, 0.0f, -1.02f * r);
-    g.fillPath (nose);
-    g.setColour (palette (ink));
-    g.strokePath (nose, juce::PathStrokeType (2.0f));
-    g.drawEllipse (-0.82f * r, -0.82f * r, 1.64f * r, 1.64f * r, 2.5f);
-    // the cap, backwards (the visor at the back of the head); it flies off
-    {
-        const float lift = capLift;
-        juce::Graphics::ScopedSaveState capState (g);
-        g.addTransform (juce::AffineTransform::scale (1.0f + 0.35f * lift).translated (0.0f, -1.6f * r * lift));
-        const auto crown = juce::Rectangle<float> (1.5f * r, 1.5f * r).withCentre ({ 0.0f, 0.05f * r });
-        juce::Path visor;
-        visor.addCentredArc (0.0f, 0.55f * r, 0.72f * r, 0.55f * r, 0.0f, pi * 0.5f, pi * 1.5f, true);
-        visor.closeSubPath();
-        g.setColour (palette (pink).darker (0.25f));
-        g.fillPath (visor);
-        g.setColour (palette (ink));
-        g.strokePath (visor, juce::PathStrokeType (2.2f));
-        g.setColour (palette (pink));
-        g.fillEllipse (crown);
-        g.setColour (palette (ink));
-        g.drawEllipse (crown, 2.5f);
-        // seams and the button
-        g.setColour (palette (ink).withAlpha (0.5f));
-        g.drawLine (0.0f, crown.getY() + 2.0f, 0.0f, crown.getBottom() - 2.0f, 1.5f);
-        g.drawLine (crown.getX() + 2.0f, crown.getCentreY(), crown.getRight() - 2.0f, crown.getCentreY(), 1.5f);
-        g.setColour (palette (white));
-        g.fillEllipse (juce::Rectangle<float> (0.22f * r, 0.22f * r).withCentre (crown.getCentre()));
-    }
+    if (! kiko.isValid())
+        return;
+    // 1.1 of the ears' radius tall; the turn pivots on his head (42 % down the drawing)
+    const float h = 1.1f * unit, w = h * (float) kiko.getWidth() / (float) kiko.getHeight();
+    const float scale = g.getInternalContext().getPhysicalPixelScaleFactor();
+    const int px = juce::roundToInt (h * scale);
+    if (! kikoScaled.isValid() || kikoScaled.getHeight() != px)
+        kikoScaled = kiko.rescaled (juce::roundToInt (w * scale), px, juce::Graphics::highResamplingQuality);
+    const juce::Point<float> pivot (0.5f * w, 0.42f * h);
+    g.setOpacity (1.0f);
+    g.drawImageTransformed (kikoScaled, juce::AffineTransform::scale (w / (float) kikoScaled.getWidth(), h / (float) kikoScaled.getHeight())
+                                            .translated (-pivot.x, -pivot.y)
+                                            .rotated (angle)
+                                            .translated (c));
 }
 
 void TopView::mouseMove (const juce::MouseEvent& e)

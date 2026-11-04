@@ -427,14 +427,27 @@ juce::Image eraseGridLines (const juce::Image& src, juce::Colour bg)
         if (n > h * 85 / 100)
             colsToErase.push_back (x);
     }
+    // only the line's own pixels: dark, or the background's hue (its
+    // anti-aliasing against the background); a coloured drawing crossing the
+    // line (a cap flying over it, HEAD SPIN's Kiko) keeps its pixels
+    auto lineLike = [&d, &dark, bg] (int x, int y)
+    {
+        if (dark (x, y))
+            return true;
+        const auto c = d.getPixelColour (x, y);
+        const float dh = std::abs (c.getHue() - bg.getHue());
+        return std::min (dh, 1.0f - dh) < 0.06f && c.getSaturation() > 0.25f;
+    };
     for (int y0 : rowsToErase)
         for (int y = juce::jmax (0, y0 - 2); y <= juce::jmin (h - 1, y0 + 2); ++y)
             for (int x = 0; x < w; ++x)
-                d.setPixelColour (x, y, bg);
+                if (lineLike (x, y))
+                    d.setPixelColour (x, y, bg);
     for (int x0 : colsToErase)
         for (int x = juce::jmax (0, x0 - 2); x <= juce::jmin (w - 1, x0 + 2); ++x)
             for (int y = 0; y < h; ++y)
-                d.setPixelColour (x, y, bg);
+                if (lineLike (x, y))
+                    d.setPixelColour (x, y, bg);
     return img;
 }
 
