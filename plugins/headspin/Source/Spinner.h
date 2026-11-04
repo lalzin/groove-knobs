@@ -48,6 +48,7 @@ struct Params
     float distance = 0.5f;    // 0..1, how much distance attenuates and adds room
     float levelDb = 0.0f;     // -12..+6
     float groove = 0.0f;      // 0..1: a rest on every beat
+    float focus = 0.7f;       // 3D: 0 = the plain head model, 1 = front / back and distance pushed for loudspeakers
     Motion::Retrigger retrigger = Motion::Retrigger::off;
 };
 
@@ -206,7 +207,7 @@ private:
     Motion motion;
     double glide = 1.0, glideStep = 0.0;
     Point glideFrom, lastPoint;
-    Smooth sMix, sWidth, sDepth, sRot, sRate, sDist, sLevel, sDoppler;
+    Smooth sMix, sWidth, sDepth, sRot, sRate, sDist, sLevel, sDoppler, sRefRadius;
     double phase = 0.0;
     bool started = false;
     double width = 1.0, depth = 1.0, rotation = 0.0;
@@ -218,6 +219,7 @@ private:
     Svf pinnaL, pinnaR;
     double svfG = 0.0, svfK = 1.0, svfA1 = 1.0, svfA2 = 0.0, svfA3 = 0.0;
     double airL = 0.0, airR = 0.0, airCoeff = 0.0;
+    double muffleL = 0.0, muffleR = 0.0, muffleCoeff = 0.0;
     double nearestRadius = 1.0; // of the current path (the Doppler delay is 0 there)
     Room room;
 };

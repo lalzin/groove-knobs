@@ -11,7 +11,7 @@ namespace hs
 class HeadSpinDsp final : public gk::OneKnobEngine
 {
 public:
-    enum Knob { shapeKnob, widthKnob, depthKnob, rotationKnob, rateHzKnob, phaseKnob, distanceKnob, grooveKnob, levelKnob, numKnobs };
+    enum Knob { shapeKnob, widthKnob, depthKnob, rotationKnob, rateHzKnob, phaseKnob, distanceKnob, grooveKnob, levelKnob, focusKnob, numKnobs };
     enum Choice { directionChoice, rateModeChoice, rateSyncChoice, renderChoice, retriggerChoice, numChoices };
 
     /** What the editor shows (written by the audio thread once per block). */

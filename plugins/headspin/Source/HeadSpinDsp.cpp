@@ -40,6 +40,7 @@ void HeadSpinDsp::setKnobs (const float* v, int n)
     params.distance = v[distanceKnob];
     params.groove = v[grooveKnob];
     params.levelDb = v[levelKnob];
+    params.focus = v[focusKnob];
 }
 
 void HeadSpinDsp::setChoices (const int* c, int n)

@@ -9,6 +9,7 @@
     "depth": 1,
     "rotation": 90,
     "distance": 0.8,
-    "groove": 0
+    "groove": 0,
+    "focus": 1.0
   }
 }

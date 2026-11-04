@@ -335,12 +335,13 @@ HeadSpinEditor::HeadSpinEditor (HeadSpinProcessor& p)
 
     // right: the motion, two columns
     struct K { HeadSpinDsp::Knob knob; juce::Rectangle<int> at; juce::Colour colour; };
-    const K ks[] { { HeadSpinDsp::phaseKnob, { 576, 156, 66, 70 }, white },
-                   { HeadSpinDsp::distanceKnob, { 666, 156, 66, 70 }, blue },
-                   { HeadSpinDsp::grooveKnob, { 576, 236, 66, 70 }, pink },
-                   { HeadSpinDsp::rotationKnob, { 666, 236, 66, 70 }, white },
-                   { HeadSpinDsp::widthKnob, { 576, 316, 66, 70 }, blue },
-                   { HeadSpinDsp::depthKnob, { 666, 316, 66, 70 }, blue },
+    const K ks[] { { HeadSpinDsp::phaseKnob, { 576, 146, 66, 70 }, white },
+                   { HeadSpinDsp::distanceKnob, { 666, 146, 66, 70 }, blue },
+                   { HeadSpinDsp::grooveKnob, { 576, 216, 66, 70 }, pink },
+                   { HeadSpinDsp::rotationKnob, { 666, 216, 66, 70 }, white },
+                   { HeadSpinDsp::widthKnob, { 576, 286, 66, 70 }, blue },
+                   { HeadSpinDsp::depthKnob, { 666, 286, 66, 70 }, blue },
+                   { HeadSpinDsp::focusKnob, { 621, 356, 66, 70 }, pink },
                    // under the view, right of MIX: the level
                    { HeadSpinDsp::levelKnob, { 474, 318, 66, 70 }, white } };
     for (const auto& k : ks)
@@ -351,11 +352,11 @@ HeadSpinEditor::HeadSpinEditor (HeadSpinProcessor& p)
     // the speed: RATE in Hz or the DIVISION in Sync (the same place), and its switch
     rateHz = std::make_unique<gk::SmallKnob> (p.getKnob (HeadSpinDsp::rateHzKnob), pal, "RATE", pink);
     rateSync = std::make_unique<gk::SmallKnob> (p.getChoice (HeadSpinDsp::rateSyncChoice), pal, "DIVISION", pink);
-    addToCanvas (*rateHz, { 576, 80, 66, 70 });
-    addToCanvas (*rateSync, { 576, 80, 66, 70 });
+    addToCanvas (*rateHz, { 576, 76, 66, 70 });
+    addToCanvas (*rateSync, { 576, 76, 66, 70 });
     mode = std::make_unique<gk::ChoiceSelector> (p.getChoice (HeadSpinDsp::rateModeChoice), "MODE", pink, pal);
     mode->setTooltip ("Hz: a speed in turns per second. Sync: a turn lasts a musical division of the host's tempo, locked to the bar");
-    addToCanvas (*mode, { 660, 96, 80, 38 });
+    addToCanvas (*mode, { 660, 92, 80, 38 });
 
     // under the view, left of MIX: retrigger and render; right: the mono check
     retrigger = std::make_unique<gk::ChoiceSelector> (p.getChoice (HeadSpinDsp::retriggerChoice), "RETRIGGER", pink, pal);

@@ -54,7 +54,9 @@ namespace
                       { "phase", "Start", "START", 0.0f, 0.0f, 360.0f, 1.0f, "°" },
                       { "distance", "Distance", "DISTANCE", 0.5f },
                       { "groove", "Groove", "GROOVE", 0.0f },
-                      { "level", "Level", "LEVEL", 0.0f, -12.0f, 6.0f, 1.0f, "dB" } };
+                      { "level", "Level", "LEVEL", 0.0f, -12.0f, 6.0f, 1.0f, "dB" },
+                      // 3D: how far the front / back and distance cues are pushed (Alan: "I can't hear front or back")
+                      { "focus", "3D", "3D", 0.7f } };
         cfg.knobs[HeadSpinDsp::shapeKnob].textFromValue = shapeText;
         cfg.knobs[HeadSpinDsp::rateHzKnob].textFromValue = [] (float v) { return juce::String (v, v < 1.0f ? 2 : 1) + " Hz"; };
         cfg.knobs[HeadSpinDsp::levelKnob].textFromValue = [] (float v) { return juce::String (v, 1) + " dB"; };

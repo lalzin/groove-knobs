@@ -251,10 +251,10 @@ TEST_CASE ("HS 7. Stability: loud noise, every preset, fast and slow, finite and
 TEST_CASE ("HS 8. Parameters, state, presets, mono in -> stereo out", "[hs][state]")
 {
     HeadSpinProcessor p;
-    const char* ids[] { "mix", "preset", "shape", "width", "depth", "rotation", "rateHz", "phase", "distance", "groove", "level",
+    const char* ids[] { "mix", "preset", "shape", "width", "depth", "rotation", "rateHz", "phase", "distance", "groove", "level", "focus",
                         "direction", "rateMode", "rateSync", "render", "retrigger", "bypass" };
-    REQUIRE (p.getParameters().size() == 17);
-    for (int i = 0; i < 17; ++i)
+    REQUIRE (p.getParameters().size() == 18);
+    for (int i = 0; i < 18; ++i)
         CHECK (dynamic_cast<juce::RangedAudioParameter*> (p.getParameters()[i])->getParameterID() == ids[i]);
     CHECK (p.getNumPrograms() == 7);
     CHECK (p.getAmountParameter().getValue() == Catch::Approx (1.0f));

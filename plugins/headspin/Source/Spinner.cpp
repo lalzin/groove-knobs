@@ -39,7 +39,7 @@ double Spinner::shadowAlpha (double phi) noexcept
 void Spinner::prepare (double sampleRate)
 {
     sr = sampleRate;
-    for (auto* s : { &sMix, &sWidth, &sDepth, &sRot, &sRate, &sDist, &sLevel, &sDoppler })
+    for (auto* s : { &sMix, &sWidth, &sDepth, &sRot, &sRate, &sDist, &sLevel, &sDoppler, &sRefRadius })
         s->prepare (sr, smoothSeconds);
     shapeFadeStep = 1.0 / (shapeFadeSeconds * sr);
     glideStep = 1.0 / (jumpGlideSeconds * sr);
@@ -54,12 +54,13 @@ void Spinner::prepare (double sampleRate)
     svfA2 = svfG * svfA1;
     svfA3 = svfG * svfA2;
     airCoeff = 1.0 - std::exp (-2.0 * pi * airHz / sr);
+    muffleCoeff = 1.0 - std::exp (-2.0 * pi * 2200.0 / sr);
     reset();
 }
 
 void Spinner::reset()
 {
-    for (auto* s : { &sMix, &sWidth, &sDepth, &sRot, &sRate, &sDist, &sLevel, &sDoppler })
+    for (auto* s : { &sMix, &sWidth, &sDepth, &sRot, &sRate, &sDist, &sLevel, &sDoppler, &sRefRadius })
         s->init = false;
     const double ac = headRadius / speedOfSound;
     delay.prepare ((int) std::ceil ((maxDopplerSeconds + ac * (1.0 + 0.5 * pi)) * sr) + 8);
@@ -67,6 +68,7 @@ void Spinner::reset()
     hsXL = hsYL = hsXR = hsYR = 0.0;
     pinnaL = pinnaR = {};
     airL = airR = 0.0;
+    muffleL = muffleR = 0.0;
     started = false;
     motion.reset();
     glide = 1.0;
@@ -142,7 +144,7 @@ void Spinner::process (const float* inL, const float* inR, float* outL, float* o
     int nextNote = 0;
     // the path's nearest and farthest points (the Doppler delay is 0 at the
     // nearest), once per block
-    double farthest = 0.0;
+    double farthest = 0.0, meanRadius = 0.0;
     {
         double m = 1.0e9;
         for (int k = 0; k < 256; ++k)
@@ -150,6 +152,7 @@ void Spinner::process (const float* inL, const float* inR, float* outL, float* o
             const double rad = transform (pathPoint (k / 256.0)).radius;
             m = std::min (m, rad);
             farthest = std::max (farthest, rad);
+            meanRadius += rad / 256.0;
         }
         nearestRadius = m;
     }
@@ -158,7 +161,9 @@ void Spinner::process (const float* inL, const float* inR, float* outL, float* o
     const double radialSpan = std::max (1.0e-6, farthest - nearestRadius);
     const double dopplerScale = std::min (pathScale, maxDopplerShift * speedOfSound / (2.0 * pi * std::max (0.01, motion.turnsPerSecond()) * radialSpan));
     const double maxDelaySamples = (double) delay.mask - 4.0;
-    const double frontPinnaDb = 1.5, backPinnaDb = -8.0;
+    // 3D (focus): from the plain head model (0) to cues pushed for loudspeakers (1)
+    const double focus = std::clamp ((double) target.focus, 0.0, 1.0);
+    const double frontPinnaDb = 1.5 + 3.0 * focus, backPinnaDb = -8.0 - 6.0 * focus;
 
     for (int i = 0; i < n; ++i)
     {
@@ -255,8 +260,14 @@ void Spinner::process (const float* inL, const float* inR, float* outL, float* o
         r = pinna (r, pinnaR);
         airL += airCoeff * (l - airL);
         airR += airCoeff * (r - airR);
-        l += 0.6 * behind * (airL - l);
-        r += 0.6 * behind * (airR - r);
+        l += (0.6 + 0.3 * focus) * behind * (airL - l);
+        r += (0.6 + 0.3 * focus) * behind * (airR - r);
+        // 3D: behind the head the sound is also muffled (a 2.2 kHz low-pass
+        // blended in), the strongest cue loudspeakers can carry
+        muffleL += muffleCoeff * (l - muffleL);
+        muffleR += muffleCoeff * (r - muffleR);
+        l += 0.45 * focus * behind * (muffleL - l);
+        r += 0.45 * focus * behind * (muffleR - r);
 
         // 4. Constant-power panning from sin θ; close to the head the level
         //    difference grows (near field)
@@ -268,8 +279,14 @@ void Spinner::process (const float* inL, const float* inR, float* outL, float* o
         // 5. Distance: direct level 1/r (DISTANCE sets how strongly, +-6 dB at
         //    most); the room is fed at a near-constant level, so the
         //    direct-to-reverberant ratio falls with distance, more behind
-        const double gDist = std::clamp (std::pow (1.0 / rr, dist), 0.5, 2.0);
-        const double send = dist * (0.18 + 0.12 * std::min (1.0, rr) + 0.15 * behind);
+        // 3D widens it: closer is louder and drier, farther quieter and wetter
+        // (up to +-9 dB), behind a little lower and in more room
+        // (relative to the path's mean distance: every shape keeps the same
+        // loudness on average, its near and far parts louder and quieter)
+        const double refRadius = sRefRadius.next (std::max (0.3, meanRadius));
+        const double gDist = std::clamp (std::pow (refRadius / rr, dist * (1.0 + 1.5 * focus)), 0.35, 2.8)
+                           * std::pow (10.0, focus * (1.5 * ahead - 4.0 * behind) / 20.0);
+        const double send = dist * (0.12 + (0.12 + 0.30 * focus) * std::min (1.2, rr) + (0.15 + 0.30 * focus) * behind);
         float roomL = 0.0f, roomR = 0.0f;
         room.process ((float) (mono * send), roomL, roomR);
 

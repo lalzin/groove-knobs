@@ -185,6 +185,34 @@ int main (int argc, char** argv)
     std::vector<float> sine (n);
     for (size_t i = 0; i < n; ++i)
         sine[i] = 0.5f * (float) std::sin (2.0 * M_PI * 1000.0 * i / sr);
+    // --- 3D: front / back A/B (the guitar held in front, then behind, every 2 s) and the shapes ---
+    for (float focus : { 0.0f, 0.7f, 1.0f })
+    {
+        Stereo ab { std::vector<float> (n), std::vector<float> (n) };
+        for (float az : { 0.0f, 180.0f })
+        {
+            Params p = P (0.01f);
+            p.startDeg = az;
+            p.focus = focus;
+            const auto o = run (guitar, p);
+            for (size_t i = 0; i < n; ++i)
+                if (((i / (2 * sr)) % 2 == 0) == (az == 0.0f))
+                {
+                    ab.l[i] = o.l[i];
+                    ab.r[i] = o.r[i];
+                }
+        }
+        writeWav (out + "/headspin_3d" + std::to_string ((int) (focus * 100)) + "_front_back_every_2s.wav", ab);
+    }
+    {
+        Params o3 = oval;
+        o3.focus = 1.0f;
+        o3.rotationDeg = 90.0f; // deep: front and back far apart
+        writeWav (out + "/headspin_3d100_oval_deep_0.5Hz.wav", run (guitar, o3));
+        o3.focus = 0.0f;
+        writeWav (out + "/headspin_3d0_oval_deep_0.5Hz.wav", run (guitar, o3));
+    }
+
     // --- Step 2: shapes, morph, sync, groove, retrigger ------------------------
     Host playing;
     playing.playing = true; // 115 BPM, the guitar loop's tempo
