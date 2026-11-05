@@ -1,0 +1,26 @@
+{
+  "name": "Disco Strings",
+  "mode": "Space",
+  "space": 0.4,
+  "room": {
+    "predelay": 30,
+    "highCut": 9000,
+    "depth": 0.95,
+    "earlySize": 70,
+    "earlyCross": 0.3,
+    "earlyModRate": 0.4,
+    "earlyModDepth": 0.6,
+    "earlySend": 0.8,
+    "diffusion": 0.85,
+    "lateSize": 0.85,
+    "lateCross": 0.75,
+    "lateModRate": 0.8,
+    "lateModDepth": 0.8,
+    "bassMult": 0.8,
+    "bassXover": 450,
+    "highMult": 0.6,
+    "highXover": 5000,
+    "clear": 0.6,
+    "decay": 5.0
+  }
+}

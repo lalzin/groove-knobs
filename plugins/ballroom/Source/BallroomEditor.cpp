@@ -126,27 +126,41 @@ private:
     const gk::Palette& palette;
 };
 
-/** CUSTOM: lit when a ROOM setting moved since the preset was loaded. */
+/** CUSTOM: lit when a ROOM setting moved since the preset was loaded; a
+    click brings the preset's room back (SPACE, the dry / wet, stays). */
 class BallroomEditor::CustomChip final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     explicit CustomChip (const gk::Palette& p) : palette (p)
     {
-        setTooltip ("CUSTOM: a ROOM setting moved, the room is no longer the preset's. Load a preset to get it back.");
+        setTitle ("Custom");
         setInterceptsMouseClicks (false, false);
+        set (false);
     }
+    std::function<void()> onRestore;
     void set (bool on)
     {
-        if (on != lit)
+        if (on != lit || getTooltip().isEmpty())
         {
             lit = on;
+            setInterceptsMouseClicks (lit, false);
+            setMouseCursor (lit ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+            setTooltip (lit ? "CUSTOM: the room was changed in ROOM. Click to get the preset's room back (SPACE stays)."
+                            : "CUSTOM lights when you change the room in ROOM; a click then brings the preset's room back.");
             repaint();
         }
+    }
+    void mouseEnter (const juce::MouseEvent&) override { repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { repaint(); }
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        if (lit && getLocalBounds().contains (e.getPosition()) && onRestore)
+            onRestore();
     }
     void paint (juce::Graphics& g) override
     {
         const auto b = getLocalBounds().toFloat().reduced (1.0f);
-        g.setColour (palette (lit ? champagne : palette.surface).withAlpha (lit ? 0.95f : 0.5f));
+        g.setColour (palette (lit ? champagne : palette.surface).withAlpha (lit ? 0.95f : 0.5f).withMultipliedBrightness (lit && isMouseOver() ? 1.15f : 1.0f));
         g.fillRoundedRectangle (b, b.getHeight() * 0.5f);
         g.setColour (palette (lit ? night : champagne.withAlpha (0.4f)));
         g.setFont (gk::GrooveFonts::font (9.5f).withExtraKerningFactor (0.14f));
@@ -179,8 +193,9 @@ public:
             knobs.push_back ({ onTab, std::make_unique<gk::SmallKnob> (p.getKnob (k), pal, p.getConfig().knobs[(size_t) k].caption, c) });
             addChildComponent (*knobs.back().knob);
         };
-        for (auto k : { K::mixKnob, K::predelayKnob, K::decayKnob, K::highCutKnob, K::depthKnob })
-            add (0, k, k == K::decayKnob || k == K::depthKnob ? gold : silver);
+        for (auto k : { K::mixKnob, K::predelayKnob, K::decayKnob, K::highCutKnob, K::depthKnob, K::clearKnob })
+            add (0, k, k == K::decayKnob || k == K::depthKnob || k == K::clearKnob ? gold : silver);
+        // (CLEAR: the tail steps back, band by band, where the dry plays, and blooms in the gaps: Clear.h)
         for (auto k : { K::earlySizeKnob, K::earlyCrossKnob, K::earlyModRateKnob, K::earlyModDepthKnob, K::earlySendKnob, K::diffusionKnob })
             add (1, k, k == K::earlySizeKnob || k == K::earlySendKnob ? gold : silver);
         for (auto k : { K::lateSizeKnob, K::lateCrossKnob, K::lateModRateKnob, K::lateModDepthKnob, K::bassMultKnob, K::bassXoverKnob, K::highMultKnob,
@@ -225,12 +240,13 @@ public:
         for (auto& k : knobs)
             if (k.tab == tab)
             {
-                k.knob->setBounds (juce::Rectangle<int> (area.getX() + (i % 4) * slot, area.getY() + (i / 4) * rowH, slot, rowH).withSizeKeepingCentre (66, 72));
+                const int col = tab == 0 && i == 5 ? 3 : i % 4; // MAIN: CLEAR right of MODE
+                k.knob->setBounds (juce::Rectangle<int> (area.getX() + col * slot, area.getY() + (i / 4) * rowH, slot, rowH).withSizeKeepingCentre (66, 72));
                 ++i;
             }
         if (tab == 0)
         {
-            // MAIN: MIX PREDELAY DECAY HIGH CUT / DEPTH, MODE / the decay curves
+            // MAIN: MIX PREDELAY DECAY HIGH CUT / DEPTH, MODE, CLEAR / the decay curves
             mode->setBounds (juce::Rectangle<int> (area.getX() + slot, area.getY() + rowH, slot * 2, rowH).withSizeKeepingCentre (slot * 2 - 16, 38));
             decayView.setBounds (area.withTrimmedTop (2 * rowH + 6));
         }
@@ -381,7 +397,7 @@ public:
         const float level = juce::jlimit (0.0f, 1.0f, (gk::dspmath::gainToDb (lv) + 48.0f) / 40.0f);
         const auto b = getLocalBounds().toFloat();
         const auto ball = b.withSizeKeepingCentre (b.getWidth() * 0.58f, b.getHeight() * 0.58f);
-        sparkles.advance (dt, bypassed ? 0.0f : 1.0f + 5.0f * space + 6.0f * level, ball, proc.getDsp().getTelemetry().frozen.load());
+        sparkles.advance (dt, bypassed ? 0.0f : 0.4f + 1.8f * space + 2.5f * level, ball, proc.getDsp().getTelemetry().frozen.load());
         repaint();
     }
     void paint (juce::Graphics& g) override { sparkles.paint (g, palette (white), palette (champagne), getWidth() / 150.0f); }
@@ -409,6 +425,7 @@ BallroomEditor::BallroomEditor (BallroomProcessor& p)
     addToCanvas (*room, { 342, 420, 70, 28 });
     room->onClick = [this] { panel->setVisible (room->getToggleState()); };
     customChip = std::make_unique<CustomChip> (pal);
+    customChip->onRestore = [this] { proc.restoreRoom(); };
     addToCanvas (*customChip, { 10, 424, 74, 20 });
 }
 

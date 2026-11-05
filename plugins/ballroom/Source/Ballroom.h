@@ -2,7 +2,7 @@
 // BALLROOM — the whole reverb.
 //
 //   in ─> PREDELAY ─> Early ─┬───────────────────────────── early ─┐
-//            │               └─ x EARLY SEND ─┐                    ├─ DEPTH (sin / cos) ─> HIGH CUT ─> soft limit ─> MIX (sin / cos) ─> out
+//            │               └─ x EARLY SEND ─┐                    ├─ DEPTH (sin / cos) ─> HIGH CUT ─> CLEAR ─> soft limit ─> MIX (sin / cos) ─> out
 //            └──────── x (1 - EARLY SEND) ────┴─> Late ──── late ─┘
 //
 // Two complete networks (early + late): MODE, EARLY SIZE or LATE SIZE moving
@@ -14,6 +14,7 @@
 
 #include "EarlyNet.h"
 #include "LateFdn.h"
+#include "Clear.h"
 
 namespace ballroom
 {
@@ -25,6 +26,7 @@ struct Params
     double decaySeconds = 2.0;  // 0.1..100
     double highCutHz = 8000.0;  // 500..20000
     double depth = 0.60;        // 0 = early only .. 1 = late only
+    double clear = 0.0;         // 0..1: the tail steps back, band by band, where the dry plays (Clear.h)
     Mode mode = Mode::club;
     // early
     double earlySizeMs = 40.0;  // 2..200
@@ -103,6 +105,7 @@ private:
     // scratch (sized in prepare: nothing allocated while processing)
     std::vector<float> pdL, pdR, eL, eR, lateInL, lateInR, lL, lR, wetL, wetR, wet2L, wet2R;
     double hcIc1[2] {}, hcIc2[2] {};
+    Clear clear;
     Smooth sMix, sPredelay, sDepth, sSend, sHighCut, sDecay;
 };
 } // namespace ballroom

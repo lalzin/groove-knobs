@@ -38,7 +38,7 @@ namespace
 {
 constexpr double sr = 48000.0;
 
-constexpr int numPresets = 12;
+constexpr int numPresets = 22;
 
 std::unique_ptr<BallroomProcessor> makeProc (int preset = 0)
 {
@@ -128,6 +128,7 @@ std::unique_ptr<BallroomProcessor> measuringProc (double decay, double bass, dou
     setKnob (*p, BallroomDsp::bassXoverKnob, 500.0f); // (the crossovers the bands are chosen for)
     setKnob (*p, BallroomDsp::highXoverKnob, 5000.0f);
     setKnob (*p, BallroomDsp::earlySendKnob, 0.0f); // the late fed by the impulse itself (not spread by the early first)
+    setKnob (*p, BallroomDsp::clearKnob, 0.0f);
     p->prepareToPlay (sr, 512); // the networks set for this mode at once
     return p;
 }
@@ -151,13 +152,14 @@ Buffer sine (double seconds, float level = 0.4f)
 }
 } // namespace
 
-TEST_CASE ("BL 1. MIX 0: the output is the input, sample for sample", "[bl][mix]")
+TEST_CASE ("BL 1. SPACE 0 (MIX 0) on every preset: the output is the input, sample for sample", "[bl][mix]")
 {
     for (int preset = 0; preset < numPresets; ++preset)
     {
         CAPTURE (preset);
         auto p = makeProc (preset);
-        setKnob (*p, BallroomDsp::mixKnob, 0.0f);
+        setParam (p->getAmountParameter(), 0.0f); // the one knob at 0 %: no reverb at all
+        CHECK (p->getKnob (BallroomDsp::mixKnob).getValue() == 0.0f);
         p->snapToTargets();
         Buffer in (2, (int) (1.5 * sr));
         juce::Random rng (preset + 1);
@@ -301,6 +303,7 @@ TEST_CASE ("BL 7b. SPACE 100 %: the reverb alone, about as loud as the dry", "[b
         CAPTURE (preset);
         auto p = makeProc (preset);
         setParam (p->getAmountParameter(), 1.0f);
+        setKnob (*p, BallroomDsp::clearKnob, 0.0f); // (the level itself: CLEAR lowers the tail under the notes, on purpose)
         p->snapToTargets();
         // pink noise notes (0.25 s every 0.75 s; render.cpp's calibration signal): the dry must be gone
         Buffer in (2, (int) (6.0 * sr));
@@ -340,7 +343,8 @@ TEST_CASE ("BL 8. Presets, parameters and state", "[bl][state]")
     CHECK (p.getProgramName (0) == "Disco Ballroom");
     CHECK (p.getLatencySamples() == 0);
     // each preset its own room
-    const char* modes[] { "Ballroom", "Club", "Studio", "Studio", "Gate", "Plate", "Mirror", "Ballroom", "Ballroom", "Space", "Space", "Space" };
+    const char* modes[] { "Ballroom", "Club", "Studio", "Studio", "Gate", "Plate", "Mirror", "Ballroom", "Ballroom", "Space", "Space", "Space",
+                         "Ballroom", "Gate", "Space", "Club", "Plate", "Club", "Studio", "Mirror", "Space", "Studio" };
     std::vector<float> decays;
     for (int i = 0; i < numPresets; ++i)
     {
@@ -382,6 +386,61 @@ TEST_CASE ("BL 9. Every preset sounds, finite, under the clip", "[bl][presets]")
         CHECK (out.getMagnitude (0, out.getNumSamples()) <= 1.0f);
         CHECK (out.getRMSLevel (0, (int) (1.05 * sr), (int) (0.1 * sr)) > 1.0e-4); // a tail after the input stops
     }
+}
+
+TEST_CASE ("BL 11. CLEAR: the tail steps back where the dry plays, band by band, and comes back in the gaps", "[bl][clear]")
+{
+    // a 4 s tail; 2 s of a low tone (100 Hz) and a high one (6 kHz), then only the low one 1 s, then silence
+    auto run = [] (float clear)
+    {
+        auto p = makeProc (7); // Warm Hall
+        setKnob (*p, BallroomDsp::highCutKnob, 20000.0f);
+        setKnob (*p, BallroomDsp::highMultKnob, 1.0f);
+        setKnob (*p, BallroomDsp::clearKnob, clear);
+        setParam (p->getAmountParameter(), 1.0f); // the wet alone
+        p->snapToTargets();
+        Buffer in (2, (int) (5.0 * sr));
+        for (int i = 0; i < in.getNumSamples(); ++i)
+        {
+            const double t = (double) i / sr;
+            const double lo = t < 3.0 ? 0.3 * std::sin (2.0 * juce::MathConstants<double>::pi * 100.0 * t) : 0.0;
+            const double hi = t < 2.0 ? 0.1 * std::sin (2.0 * juce::MathConstants<double>::pi * 6000.0 * t) : 0.0;
+            in.setSample (0, i, (float) (lo + hi));
+            in.setSample (1, i, (float) (lo + hi));
+        }
+        return processBlocks (*p, in, { 512 });
+    };
+    const auto off = run (0.0f), on = run (1.0f);
+    // the level of one band of the output over [a, b] s
+    auto band = [] (const Buffer& b, double f0, double f1, double a, double e)
+    {
+        juce::IIRFilter hp, lp;
+        hp.setCoefficients (juce::IIRCoefficients::makeHighPass (sr, f0));
+        lp.setCoefficients (juce::IIRCoefficients::makeLowPass (sr, f1));
+        double acc = 0.0;
+        int n = 0;
+        for (int i = 0; i < b.getNumSamples(); ++i)
+        {
+            const float v = lp.processSingleSampleRaw (hp.processSingleSampleRaw (b.getSample (0, i)));
+            if (i >= (int) (a * sr) && i < (int) (e * sr)) { acc += (double) v * v; ++n; }
+        }
+        return 10.0 * std::log10 (acc / juce::jmax (1, n) + 1.0e-30);
+    };
+    // while both tones play: the tail steps back in both bands
+    const double lowWhile = band (on, 60, 160, 1.0, 2.0) - band (off, 60, 160, 1.0, 2.0);
+    const double highWhile = band (on, 4500, 8000, 1.0, 2.0) - band (off, 4500, 8000, 1.0, 2.0);
+    // the high tone stopped, the low one goes on: the high tail comes back, the low one stays back
+    const double highGap = band (on, 4500, 8000, 2.5, 3.0) - band (off, 4500, 8000, 2.5, 3.0);
+    const double lowStill = band (on, 60, 160, 2.5, 3.0) - band (off, 60, 160, 2.5, 3.0);
+    // everything stopped: the whole tail back
+    const double lowAfter = band (on, 60, 160, 3.5, 4.5) - band (off, 60, 160, 3.5, 4.5);
+    INFO ("low while " << lowWhile << " dB, high while " << highWhile << " dB, high in the gap " << highGap << " dB, low still " << lowStill
+                       << " dB, low after " << lowAfter << " dB");
+    CHECK (lowWhile < -6.0);
+    CHECK (highWhile < -6.0);
+    CHECK (highGap > -2.0);
+    CHECK (lowStill < -6.0);
+    CHECK (lowAfter > -2.0);
 }
 
 TEST_CASE ("BL 10. CPU: stereo, 48 kHz, blocks of 512", "[bl][cpu]")

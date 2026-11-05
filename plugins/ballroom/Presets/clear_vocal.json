@@ -1,0 +1,26 @@
+{
+  "name": "Clear Vocal",
+  "mode": "Ballroom",
+  "space": 0.35,
+  "room": {
+    "predelay": 40,
+    "highCut": 11000,
+    "depth": 0.85,
+    "earlySize": 45,
+    "earlyCross": 0.3,
+    "earlyModRate": 0.4,
+    "earlyModDepth": 0.2,
+    "earlySend": 0.5,
+    "diffusion": 0.85,
+    "lateSize": 0.75,
+    "lateCross": 0.4,
+    "lateModRate": 0.5,
+    "lateModDepth": 0.35,
+    "bassMult": 0.6,
+    "bassXover": 350,
+    "highMult": 0.7,
+    "highXover": 6000,
+    "clear": 0.8,
+    "decay": 3.2
+  }
+}

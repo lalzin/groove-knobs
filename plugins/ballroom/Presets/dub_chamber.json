@@ -1,0 +1,26 @@
+{
+  "name": "Dub Chamber",
+  "mode": "Club",
+  "space": 0.4,
+  "room": {
+    "predelay": 120,
+    "highCut": 3000,
+    "depth": 0.9,
+    "earlySize": 10,
+    "earlyCross": 0.3,
+    "earlyModRate": 0.4,
+    "earlyModDepth": 0.2,
+    "earlySend": 0.8,
+    "diffusion": 0.7,
+    "lateSize": 0.7,
+    "lateCross": 0.4,
+    "lateModRate": 0.3,
+    "lateModDepth": 0.45,
+    "bassMult": 2.5,
+    "bassXover": 250,
+    "highMult": 0.2,
+    "highXover": 2000,
+    "clear": 0.7,
+    "decay": 6.0
+  }
+}

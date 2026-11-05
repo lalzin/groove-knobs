@@ -1,0 +1,26 @@
+{
+  "name": "Chrome Room",
+  "mode": "Mirror",
+  "space": 0.35,
+  "room": {
+    "predelay": 5,
+    "highCut": 15000,
+    "depth": 0.6,
+    "earlySize": 18,
+    "earlyCross": 0.7,
+    "earlyModRate": 3.0,
+    "earlyModDepth": 0.5,
+    "earlySend": 0.6,
+    "diffusion": 0.5,
+    "lateSize": 0.3,
+    "lateCross": 0.4,
+    "lateModRate": 3.0,
+    "lateModDepth": 0.5,
+    "bassMult": 0.6,
+    "bassXover": 450,
+    "highMult": 0.9,
+    "highXover": 7000,
+    "clear": 0.2,
+    "decay": 1.2
+  }
+}

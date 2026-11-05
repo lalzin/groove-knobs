@@ -26,6 +26,8 @@ public:
 
     /** Sets everything from preset `index` (message thread). */
     void applyPreset (int index);
+    /** The current preset's room back, SPACE (the dry / wet) kept: CUSTOM's click (message thread). */
+    void restoreRoom();
     /** SPACE -> MIX, or MIX -> SPACE when MIX moved last (message thread; it also runs on its own). */
     void applyMacro();
     /** A ROOM setting (other than MIX) moved since the preset was loaded: the editor shows "custom". */

@@ -1,0 +1,26 @@
+{
+  "name": "Funk Room",
+  "mode": "Club",
+  "space": 0.3,
+  "room": {
+    "predelay": 4,
+    "highCut": 9000,
+    "depth": 0.35,
+    "earlySize": 35,
+    "earlyCross": 0.5,
+    "earlyModRate": 0.4,
+    "earlyModDepth": 0.2,
+    "earlySend": 0.4,
+    "diffusion": 0.95,
+    "lateSize": 0.3,
+    "lateCross": 0.4,
+    "lateModRate": 0.5,
+    "lateModDepth": 0.2,
+    "bassMult": 0.9,
+    "bassXover": 300,
+    "highMult": 0.6,
+    "highXover": 5000,
+    "clear": 0.3,
+    "decay": 0.8
+  }
+}

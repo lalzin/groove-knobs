@@ -808,3 +808,25 @@ Une ligne par décision : **contexte** — choix — raison.
 - **L'ombre de Mira** (Alan : « l'ombre n'est pas tout le temps la même couleur et c'est verdâtre ») : les ombres des planches, teintées par leur fond vert et chacune d'une nuance, sont retirées (`asset_prep --drop-hue`, nouveau : dans le bas de l'image, les pixels de teinte verte à bleu-vert, et les pixels sombres à demi transparents — le cœur de l'ombre détourée ; les contours, opaques, restent) ; `MiraMascot` dessine une seule ombre, la même sous chaque pose (une ellipse de la nuit, en dégradé).
 - **Scintillements** (Alan : « fais des animations de scintillement ») : `Sparkles` — des éclats en étoile à quatre branches (une longue croix, une petite diagonale, un halo champagne) qui naissent, grossissent en tournant un peu et s'éteignent (0,3 à 0,7 s), sur les facettes de Mira et par-dessus la boule SPACE ; leur fréquence monte avec SPACE et le niveau de la réverb (Mira : 1,5 à ~17 par seconde ; la boule : 1 à 12) ; FREEZE : ils restent figés ; bypass : plus aucun. Les taches de lumière autour de Mira scintillent chacune à son rythme. Une réserve fixe de 24 éclats (rien d'alloué à l'animation).
 - auval : SPACE règle d'autres paramètres → `OneKnobConfig::amountIsMeta` (groove_core, faux par défaut : les autres plugins inchangés), vrai pour Ballroom.
+
+### BALLROOM — retours d'écoute du test2 (5 novembre 2026)
+- Alan : « on n'a pas l'impression d'un véritable dry/wet à 100 % ; plus proche de Valhalla Room ; va plus loin ; presets trop similaires ». Constat : SPACE plafonnait le MIX à 45 % et le wet sortait 4 à 12 dB sous le dry.
+- **SPACE = le dry/wet**, 0 → 100 % (`SpaceMap.h`), lié au MIX dans les deux sens. 0 % = l'entrée exacte sur tous les presets (test BL 1) ; 100 % = la réverbe seule. La pièce (decay, tailles, early, modulation, couleur) est celle du preset et ne bouge plus avec SPACE. L'ancienne macro (decay/taille/depth/prédélai suivant SPACE) est retirée : c'est elle qui rendait les presets semblables.
+- **Niveau** : early et late calés séparément par mode (`earlyTrimDb` / `lateTrimDb`) pour sonner aussi fort que le dry à 100 %. Le calage est mesuré sur des notes de bruit rose de 0,25 s toutes les 0,75 s (render.cpp « calibration »). La normalisation 1/√decay est remplacée par une compensation partielle (2/decay)^0,4, limitée à 30 s, parce que les longues queues démarraient trop bas. Test BL 7b : à 100 %, chaque preset est à ±4,5 dB du dry, sans dry résiduel.
+- **Densité, dans l'esprit de Valhalla Room** :
+  - un allpasse dans chaque boucle du FDN, de longueur 8 à 17 % de la ligne. Plus longs (14 à 28 %), ils allongeaient les aigus très amortis.
+  - deux allpasses de « smear » après les taps early, pour un nuage de réflexions plutôt que des échos distincts.
+  - Hadamard pour Club et Ballroom, moins de corrélation L/R.
+  - modulation max 2,5 ms.
+  - la densité d'écho normalisée atteint 0,9 entre 21 et 92 ms selon le preset.
+  - CPU ~1,3 %.
+- **Mode Gate**, le 7ᵉ mode : 24 taps plats, la rafale gatée des années 80.
+- **CLEAR**, la signature (choisie par Alan parmi quatre idées) : la queue laisse la place au son sec, bande par bande.
+  - 5 bandes (200 / 630 / 2 k / 6,3 k Hz) en séparation complémentaire, donc une somme exacte.
+  - Pendant que le dry joue, la queue recule de CLEAR × (écart dry/queue en dB + 6), plafonné à CLEAR × 24 dB. Elle descend en 8 ms et revient en 250 ms.
+  - Exemple : une note grave n'éteint pas la queue des cymbales. Test BL 11.
+  - Réglage dans ROOM > MAIN, à droite de MODE.
+- **CUSTOM** devient un bouton : allumé quand la pièce a été modifiée dans ROOM ; un clic recharge la pièce du preset et garde SPACE.
+- **Presets : 22.** Les 12 refaits, chacun avec sa vraie pièce (de 0,25 s à 100 s), plus 10 nouveaux : Clear Vocal, Power Snare, Disco Strings, Funk Room, Glitter Plate, Dub Chamber, Slapback Club, Chrome Room, Breathing Sky, Tiny Booth. Plusieurs utilisent CLEAR.
+- Frozen Floor ne charge plus FREEZE, qui le rendait muet : c'est maintenant un decay de 100 s, et FREEZE reste au joueur.
+- **Scintillements** : environ 40 % de la cadence précédente (Alan : « il y en a un peu trop »), et des taches de lumière qui varient moins.

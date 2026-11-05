@@ -1,0 +1,26 @@
+{
+  "name": "Glitter Plate",
+  "mode": "Plate",
+  "space": 0.3,
+  "room": {
+    "predelay": 20,
+    "highCut": 18000,
+    "depth": 0.9,
+    "earlySize": 40,
+    "earlyCross": 0.3,
+    "earlyModRate": 0.4,
+    "earlyModDepth": 0.2,
+    "earlySend": 0.5,
+    "diffusion": 1.0,
+    "lateSize": 0.6,
+    "lateCross": 0.6,
+    "lateModRate": 1.2,
+    "lateModDepth": 0.6,
+    "bassMult": 0.5,
+    "bassXover": 500,
+    "highMult": 1.0,
+    "highXover": 9000,
+    "clear": 0.4,
+    "decay": 2.6
+  }
+}

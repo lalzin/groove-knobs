@@ -1,0 +1,26 @@
+{
+  "name": "Power Snare",
+  "mode": "Gate",
+  "space": 0.4,
+  "room": {
+    "predelay": 0,
+    "highCut": 14000,
+    "depth": 0.25,
+    "earlySize": 120,
+    "earlyCross": 0.8,
+    "earlyModRate": 0.4,
+    "earlyModDepth": 0.2,
+    "earlySend": 0.1,
+    "diffusion": 1.0,
+    "lateSize": 0.15,
+    "lateCross": 0.4,
+    "lateModRate": 0.5,
+    "lateModDepth": 0.3,
+    "bassMult": 1.0,
+    "bassXover": 450,
+    "highMult": 0.8,
+    "highXover": 5000,
+    "clear": 0,
+    "decay": 0.25
+  }
+}

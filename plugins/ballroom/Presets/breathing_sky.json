@@ -1,0 +1,26 @@
+{
+  "name": "Breathing Sky",
+  "mode": "Space",
+  "space": 0.5,
+  "room": {
+    "predelay": 50,
+    "highCut": 10000,
+    "depth": 1.0,
+    "earlySize": 90,
+    "earlyCross": 0.3,
+    "earlyModRate": 0.4,
+    "earlyModDepth": 0.4,
+    "earlySend": 1.0,
+    "diffusion": 1.0,
+    "lateSize": 1.0,
+    "lateCross": 0.8,
+    "lateModRate": 0.35,
+    "lateModDepth": 0.6,
+    "bassMult": 0.7,
+    "bassXover": 300,
+    "highMult": 0.8,
+    "highXover": 4500,
+    "clear": 1.0,
+    "decay": 12.0
+  }
+}

@@ -20,6 +20,7 @@
     "bassMult": 0.8,
     "bassXover": 500,
     "highMult": 0.85,
-    "highXover": 7000
+    "highXover": 7000,
+    "clear": 0.25
   }
 }

@@ -59,7 +59,8 @@ namespace
             logKnob ("bassMult", "Bass mult", "BASS MULT", 1.2f, 0.25f, 4.0f, "x"),
             logKnob ("bassXover", "Bass crossover", "BASS XOVER", 500.0f, 100.0f, 2000.0f, "Hz"),
             logKnob ("highMult", "High mult", "HIGH MULT", 0.5f, 0.1f, 1.0f, "x"),
-            logKnob ("highXover", "High crossover", "HIGH XOVER", 5000.0f, 1000.0f, 12000.0f, "Hz") };
+            logKnob ("highXover", "High crossover", "HIGH XOVER", 5000.0f, 1000.0f, 12000.0f, "Hz"),
+            { "clear", "Clear", "CLEAR", 0.0f } };
         auto& k = cfg.knobs;
         for (int i : { BallroomDsp::highCutKnob, BallroomDsp::bassXoverKnob, BallroomDsp::highXoverKnob })
             k[(size_t) i].textFromValue = hz;
@@ -96,6 +97,16 @@ gk::PresetManager BallroomProcessor::loadBuiltInPresets()
         { BLPresets::velvet_pad_json, BLPresets::velvet_pad_jsonSize },
         { BLPresets::afterparty_json, BLPresets::afterparty_jsonSize },
         { BLPresets::frozen_floor_json, BLPresets::frozen_floor_jsonSize },
+        { BLPresets::clear_vocal_json, BLPresets::clear_vocal_jsonSize },
+        { BLPresets::power_snare_json, BLPresets::power_snare_jsonSize },
+        { BLPresets::disco_strings_json, BLPresets::disco_strings_jsonSize },
+        { BLPresets::funk_room_json, BLPresets::funk_room_jsonSize },
+        { BLPresets::glitter_plate_json, BLPresets::glitter_plate_jsonSize },
+        { BLPresets::dub_chamber_json, BLPresets::dub_chamber_jsonSize },
+        { BLPresets::slapback_club_json, BLPresets::slapback_club_jsonSize },
+        { BLPresets::chrome_room_json, BLPresets::chrome_room_jsonSize },
+        { BLPresets::breathing_sky_json, BLPresets::breathing_sky_jsonSize },
+        { BLPresets::tiny_booth_json, BLPresets::tiny_booth_jsonSize },
     };
     gk::PresetManager pm;
     for (const auto& e : entries)
@@ -213,6 +224,18 @@ void BallroomProcessor::applyPreset (int index)
     set (getAmountParameter(), (float) json.getProperty ("space", 0.35));
     mixFollows = 1;
     applyMacro(); // MIX = SPACE
+    custom = false;
+}
+
+void BallroomProcessor::restoreRoom()
+{
+    auto& space = getAmountParameter();
+    const float keep = space.convertFrom0to1 (space.getValue());
+    applyPreset (juce::jmax (0, appliedPreset));
+    const juce::ScopedValueSetter<bool> guard (applying, true);
+    set (space, keep);
+    mixFollows = 1;
+    applyMacro();
     custom = false;
 }
 

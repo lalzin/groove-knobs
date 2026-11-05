@@ -18,6 +18,7 @@ public:
         earlySizeKnob, earlyCrossKnob, earlyModRateKnob, earlyModDepthKnob, earlySendKnob, diffusionKnob, // early
         lateSizeKnob, lateCrossKnob, lateModRateKnob, lateModDepthKnob,                                  // late
         bassMultKnob, bassXoverKnob, highMultKnob, highXoverKnob,
+        clearKnob,                                                                                       // main (added after)
         numKnobs
     };
     enum Choice { modeChoice, freezeChoice, numChoices };

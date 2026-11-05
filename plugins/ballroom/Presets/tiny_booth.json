@@ -1,0 +1,26 @@
+{
+  "name": "Tiny Booth",
+  "mode": "Studio",
+  "space": 0.3,
+  "room": {
+    "predelay": 0,
+    "highCut": 12000,
+    "depth": 0.4,
+    "earlySize": 5,
+    "earlyCross": 0.5,
+    "earlyModRate": 0.4,
+    "earlyModDepth": 0.2,
+    "earlySend": 0.5,
+    "diffusion": 0.9,
+    "lateSize": 0.0,
+    "lateCross": 0.4,
+    "lateModRate": 0.5,
+    "lateModDepth": 0.05,
+    "bassMult": 0.7,
+    "bassXover": 600,
+    "highMult": 0.8,
+    "highXover": 6000,
+    "clear": 0,
+    "decay": 0.25
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "Slapback Club",
+  "mode": "Studio",
+  "space": 0.3,
+  "room": {
+    "predelay": 0,
+    "highCut": 7000,
+    "depth": 0.0,
+    "earlySize": 110,
+    "earlyCross": 0.2,
+    "earlyModRate": 0.4,
+    "earlyModDepth": 0.1,
+    "earlySend": 0,
+    "diffusion": 0.3,
+    "lateSize": 0.2,
+    "lateCross": 0.4,
+    "lateModRate": 0.5,
+    "lateModDepth": 0.3,
+    "bassMult": 0.8,
+    "bassXover": 450,
+    "highMult": 0.5,
+    "highXover": 5000,
+    "clear": 0.2,
+    "decay": 0.4
+  }
+}

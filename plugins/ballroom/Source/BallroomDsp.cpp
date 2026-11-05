@@ -36,6 +36,7 @@ void BallroomDsp::setKnobs (const float* v, int n)
     params.bassXoverHz = v[bassXoverKnob];
     params.highMult = v[highMultKnob];
     params.highXoverHz = v[highXoverKnob];
+    params.clear = v[clearKnob];
 }
 
 void BallroomDsp::setChoices (const int* c, int n)

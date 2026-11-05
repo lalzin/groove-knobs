@@ -60,7 +60,7 @@ int MiraMascot::chooseFrame (float macro, float bypass, bool musicOn)
         const auto fig = getFigureArea();
         const auto ball = juce::Rectangle<float> (fig.getWidth() * 0.40f, fig.getHeight() * 0.36f)
                               .withCentre ({ fig.getCentreX(), fig.getY() + 0.40f * fig.getHeight() });
-        const float rate = bypass > 0.5f ? 0.0f : 1.5f + 6.0f * space + 10.0f * level;
+        const float rate = bypass > 0.5f ? 0.0f : 0.6f + 2.4f * space + 4.0f * level; // (a few at a time: a glint, not glitter)
         sparkles.advance (dt, rate, ball, frozen);
     }
     if (numFrames() < numPoses)
@@ -106,7 +106,7 @@ void MiraMascot::paintBehind (juce::Graphics& g, const State& st, juce::Rectangl
         const juce::Point<float> p (c.x + r * std::cos (a), c.y + 0.55f * r * std::sin (a));
         const float sz = 3.0f + 5.0f * hash (i + 31) * (0.5f + space);
         // each spot twinkles at its own pace (still when frozen: sparkleClock stops)
-        const float twinkle = 0.55f + 0.45f * std::sin ((float) sparkleClock * (2.0f + 4.0f * hash (i + 7)) + twoPi * hash (i + 11));
+        const float twinkle = 0.75f + 0.25f * std::sin ((float) sparkleClock * (1.2f + 2.0f * hash (i + 7)) + twoPi * hash (i + 11));
         const float alpha = (0.35f + 0.45f * hash (i + 53)) * dim * (0.5f + 0.5f * space) * twinkle;
         const auto col = palette (i % 3 == 0 ? champagne : white);
         // a soft halo, then the spot: light thrown by the ball

@@ -41,6 +41,7 @@ void Ballroom::prepare (double sampleRate, int maxBlock)
         s->a = a;
     sPredelay.a = std::exp (-1.0 / (0.12 * sr));
     fadeStep = 1.0 / (fadeSeconds * sr);
+    clear.prepare (sr);
     reset();
 }
 
@@ -57,6 +58,7 @@ void Ballroom::reset()
     fade = 1.0;
     settleCount = 0;
     hcIc1[0] = hcIc1[1] = hcIc2[0] = hcIc2[1] = 0.0;
+    clear.reset();
     for (auto* s : { &sMix, &sPredelay, &sDepth, &sSend, &sHighCut, &sDecay })
         s->init = false;
 }
@@ -188,10 +190,17 @@ void Ballroom::process (const float* inL, const float* inR, float* outL, float* 
                 const double v2 = hcIc2[c] + a2 * hcIc1[c] + a3 * v3;
                 hcIc1[c] = 2.0 * v1 - hcIc1[c];
                 hcIc2[c] = 2.0 * v2 - hcIc2[c];
-                w[(size_t) i] = softLimit ((float) v2);
-                finite = finite && std::isfinite (w[(size_t) i]);
+                w[(size_t) i] = (float) v2;
             }
         }
+        // CLEAR (the dry heard at the same time: the input, before the predelay), then the soft limit
+        clear.process (xl, xr, wetL.data(), wetR.data(), n, target.clear);
+        for (auto* w : { &wetL, &wetR })
+            for (int i = 0; i < n; ++i)
+            {
+                (*w)[(size_t) i] = softLimit ((*w)[(size_t) i]);
+                finite = finite && std::isfinite ((*w)[(size_t) i]);
+            }
         if (! finite) // NaN / Inf: start clean, this block dry
         {
             reset();
