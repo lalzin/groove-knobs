@@ -1,11 +1,25 @@
 {
   "name": "Vocal Plate",
   "mode": "Plate",
-  "space": 0.4,
-  "overrides": {
-    "highMult": 0.7,
-    "highCut": 12000,
-    "predelay": 25,
-    "bassMult": 0.8
+  "space": 0.28,
+  "room": {
+    "decay": 1.9,
+    "predelay": 38,
+    "highCut": 13000,
+    "depth": 0.95,
+    "earlySize": 20,
+    "earlyCross": 0.2,
+    "earlyModRate": 0.4,
+    "earlyModDepth": 0.15,
+    "earlySend": 0.2,
+    "diffusion": 1.0,
+    "lateSize": 0.5,
+    "lateCross": 0.4,
+    "lateModRate": 0.7,
+    "lateModDepth": 0.3,
+    "bassMult": 0.55,
+    "bassXover": 400,
+    "highMult": 0.8,
+    "highXover": 7000
   }
 }

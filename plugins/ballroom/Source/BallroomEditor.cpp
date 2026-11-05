@@ -95,8 +95,8 @@ gk::Palette BallroomEditor::makePalette()
     p.arrowRight = gold;
     p.frameLeft = silver;
     p.frameRight = gold;
-    p.lowLabel = silver;  // ROOM
-    p.highLabel = gold;   // COSMOS
+    p.lowLabel = silver;  // DRY
+    p.highLabel = gold;   // WET
     return p;
 }
 
@@ -126,14 +126,13 @@ private:
     const gk::Palette& palette;
 };
 
-/** CUSTOM: lit when a ROOM setting moved since SPACE last did. */
+/** CUSTOM: lit when a ROOM setting moved since the preset was loaded. */
 class BallroomEditor::CustomChip final : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     explicit CustomChip (const gk::Palette& p) : palette (p)
     {
-        setTooltip ("CUSTOM: a ROOM setting moved, SPACE no longer drives MIX, DECAY, SIZE, DEPTH, PREDELAY and the modulation. "
-                    "Move SPACE to take them back.");
+        setTooltip ("CUSTOM: a ROOM setting moved, the room is no longer the preset's. Load a preset to get it back.");
         setInterceptsMouseClicks (false, false);
     }
     void set (bool on)
@@ -189,7 +188,7 @@ public:
             add (2, k, k == K::lateSizeKnob || k == K::bassMultKnob || k == K::highMultKnob ? gold : silver);
         mode = std::make_unique<gk::ChoiceSelector> (p.getChoice (K::modeChoice), "MODE", gold, pal);
         mode->setTooltip ("MODE: Studio (a small dense room), Club (warm, marked early), Ballroom (a big hall), Plate (bright, no early), "
-                          "Mirror (metallic, shimmering), Space (huge, very modulated)");
+                          "Mirror (metallic, shimmering), Space (huge, very modulated), Gate (the 80s gated burst)");
         addChildComponent (*mode);
         freeze = std::make_unique<gk::ChoiceSelector> (p.getChoice (K::freezeChoice), "FREEZE", champagne, pal);
         freeze->setTooltip ("FREEZE: the tail holds forever, nothing new comes in");

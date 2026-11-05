@@ -1,13 +1,15 @@
 // BALLROOM tests (spec 6): MIX 0 = the input; RT60 within 15 % of DECAY
 // (500 Hz - 4 kHz) at 0.5 / 2 / 8 s; the low and high bands follow BASS MULT
 // and HIGH MULT within 20 %; no click on a mode, size or FREEZE change; FREEZE
-// holds without growing; no allocation in processBlock; CPU; plus SPACE's
-// macro and "custom", the presets, the state.
+// holds without growing; no allocation in processBlock; CPU; plus SPACE as
+// the dry / wet (one with MIX, 100 % = the reverb alone at the dry's level),
+// "custom", the presets, the state.
 
 #include "BallroomProcessor.h"
 #include "GkTestUtils.h"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <new>
@@ -35,6 +37,8 @@ void operator delete (void* p, std::size_t) noexcept { std::free (p); }
 namespace
 {
 constexpr double sr = 48000.0;
+
+constexpr int numPresets = 12;
 
 std::unique_ptr<BallroomProcessor> makeProc (int preset = 0)
 {
@@ -121,6 +125,9 @@ std::unique_ptr<BallroomProcessor> measuringProc (double decay, double bass, dou
     setKnob (*p, BallroomDsp::highMultKnob, (float) high);
     setKnob (*p, BallroomDsp::highCutKnob, 20000.0f);
     setKnob (*p, BallroomDsp::predelayKnob, 0.0f);
+    setKnob (*p, BallroomDsp::bassXoverKnob, 500.0f); // (the crossovers the bands are chosen for)
+    setKnob (*p, BallroomDsp::highXoverKnob, 5000.0f);
+    setKnob (*p, BallroomDsp::earlySendKnob, 0.0f); // the late fed by the impulse itself (not spread by the early first)
     p->prepareToPlay (sr, 512); // the networks set for this mode at once
     return p;
 }
@@ -146,7 +153,7 @@ Buffer sine (double seconds, float level = 0.4f)
 
 TEST_CASE ("BL 1. MIX 0: the output is the input, sample for sample", "[bl][mix]")
 {
-    for (int preset = 0; preset < 10; ++preset)
+    for (int preset = 0; preset < numPresets; ++preset)
     {
         CAPTURE (preset);
         auto p = makeProc (preset);
@@ -219,7 +226,7 @@ TEST_CASE ("BL 4. No click on a mode, size or FREEZE change", "[bl][click]")
 
 TEST_CASE ("BL 5. FREEZE holds: a minute without the level growing", "[bl][freeze]")
 {
-    auto p = makeProc (9); // Frozen Floor (FREEZE on): feed it first, then freeze
+    auto p = makeProc (11); // Frozen Floor (Space mode): feed it, then freeze
     setParam (p->getChoice (BallroomDsp::freezeChoice), 0.0f);
     Buffer noise (2, (int) sr);
     juce::Random rng (4);
@@ -261,61 +268,106 @@ TEST_CASE ("BL 6. No allocation in processBlock (mode changes included)", "[bl][
     CHECK (allocations.load() == 0);
 }
 
-TEST_CASE ("BL 7. SPACE is a macro; a ROOM setting makes it custom, SPACE takes it back", "[bl][macro]")
+TEST_CASE ("BL 7. SPACE is the dry / wet, one with MIX; a ROOM setting makes it custom", "[bl][macro]")
 {
     BallroomProcessor p;
     p.applyPreset (0); // Disco Ballroom
     CHECK_FALSE (p.isCustom());
     auto value = [&p] (BallroomDsp::Knob k) { return p.getKnob (k).convertFrom0to1 (p.getKnob (k).getValue()); };
-    setParam (p.getAmountParameter(), 0.0f);
-    CHECK (value (BallroomDsp::mixKnob) == Catch::Approx (0.10f).margin (0.005f));
-    CHECK (value (BallroomDsp::decayKnob) == Catch::Approx (0.3f).margin (0.01f));
-    setParam (p.getAmountParameter(), 1.0f);
-    CHECK (value (BallroomDsp::mixKnob) == Catch::Approx (0.45f).margin (0.005f));
-    CHECK (value (BallroomDsp::decayKnob) == Catch::Approx (8.0f).margin (0.05f));
-    CHECK (value (BallroomDsp::predelayKnob) == Catch::Approx (40.0f).margin (0.2f));
+    const float decay = value (BallroomDsp::decayKnob);
+    for (float s : { 0.0f, 0.5f, 1.0f })
+    {
+        setParam (p.getAmountParameter(), s);
+        CHECK (value (BallroomDsp::mixKnob) == Catch::Approx (s).margin (0.005f));
+        CHECK (value (BallroomDsp::decayKnob) == Catch::Approx (decay)); // the room is the preset's
+    }
+    setKnob (p, BallroomDsp::mixKnob, 0.25f); // MIX moves SPACE
+    CHECK (p.getAmountParameter().getValue() == Catch::Approx (0.25f).margin (0.005f));
     CHECK_FALSE (p.isCustom());
     setKnob (p, BallroomDsp::earlyCrossKnob, 0.9f);
     CHECK (p.isCustom());
     setParam (p.getAmountParameter(), 0.5f);
+    CHECK (p.isCustom()); // (SPACE does not undo the room's change)
+    p.applyPreset (10); // Afterparty
     CHECK_FALSE (p.isCustom());
-    // a preset's own values stay over the macro (Afterparty: 20 s whatever SPACE)
-    p.applyPreset (8);
-    CHECK (value (BallroomDsp::decayKnob) == Catch::Approx (20.0f).margin (0.1f));
-    setParam (p.getAmountParameter(), 0.6f);
-    CHECK (value (BallroomDsp::decayKnob) == Catch::Approx (20.0f).margin (0.1f));
+    CHECK (value (BallroomDsp::decayKnob) == Catch::Approx (28.0f).margin (0.1f));
+    CHECK (value (BallroomDsp::mixKnob) == Catch::Approx (0.55f).margin (0.005f));
+}
+
+TEST_CASE ("BL 7b. SPACE 100 %: the reverb alone, about as loud as the dry", "[bl][macro]")
+{
+    for (int preset = 0; preset < numPresets; ++preset)
+    {
+        CAPTURE (preset);
+        auto p = makeProc (preset);
+        setParam (p->getAmountParameter(), 1.0f);
+        p->snapToTargets();
+        // pink noise notes (0.25 s every 0.75 s; render.cpp's calibration signal): the dry must be gone
+        Buffer in (2, (int) (6.0 * sr));
+        juce::Random rng (preset + 7);
+        double b[7] {};
+        for (int i = 0; i < in.getNumSamples(); ++i)
+        {
+            const double t = std::fmod ((double) i / sr, 0.75), w = 2.0 * rng.nextFloat() - 1.0; // (Kellet's pink filter)
+            b[0] = 0.99886 * b[0] + w * 0.0555179; b[1] = 0.99332 * b[1] + w * 0.0750759; b[2] = 0.96900 * b[2] + w * 0.1538520;
+            b[3] = 0.86650 * b[3] + w * 0.3104856; b[4] = 0.55000 * b[4] + w * 0.5329522; b[5] = -0.7616 * b[5] - w * 0.0168980;
+            const double pink = b[0] + b[1] + b[2] + b[3] + b[4] + b[5] + b[6] + w * 0.5362;
+            b[6] = w * 0.115926;
+            const float v = t < 0.25 ? (float) (0.05 * pink * std::min (1.0, t / 0.005) * std::min (1.0, (0.25 - t) / 0.01)) : 0.0f;
+            in.setSample (0, i, v);
+            in.setSample (1, i, v);
+        }
+        const auto out = processBlocks (*p, in, { 512 });
+        const double dryDb = juce::Decibels::gainToDecibels (in.getRMSLevel (0, 0, in.getNumSamples()));
+        const double wetDb = juce::Decibels::gainToDecibels (0.5 * (out.getRMSLevel (0, 0, out.getNumSamples()) + out.getRMSLevel (1, 0, out.getNumSamples())));
+        INFO ("wet " << wetDb - dryDb << " dB against the dry");
+        CHECK (std::abs (wetDb - dryDb) < 4.5);
+        // no dry left: the output against the input, correlated sample for sample, is far from 1
+        double xy = 0, xx = 0, yy = 0;
+        for (int i = 0; i < in.getNumSamples(); ++i)
+        {
+            const double x = in.getSample (0, i), y = out.getSample (0, i);
+            xy += x * y; xx += x * x; yy += y * y;
+        }
+        CHECK (std::abs (xy / std::sqrt (xx * yy + 1e-30)) < 0.3);
+    }
 }
 
 TEST_CASE ("BL 8. Presets, parameters and state", "[bl][state]")
 {
     BallroomProcessor p;
-    CHECK (p.getNumPrograms() == 10);
+    CHECK (p.getNumPrograms() == numPresets);
     CHECK (p.getProgramName (0) == "Disco Ballroom");
     CHECK (p.getLatencySamples() == 0);
-    // each preset its own mode / SPACE
-    const char* modes[] { "Ballroom", "Club", "Mirror", "Plate", "Studio", "Ballroom", "Studio", "Space", "Space", "Space" };
-    for (int i = 0; i < 10; ++i)
+    // each preset its own room
+    const char* modes[] { "Ballroom", "Club", "Studio", "Studio", "Gate", "Plate", "Mirror", "Ballroom", "Ballroom", "Space", "Space", "Space" };
+    std::vector<float> decays;
+    for (int i = 0; i < numPresets; ++i)
     {
         p.applyPreset (i);
         CHECK (p.getChoice (BallroomDsp::modeChoice).getCurrentChoiceName() == modes[i]);
+        CHECK (p.getChoice (BallroomDsp::freezeChoice).getIndex() == 0); // (FREEZE: the player's, a preset never loads silent)
+        decays.push_back (p.getKnob (BallroomDsp::decayKnob).convertFrom0to1 (p.getKnob (BallroomDsp::decayKnob).getValue()));
     }
-    CHECK (p.getChoice (BallroomDsp::freezeChoice).getIndex() == 1); // Frozen Floor
+    // far apart: the shortest under 0.5 s, the longest over 20 s
+    CHECK (*std::min_element (decays.begin(), decays.end()) < 0.5f);
+    CHECK (*std::max_element (decays.begin(), decays.end()) > 20.0f);
     // the state keeps everything, "custom" included
-    p.applyPreset (5);
-    setKnob (p, BallroomDsp::highXoverKnob, 3000.0f);
+    p.applyPreset (7); // Warm Hall
+    setKnob (p, BallroomDsp::highXoverKnob, 4200.0f);
     juce::MemoryBlock state;
     p.getStateInformation (state);
     BallroomProcessor q;
     q.setStateInformation (state.getData(), (int) state.getSize());
-    CHECK (q.getPresetParameter().getIndex() == 5);
+    CHECK (q.getPresetParameter().getIndex() == 7);
     CHECK (q.isCustom());
-    CHECK (q.getKnob (BallroomDsp::highXoverKnob).convertFrom0to1 (q.getKnob (BallroomDsp::highXoverKnob).getValue()) == Catch::Approx (3000.0f).margin (5.0f));
-    CHECK (q.getKnob (BallroomDsp::bassMultKnob).convertFrom0to1 (q.getKnob (BallroomDsp::bassMultKnob).getValue()) == Catch::Approx (1.8f).margin (0.01f));
+    CHECK (q.getKnob (BallroomDsp::highXoverKnob).convertFrom0to1 (q.getKnob (BallroomDsp::highXoverKnob).getValue()) == Catch::Approx (4200.0f).margin (5.0f));
+    CHECK (q.getKnob (BallroomDsp::bassMultKnob).convertFrom0to1 (q.getKnob (BallroomDsp::bassMultKnob).getValue()) == Catch::Approx (2.0f).margin (0.01f));
 }
 
 TEST_CASE ("BL 9. Every preset sounds, finite, under the clip", "[bl][presets]")
 {
-    for (int preset = 0; preset < 10; ++preset)
+    for (int preset = 0; preset < numPresets; ++preset)
     {
         CAPTURE (preset);
         auto p = makeProc (preset);

@@ -7,6 +7,8 @@ namespace
 {
     constexpr double pi = 3.14159265358979323846;
     constexpr double longestLine48k = 5077.0; // (Space)
+    // each loop's allpass, as a fraction of its line (all different: no common period)
+    constexpr double loopFraction[8] { 0.103, 0.142, 0.116, 0.170, 0.127, 0.083, 0.158, 0.094 };
     double sizeFactor (const ModeShape& s, double size) { return s.sizeMin + (1.0 - s.sizeMin) * std::clamp (size, 0.0, 1.0); }
 
     /** The 8-point Hadamard transform, normalised (orthogonal: no energy change). */
@@ -96,6 +98,8 @@ void LateFdn::prepare (double sampleRate)
         lines[(size_t) i].prepare (maxLen);
         wander[(size_t) i].seed = 0x9e3779b9u * (std::uint32_t) (i + 1);
     }
+    for (auto& ap : loopAllpasses)
+        ap.buf.assign ((size_t) (std::ceil (maxLoopFraction * longestLine48k * sr / 48000.0) + 4), 0.0f);
     const double apMs[2][4] { { 4.77, 3.59, 12.73, 9.31 }, { 4.93, 3.71, 12.47, 9.73 } };
     for (int s = 0; s < 2; ++s)
         for (int k = 0; k < 4; ++k)
@@ -115,7 +119,11 @@ void LateFdn::configure (Mode m, double size)
     mode = m;
     shape = &modeShape (m);
     for (int k = 0; k < numLines; ++k)
+    {
         lenSamples[(size_t) k] = shape->lineSamples48k[(size_t) k] * sr / 48000.0 * sizeFactor (*shape, size);
+        auto& ap = loopAllpasses[(size_t) k];
+        ap.len = std::clamp ((int) std::lround (loopFraction[k] * lenSamples[(size_t) k]), 1, (int) ap.buf.size());
+    }
     reset();
 }
 
@@ -129,6 +137,11 @@ void LateFdn::reset()
             std::fill (ap.buf.begin(), ap.buf.end(), 0.0f);
             ap.pos = 0;
         }
+    for (auto& ap : loopAllpasses)
+    {
+        std::fill (ap.buf.begin(), ap.buf.end(), 0.0f);
+        ap.pos = 0;
+    }
     for (auto* bank : { &lowShelf, &highShelf })
         for (auto& pair : *bank)
             for (auto& f : pair)
@@ -143,6 +156,7 @@ void LateFdn::process (const float* inL, const float* inR, float* outL, float* o
 {
     const float apGain = (float) (shape->inputDiffusion * std::clamp (target.diffusion, 0.0, 1.0));
     const int numAp = std::clamp (shape->inputAllpasses, 0, 4);
+    const float loopGain = (float) std::clamp (shape->loopDiffusion * std::clamp (target.diffusion, 0.0, 1.0), 0.0, 0.75);
     for (int i = 0; i < n; ++i)
     {
         const double decay = std::max (0.05, std::exp (sDecay.next (std::log (std::max (0.05, target.decaySeconds)))));
@@ -166,7 +180,7 @@ void LateFdn::process (const float* inL, const float* inR, float* outL, float* o
             controlCountdown = 32;
             for (int k = 0; k < numLines; ++k)
             {
-                const double lSec = lenSamples[(size_t) k] / sr;
+                const double lSec = (lenSamples[(size_t) k] + loopAllpasses[(size_t) k].len) / sr; // the whole loop
                 auto gainFor = [lSec, freeze] (double rt) { const double g = std::pow (10.0, -3.0 * lSec / rt); return g + freeze * (1.0 - g); };
                 const double gm = gainFor (decay), gl = gainFor (decay * bassMult), gh = gainFor (decay * highMult);
                 midGain[(size_t) k] = gm;
@@ -197,7 +211,7 @@ void LateFdn::process (const float* inL, const float* inR, float* outL, float* o
                 v = f.process (v);
             for (auto& f : highShelf[(size_t) k])
                 v = f.process (v);
-            x[(size_t) k] = v;
+            x[(size_t) k] = loopAllpasses[(size_t) k].process ((float) v, loopGain);
             sum += x[(size_t) k];
         }
         // the feedback matrix (energy preserving): Householder x - (2 / N) sum, or Hadamard

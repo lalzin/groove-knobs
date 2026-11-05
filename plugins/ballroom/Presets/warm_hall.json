@@ -1,10 +1,25 @@
 {
   "name": "Warm Hall",
   "mode": "Ballroom",
-  "space": 0.7,
-  "overrides": {
-    "bassMult": 1.8,
-    "highCut": 5000,
-    "highMult": 0.4
+  "space": 0.35,
+  "room": {
+    "decay": 4.8,
+    "predelay": 32,
+    "highCut": 4800,
+    "depth": 0.8,
+    "earlySize": 90,
+    "earlyCross": 0.3,
+    "earlyModRate": 0.3,
+    "earlyModDepth": 0.25,
+    "earlySend": 0.6,
+    "diffusion": 0.8,
+    "lateSize": 1.0,
+    "lateCross": 0.4,
+    "lateModRate": 0.3,
+    "lateModDepth": 0.4,
+    "bassMult": 2.0,
+    "bassXover": 350,
+    "highMult": 0.3,
+    "highXover": 3000
   }
 }

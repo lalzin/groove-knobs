@@ -1,9 +1,25 @@
 {
   "name": "Frozen Floor",
   "mode": "Space",
-  "space": 0.9,
-  "overrides": {
-    "mix": 1.0
-  },
-  "freeze": true
+  "space": 0.6,
+  "room": {
+    "decay": 100,
+    "predelay": 0,
+    "highCut": 7000,
+    "depth": 1.0,
+    "earlySize": 60,
+    "earlyCross": 0.6,
+    "earlyModRate": 0.2,
+    "earlyModDepth": 0.2,
+    "earlySend": 1.0,
+    "diffusion": 1.0,
+    "lateSize": 1.0,
+    "lateCross": 0.8,
+    "lateModRate": 0.15,
+    "lateModDepth": 0.15,
+    "bassMult": 1.0,
+    "bassXover": 400,
+    "highMult": 1.0,
+    "highXover": 6000
+  }
 }

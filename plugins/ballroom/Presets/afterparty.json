@@ -1,9 +1,25 @@
 {
   "name": "Afterparty",
   "mode": "Space",
-  "space": 0.95,
-  "overrides": {
-    "decay": 20.0,
-    "highMult": 0.5
+  "space": 0.55,
+  "room": {
+    "decay": 28,
+    "predelay": 90,
+    "highCut": 8000,
+    "depth": 1.0,
+    "earlySize": 80,
+    "earlyCross": 0.6,
+    "earlyModRate": 0.5,
+    "earlyModDepth": 0.5,
+    "earlySend": 1.0,
+    "diffusion": 1.0,
+    "lateSize": 1.0,
+    "lateCross": 0.8,
+    "lateModRate": 0.5,
+    "lateModDepth": 0.85,
+    "bassMult": 1.2,
+    "bassXover": 400,
+    "highMult": 0.6,
+    "highXover": 4500
   }
 }

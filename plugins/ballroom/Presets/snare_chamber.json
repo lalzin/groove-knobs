@@ -1,10 +1,25 @@
 {
   "name": "Snare Chamber",
   "mode": "Studio",
-  "space": 0.35,
-  "overrides": {
-    "depth": 0.3,
-    "earlySize": 45,
-    "earlyCross": 0.4
+  "space": 0.32,
+  "room": {
+    "decay": 1.05,
+    "predelay": 6,
+    "highCut": 11000,
+    "depth": 0.45,
+    "earlySize": 34,
+    "earlyCross": 0.4,
+    "earlyModRate": 0.4,
+    "earlyModDepth": 0.2,
+    "earlySend": 0.5,
+    "diffusion": 0.95,
+    "lateSize": 0.35,
+    "lateCross": 0.3,
+    "lateModRate": 0.5,
+    "lateModDepth": 0.15,
+    "bassMult": 0.7,
+    "bassXover": 600,
+    "highMult": 0.7,
+    "highXover": 6000
   }
 }

@@ -31,15 +31,15 @@ namespace
         cfg.amountParamId = "space";
         cfg.amountParamName = "Space";
         cfg.defaultAmount = 0.55f;
-        cfg.knobLowLabel = "ROOM";
-        cfg.knobHighLabel = "COSMOS";
+        cfg.knobLowLabel = "DRY";
+        cfg.knobHighLabel = "WET";
         cfg.allowMonoToStereo = true;
-        cfg.alwaysWet = true;          // SPACE 0 is still a small room: the reverb (its MIX) makes the dry / wet
+        cfg.alwaysWet = true;          // the reverb's own MIX (= SPACE) makes the dry / wet
         cfg.engineAlwaysRuns = true;   // the tail rings on
         cfg.presetSetsParameters = true;
-        cfg.amountIsMeta = true;       // SPACE sets MIX, DECAY, SIZE, DEPTH, PREDELAY, the MOD DEPTHs (auval)
+        cfg.amountIsMeta = true;       // SPACE sets MIX (and MIX sets SPACE): auval
         cfg.editorBuildsControls = false;
-        cfg.tailSeconds = 30.0;        // Afterparty: 20 s
+        cfg.tailSeconds = 30.0;        // Afterparty: 28 s
         cfg.knobs = {
             { "mix", "Mix", "MIX", 0.30f },
             { "predelay", "Predelay", "PREDELAY", 10.0f, 0.0f, 500.0f, 0.35f, "ms" },
@@ -78,9 +78,6 @@ namespace
         return cfg;
     }
 
-    // the parameters SPACE sets (and the preset's own values may then change)
-    constexpr int macroKnobs[] { BallroomDsp::mixKnob, BallroomDsp::decayKnob, BallroomDsp::lateSizeKnob, BallroomDsp::depthKnob,
-                                 BallroomDsp::predelayKnob, BallroomDsp::lateModDepthKnob, BallroomDsp::earlyModDepthKnob };
 } // namespace
 
 gk::PresetManager BallroomProcessor::loadBuiltInPresets()
@@ -89,11 +86,13 @@ gk::PresetManager BallroomProcessor::loadBuiltInPresets()
     const Entry entries[] = {
         { BLPresets::disco_ballroom_json, BLPresets::disco_ballroom_jsonSize }, // the default: the disco reverb
         { BLPresets::tight_club_json, BLPresets::tight_club_jsonSize },
-        { BLPresets::mirror_ball_json, BLPresets::mirror_ball_jsonSize },
-        { BLPresets::vocal_plate_json, BLPresets::vocal_plate_jsonSize },
+        { BLPresets::drum_room_json, BLPresets::drum_room_jsonSize },
         { BLPresets::snare_chamber_json, BLPresets::snare_chamber_jsonSize },
-        { BLPresets::warm_hall_json, BLPresets::warm_hall_jsonSize },
         { BLPresets::gated_80s_json, BLPresets::gated_80s_jsonSize },
+        { BLPresets::vocal_plate_json, BLPresets::vocal_plate_jsonSize },
+        { BLPresets::mirror_ball_json, BLPresets::mirror_ball_jsonSize },
+        { BLPresets::warm_hall_json, BLPresets::warm_hall_jsonSize },
+        { BLPresets::cathedral_json, BLPresets::cathedral_jsonSize },
         { BLPresets::velvet_pad_json, BLPresets::velvet_pad_jsonSize },
         { BLPresets::afterparty_json, BLPresets::afterparty_jsonSize },
         { BLPresets::frozen_floor_json, BLPresets::frozen_floor_jsonSize },
@@ -150,8 +149,11 @@ void BallroomProcessor::parameterChanged (const juce::String& id, float)
 {
     if (applying || loadingState)
         return;
-    if (id == "space")
+    if (id == "space" || id == "mix")
+    {
+        mixFollows = id == "space" ? 1 : 2; // SPACE and MIX are the same thing: the other follows
         macroPending = true;
+    }
     else if (id == "preset")
         presetPending = true;
     else
@@ -179,21 +181,12 @@ void BallroomProcessor::handleUpdate()
 void BallroomProcessor::applyMacro()
 {
     const juce::ScopedValueSetter<bool> guard (applying, true);
-    const float s = getAmountParameter().convertFrom0to1 (getAmountParameter().getValue());
-    ballroom::Params p = ballroom::space::apply ({}, s);
-    const float values[] { (float) p.mix, (float) p.decaySeconds, (float) p.lateSize, (float) p.depth, (float) p.predelayMs, (float) p.lateModDepth,
-                           (float) p.earlyModDepth };
-    for (size_t i = 0; i < std::size (macroKnobs); ++i)
-        set (getKnobParameter (macroKnobs[i]), values[i]);
-    // then the preset's own values that SPACE also sets (e.g. Afterparty's 20 s)
-    const int preset = appliedPreset;
-    if (juce::isPositiveAndBelow (preset, getPresets().size()))
-        if (const auto* o = getPresets()[preset].json.getProperty ("overrides", {}).getDynamicObject())
-            for (const auto& prop : o->getProperties())
-                for (int k : macroKnobs)
-                    if (getConfig().knobs[(size_t) k].id == prop.name.toString())
-                        set (getKnobParameter (k), (float) prop.value);
-    custom = false;
+    auto& space = getAmountParameter();
+    auto& mix = getKnobParameter (BallroomDsp::mixKnob);
+    if (mixFollows.exchange (1) == 2) // MIX moved (ROOM, automation): SPACE follows
+        set (space, mix.convertFrom0to1 (mix.getValue()));
+    else
+        set (mix, (float) ballroom::space::mix (space.convertFrom0to1 (space.getValue())));
 }
 
 void BallroomProcessor::applyPreset (int index)
@@ -212,13 +205,14 @@ void BallroomProcessor::applyPreset (int index)
     const auto& modes = getConfig().choices[BallroomDsp::modeChoice].options;
     set (getChoice (BallroomDsp::modeChoice), (float) juce::jmax (0, modes.indexOf (json.getProperty ("mode", "Club").toString())));
     set (getChoice (BallroomDsp::freezeChoice), (bool) json.getProperty ("freeze", false) ? 1.0f : 0.0f);
-    set (getAmountParameter(), (float) json.getProperty ("space", 0.5));
-    applyMacro();
-    if (const auto* o = json.getProperty ("overrides", {}).getDynamicObject())
+    if (const auto* o = json.getProperty ("room", {}).getDynamicObject())
         for (const auto& prop : o->getProperties())
             for (int k = 0; k < (int) knobs.size(); ++k)
                 if (knobs[(size_t) k].id == prop.name.toString())
                     set (getKnobParameter (k), (float) prop.value);
+    set (getAmountParameter(), (float) json.getProperty ("space", 0.35));
+    mixFollows = 1;
+    applyMacro(); // MIX = SPACE
     custom = false;
 }
 

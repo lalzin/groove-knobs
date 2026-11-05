@@ -1,5 +1,6 @@
-// BALLROOM renders and measurements: the late FDN's RT60 (step 1), the
-// early / depth / send (step 2), the six modes (step 3), clicks, FREEZE, CPU.
+// BALLROOM renders and measurements: the late FDN's RT60 (step 1), the level
+// calibration (the modes' trims), the early / depth / send (step 2), the
+// seven modes (step 3), the presets (step 4), clicks, FREEZE, CPU.
 //   render <in-dir with guitar.wav (mono 48 kHz 24-bit)> <out-dir>
 // Build: c++ -std=c++20 -O2 -I../../plugins/ballroom/Source -o render render.cpp ../../plugins/ballroom/Source/{LateFdn,EarlyNet,Ballroom}.cpp
 //
@@ -209,24 +210,80 @@ int main (int argc, char** argv)
         return 10.0 * std::log10 (e / (double) (b - a) + 1e-30);
     };
 
-    // DEPTH's level match: noise, the early only (DEPTH 0) against the late only (DEPTH 1)
+    // Calibration and quick look (render <in> <out> quick: this, then stop).
+    // The level: pink noise notes (0.25 s every 0.75 s, 6 s), the wet's RMS
+    // against the dry's at MIX 100 % (0 dB = as loud). Per mode the early
+    // alone (DEPTH 0) and the late alone (DEPTH 1), the trims to put in
+    // Modes.h (the current ones included); then each preset; plus the echo
+    // density (the time the normalised echo density reaches 0.9, Abel & Huang
+    // 2006) and the L / R correlation of the wet.
     {
-        std::vector<float> noise ((size_t) (6 * sr));
-        std::mt19937 rng (5);
-        std::normal_distribution<float> g (0.0f, 0.1f);
-        for (auto& v : noise) v = g (rng);
-        std::printf ("DEPTH levels (noise, wet only; the late against the early):");
-        for (double decay : { 0.5, 2.0, 8.0 })
+        std::vector<float> notes ((size_t) (6 * sr), 0.0f);
+        {
+            std::mt19937 rng (5);
+            std::normal_distribution<float> g (0.0f, 1.0f);
+            double b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0; // Kellet's pink filter
+            for (size_t i = 0; i < notes.size(); ++i)
+            {
+                const double w = g (rng);
+                b0 = 0.99886 * b0 + w * 0.0555179; b1 = 0.99332 * b1 + w * 0.0750759; b2 = 0.96900 * b2 + w * 0.1538520;
+                b3 = 0.86650 * b3 + w * 0.3104856; b4 = 0.55000 * b4 + w * 0.5329522; b5 = -0.7616 * b5 - w * 0.0168980;
+                const double pink = b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362; b6 = w * 0.115926;
+                const double t = std::fmod ((double) i / sr, 0.75);
+                const double env = t < 0.25 ? std::min (1.0, t / 0.005) * std::min (1.0, (0.25 - t) / 0.01) : 0.0;
+                notes[i] = (float) (0.03 * pink * env);
+            }
+        }
+        auto level = [&] (const Params& p)
+        {
+            const auto o = render (notes, p, 0.0);
+            return 0.5 * (rms (o.l, 0, notes.size()) + rms (o.r, 0, notes.size())) - rms (notes, 0, notes.size());
+        };
+        const double calDecay[] { 0.8, 1.5, 3.0, 2.2, 2.5, 6.0, 0.5 };
+        std::printf ("calibration (pink notes, MIX 100 %%): early alone / late alone, and the trims for Modes.h\n");
+        for (int m = 0; m < (int) Mode::count; ++m)
         {
             Params p;
-            p.mix = 1.0; p.decaySeconds = decay; p.highCutHz = 20000; p.mode = Mode::ballroom;
+            p.mode = (Mode) m; p.mix = 1.0; p.decaySeconds = calDecay[m]; p.highCutHz = 20000; p.predelayMs = 0;
             p.depth = 0.0;
-            const auto e = render (noise, p, 0.0);
+            const double e = level (p);
             p.depth = 1.0;
-            const auto l = render (noise, p, 0.0);
-            std::printf ("  %.1f s: %+.1f dB", decay, rms (l.l, (size_t) (3 * sr), noise.size()) - rms (e.l, (size_t) (3 * sr), noise.size()));
+            const double l = level (p);
+            const auto& sh = modeShape ((Mode) m);
+            std::printf ("  %-8s early %+5.1f dB, late %+5.1f dB -> earlyTrimDb %.1f, lateTrimDb %.1f\n", modeName ((Mode) m), e, l,
+                         sh.taps > 0 ? sh.earlyTrimDb - e : 0.0, sh.lateTrimDb - l);
         }
-        std::printf ("\n");
+        std::printf ("presets: the wet at MIX 100 %%, echo density, L/R correlation:\n");
+        for (const auto& pr : presets())
+        {
+            Params p = presetParams (pr);
+            p.mix = 1.0;
+            p.freeze = false;
+            const double wetDb = level (p);
+            Params q = p;
+            q.depth = 1.0; q.predelayMs = 0.0;
+            std::vector<float> imp (1, 1.0f);
+            const auto ir = render (imp, q, 0.5);
+            const int win = (int) (0.02 * sr);
+            double reach = -1.0;
+            for (int c = win / 2; c + win / 2 < (int) ir.l.size(); c += 48)
+            {
+                double e = 0;
+                for (int i = c - win / 2; i < c + win / 2; ++i) e += (double) ir.l[(size_t) i] * ir.l[(size_t) i];
+                const double sd = std::sqrt (e / win);
+                if (sd <= 0) continue;
+                int outside = 0;
+                for (int i = c - win / 2; i < c + win / 2; ++i) outside += std::fabs (ir.l[(size_t) i]) > sd;
+                if ((double) outside / win / 0.3173 >= 0.9) { reach = (double) c / sr; break; }
+            }
+            const auto o = render (notes, p, 0.0);
+            double lr = 0, ll = 0, rr = 0;
+            for (size_t i = 0; i < notes.size(); ++i) { lr += o.l[i] * o.r[i]; ll += o.l[i] * o.l[i]; rr += o.r[i] * o.r[i]; }
+            std::printf ("  %-15s %-8s wet %+5.1f dB, density 0.9 at %5.1f ms, L/R correlation %+.2f\n", pr.name, modeName (p.mode), wetDb, reach * 1000.0,
+                         lr / std::sqrt (ll * rr + 1e-30));
+        }
+        if (argc > 3 && std::string (argv[3]) == "quick")
+            return 0;
     }
 
     // Step 2: early / depth / send / size
@@ -258,7 +315,7 @@ int main (int argc, char** argv)
     }
 
     // Step 3: the six modes (each at a decay that suits it)
-    const double modeDecay[] { 0.8, 1.5, 3.0, 2.2, 2.5, 8.0 };
+    const double modeDecay[] { 0.8, 1.5, 3.0, 2.2, 2.5, 8.0, 0.4 };
     for (int m = 0; m < (int) Mode::count; ++m)
     {
         Params p;
@@ -285,7 +342,7 @@ int main (int argc, char** argv)
         for (int k = 0; k < 3 && ! vocalRaw.empty(); ++k)
             for (size_t i = 0; i < vocalRaw.size() && (size_t) (k * 2 * sr) + i < vocal.size(); ++i)
                 vocal[(size_t) (k * 2 * sr) + i] = 0.8f * vocalRaw[i];
-        std::printf ("presets (SPACE -> mix / decay / size / depth / predelay, then the tail of the snare: RT60 500-4k, brightness = 4-10k against 0.5-2k):\n");
+        std::printf ("presets (mix = SPACE, the room's decay / size / depth / predelay, then the tail of the snare: RT60 500-4k, brightness = 4-10k against 0.5-2k):\n");
         for (const auto& pr : presets())
         {
             const Params p = presetParams (pr);

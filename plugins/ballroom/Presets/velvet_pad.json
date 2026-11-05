@@ -1,10 +1,25 @@
 {
   "name": "Velvet Pad",
   "mode": "Space",
-  "space": 0.8,
-  "overrides": {
-    "lateModDepth": 0.6,
-    "highMult": 0.45,
-    "highCut": 7000
+  "space": 0.45,
+  "room": {
+    "decay": 7.5,
+    "predelay": 60,
+    "highCut": 6000,
+    "depth": 1.0,
+    "earlySize": 60,
+    "earlyCross": 0.5,
+    "earlyModRate": 0.4,
+    "earlyModDepth": 0.5,
+    "earlySend": 0.8,
+    "diffusion": 0.9,
+    "lateSize": 0.9,
+    "lateCross": 0.7,
+    "lateModRate": 0.25,
+    "lateModDepth": 0.75,
+    "bassMult": 1.4,
+    "bassXover": 300,
+    "highMult": 0.4,
+    "highXover": 3500
   }
 }

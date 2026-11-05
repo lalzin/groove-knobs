@@ -1,11 +1,25 @@
 {
   "name": "Gated 80s",
-  "mode": "Studio",
-  "space": 0.4,
-  "overrides": {
-    "earlySize": 150,
-    "depth": 0.0,
-    "diffusion": 0.9,
-    "mix": 0.45
+  "mode": "Gate",
+  "space": 0.45,
+  "room": {
+    "decay": 0.35,
+    "predelay": 0,
+    "highCut": 10000,
+    "depth": 0.05,
+    "earlySize": 190,
+    "earlyCross": 0.7,
+    "earlyModRate": 0.5,
+    "earlyModDepth": 0.1,
+    "earlySend": 0,
+    "diffusion": 1.0,
+    "lateSize": 0.3,
+    "lateCross": 0.3,
+    "lateModRate": 0.5,
+    "lateModDepth": 0.1,
+    "bassMult": 0.8,
+    "bassXover": 500,
+    "highMult": 0.6,
+    "highXover": 5000
   }
 }

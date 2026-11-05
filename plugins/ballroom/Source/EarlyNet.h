@@ -5,7 +5,8 @@
 //   wander slowly: EARLY MOD RATE / DEPTH) ─> a delay line per side ─> the
 //   multi-tap: taps spread over EARLY SIZE (the mode's pattern: how many,
 //   how even, how fast they fall), each side reading its own line and, with
-//   EARLY CROSS, the other one.
+//   EARLY CROSS, the other one ─> two short allpasses per side (the mode's
+//   smear x DIFFUSION): a cluster of reflections rather than distinct echoes.
 // A network's size is fixed (configure); the engine crossfades for another.
 
 #include "Modes.h"
@@ -36,6 +37,8 @@ public:
     void reset();
     void setParams (const EarlyParams& p) { target = p; }
     void process (const float* inL, const float* inR, float* outL, float* outR, int n);
+    /** False for a mode without early reflections (Plate). */
+    bool hasTaps() const noexcept { return numTaps > 0; }
 
 private:
     struct Line
@@ -62,6 +65,20 @@ private:
         float process (float x, float g, double modSamples, double rateHz, double sr);
     };
     struct Tap { double delay; float gainOwn, gainOther; };
+    struct Smear // a plain allpass
+    {
+        std::vector<float> buf;
+        int pos = 0;
+        float process (float x, float g)
+        {
+            const float d = buf[(size_t) pos];
+            const float v = x + g * d;
+            buf[(size_t) pos] = v;
+            if (++pos >= (int) buf.size())
+                pos = 0;
+            return d - g * v;
+        }
+    };
 
     double sr = 48000.0;
     const ModeShape* shape = &modeShape (Mode::club);
@@ -69,6 +86,7 @@ private:
     std::array<std::array<ModAllpass, maxAllpasses>, 2> allpasses;
     std::array<Line, 2> lines;
     std::array<std::array<Tap, maxTaps>, 2> taps {};
+    std::array<std::array<Smear, 2>, 2> smears;
     int numTaps = 0;
     double cross = 0.2, crossCoeff = 0.0;
 };

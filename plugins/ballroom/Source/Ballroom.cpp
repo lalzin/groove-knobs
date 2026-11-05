@@ -6,18 +6,9 @@ namespace ballroom
 namespace
 {
     constexpr double pi = 3.14159265358979323846;
-    // DEPTH's level match: the late network's steady level grows with the
-    // decay; this gain brings it to the early's level at any decay (measured
-    // on noise, render.cpp "DEPTH levels": the late was -8 / -5.6 / -5.1 dB
-    // under the early at 0.5 / 2 / 8 s with 0.5 / sqrt (decay))
-    double lateNorm (double decay)
-    {
-        const double x = std::log10 (std::max (0.1, decay));
-        const double xs[3] { std::log10 (0.5), std::log10 (2.0), std::log10 (8.0) }, db[3] { 8.0, 5.6, 5.1 };
-        double c = x <= xs[0] ? db[0] : x >= xs[2] ? db[2] : x < xs[1] ? db[0] + (x - xs[0]) / (xs[1] - xs[0]) * (db[1] - db[0])
-                                                                       : db[1] + (x - xs[1]) / (xs[2] - xs[1]) * (db[2] - db[1]);
-        return std::pow (10.0, c / 20.0) * 0.5 / std::sqrt (std::max (0.2, decay));
-    }
+    // A longer decay piles up more energy: the late brought down by part of
+    // it (the full 1 / sqrt (decay) made the long tails start too quiet)
+    double decayComp (double decay) { return std::pow (2.0 / std::clamp (decay, 0.2, 30.0), 0.4); } // (beyond 30 s the tail never piles up in musical time)
     float softLimit (float x)
     {
         const float a = std::abs (x);
@@ -100,7 +91,7 @@ void Ballroom::runNetwork (Network& nw, int n)
     // EARLY SEND: the late fed by the predelayed input (0), by the early (1), or a mix
     for (int i = 0; i < n; ++i)
     {
-        const float s = (float) sSend.v;
+        const float s = nw.early.hasTaps() ? (float) sSend.v : 0.0f; // (no early, e.g. Plate: the late fed by the input)
         lateInL[(size_t) i] = (1.0f - s) * pdL[(size_t) i] + s * eL[(size_t) i];
         lateInR[(size_t) i] = (1.0f - s) * pdR[(size_t) i] + s * eR[(size_t) i];
     }
@@ -150,16 +141,18 @@ void Ballroom::process (const float* inL, const float* inR, float* outL, float* 
         }
         sSend.next (std::clamp (target.earlySend, 0.0, 1.0));
 
-        // DEPTH, with the late level normalised by the decay
-        const double decay = sDecay.next (std::max (0.1, target.decaySeconds));
-        const double lateGain = lateNorm (decay);
+        // DEPTH
+        const double lateComp = decayComp (sDecay.next (std::max (0.1, target.decaySeconds)));
         auto runInto = [&] (Network& nw, std::vector<float>& wl, std::vector<float>& wr)
         {
             runNetwork (nw, n);
+            // each part as loud as the dry (the mode's trims): DEPTH, then MIX 100 %, keep the level
+            const auto& shape = modeShape (nw.mode);
+            const double te = std::pow (10.0, shape.earlyTrimDb / 20.0), tl = std::pow (10.0, shape.lateTrimDb / 20.0);
             for (int i = 0; i < n; ++i)
             {
                 const double th = 0.5 * pi * sDepth.v;
-                const double ge = std::cos (th), gl = std::sin (th) * lateGain;
+                const double ge = te * std::cos (th), gl = tl * lateComp * std::sin (th);
                 wl[(size_t) i] = (float) (ge * eL[(size_t) i] + gl * lL[(size_t) i]);
                 wr[(size_t) i] = (float) (ge * eR[(size_t) i] + gl * lR[(size_t) i]);
             }

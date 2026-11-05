@@ -1,9 +1,25 @@
 {
   "name": "Disco Ballroom",
   "mode": "Ballroom",
-  "space": 0.55,
-  "overrides": {
-    "earlySize": 70,
-    "highMult": 0.55
+  "space": 0.35,
+  "room": {
+    "decay": 2.6,
+    "predelay": 18,
+    "highCut": 9500,
+    "depth": 0.62,
+    "earlySize": 55,
+    "earlyCross": 0.3,
+    "earlyModRate": 0.5,
+    "earlyModDepth": 0.3,
+    "earlySend": 0.5,
+    "diffusion": 0.85,
+    "lateSize": 0.7,
+    "lateCross": 0.35,
+    "lateModRate": 0.45,
+    "lateModDepth": 0.35,
+    "bassMult": 1.1,
+    "bassXover": 450,
+    "highMult": 0.55,
+    "highXover": 5500
   }
 }

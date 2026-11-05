@@ -1,0 +1,25 @@
+{
+  "name": "Drum Room",
+  "mode": "Studio",
+  "space": 0.3,
+  "room": {
+    "decay": 0.75,
+    "predelay": 0,
+    "highCut": 16000,
+    "depth": 0.35,
+    "earlySize": 15,
+    "earlyCross": 0.35,
+    "earlyModRate": 0.3,
+    "earlyModDepth": 0.1,
+    "earlySend": 0.4,
+    "diffusion": 0.9,
+    "lateSize": 0.2,
+    "lateCross": 0.25,
+    "lateModRate": 0.5,
+    "lateModDepth": 0.1,
+    "bassMult": 0.9,
+    "bassXover": 500,
+    "highMult": 1.0,
+    "highXover": 8000
+  }
+}

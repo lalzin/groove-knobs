@@ -57,7 +57,7 @@ int main (int argc, char** argv)
     dir.createDirectory();
     std::vector<juce::Image> shots;
     juce::StringArray names;
-    for (int preset = 0; preset < 10; ++preset)
+    for (int preset = 0; preset < 12; ++preset)
     {
         auto proc = playing (preset);
         const auto name = proc->getPresets()[preset].name.toLowerCase().replaceCharacters (" ", "_");

@@ -10,11 +10,13 @@ juce_add_binary_data(BallroomPresets
     SOURCES
         Presets/disco_ballroom.json
         Presets/tight_club.json
-        Presets/mirror_ball.json
-        Presets/vocal_plate.json
+        Presets/drum_room.json
         Presets/snare_chamber.json
-        Presets/warm_hall.json
         Presets/gated_80s.json
+        Presets/vocal_plate.json
+        Presets/mirror_ball.json
+        Presets/warm_hall.json
+        Presets/cathedral.json
         Presets/velvet_pad.json
         Presets/afterparty.json
         Presets/frozen_floor.json)

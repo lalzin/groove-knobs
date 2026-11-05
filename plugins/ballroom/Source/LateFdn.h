@@ -4,7 +4,12 @@
 //   in L / R ─> input diffusion (2..4 allpasses per side) ─> injection (LATE
 //   CROSS mixes the sides) ─> 8 delay lines ─┬─> out L (lines 0, 2, 4, 6, signs alternating)
 //        ^                                  ├─> out R (lines 1, 3, 5, 7)
-//        └── Householder or Hadamard <── per-line absorption (3 bands) <─┘
+//        └── Householder or Hadamard <── an allpass <── absorption (3 bands) <─┘
+//
+// - The allpass in each loop (its length a fraction of the line's, its gain
+//   the mode's loop diffusion x DIFFUSION): every pass through the matrix
+//   multiplies the echoes, the tail is dense from its first tens of ms, no
+//   flutter, no metal (lossless: the decay is that of line + allpass).
 //
 // - Lengths: the mode's 8 prime lengths, scaled by LATE SIZE. A network's
 //   size is fixed (configure): the engine crossfades to a second network for
@@ -48,7 +53,7 @@ class LateFdn
 {
 public:
     static constexpr int numLines = 8;
-    static constexpr double maxModSeconds = 0.0012;
+    static constexpr double maxModSeconds = 0.0025, maxLoopFraction = 0.30;
 
     void prepare (double sampleRate);
     /** The mode and LATE SIZE (0..1) of this network; clears it. */
@@ -129,6 +134,7 @@ private:
     std::array<double, numLines> midGain {};
     int controlCountdown = 0;
     std::array<std::array<Allpass, 4>, 2> diffusers;
+    std::array<Allpass, numLines> loopAllpasses;
     Smooth sDecay, sBass, sHigh, sDepth, sCross, sFreeze;
     std::uint32_t denormal = 1;
 };

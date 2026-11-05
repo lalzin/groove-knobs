@@ -65,6 +65,10 @@ void EarlyNet::prepare (double sampleRate)
             ap.seed = 0x51ed2701u + 977u * (std::uint32_t) (s * maxAllpasses + k);
         }
     }
+    const double smearMs[2][2] { { 3.13, 7.37 }, { 3.71, 6.89 } };
+    for (int s = 0; s < 2; ++s)
+        for (int k = 0; k < 2; ++k)
+            smears[(size_t) s][(size_t) k].buf.assign ((size_t) std::max (1L, std::lround (smearMs[s][k] * 0.001 * sr)), 0.0f);
     crossCoeff = 1.0 - std::exp (-1.0 / (0.03 * sr));
     configure (Mode::club, 40.0);
 }
@@ -107,12 +111,19 @@ void EarlyNet::reset()
     for (auto& side : allpasses)
         for (auto& ap : side)
             std::fill (ap.line.buf.begin(), ap.line.buf.end(), 0.0f);
+    for (auto& side : smears)
+        for (auto& ap : side)
+        {
+            std::fill (ap.buf.begin(), ap.buf.end(), 0.0f);
+            ap.pos = 0;
+        }
 }
 
 void EarlyNet::process (const float* inL, const float* inR, float* outL, float* outR, int n)
 {
     const int numAp = std::clamp (shape->earlyAllpasses, 0, maxAllpasses);
     const float g = (float) (0.62 * std::clamp (target.diffusion, 0.0, 1.0));
+    const float smear = (float) (shape->earlySmear * std::clamp (target.diffusion, 0.0, 1.0));
     const double modSamples = std::clamp (target.modDepth, 0.0, 1.0) * shape->earlyModScale * maxModMs * 0.001 * sr;
     for (int i = 0; i < n; ++i)
     {
@@ -136,6 +147,10 @@ void EarlyNet::process (const float* inL, const float* inR, float* outL, float* 
                 out[s] += (float) (1.0 - 0.5 * cross) * t.gainOwn * own.tap (d) + (float) (0.5 * cross) * t.gainOther * other.tap (d);
             }
         }
+        if (smear > 0.0f)
+            for (int s = 0; s < 2; ++s)
+                for (auto& ap : smears[(size_t) s])
+                    out[s] = ap.process (out[s], smear);
         outL[i] = out[0];
         outR[i] = out[1];
     }

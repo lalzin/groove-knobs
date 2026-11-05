@@ -7,8 +7,9 @@
 //
 // Two complete networks (early + late): MODE, EARLY SIZE or LATE SIZE moving
 // crossfades to the other one, set for the new values, over 50 ms (no
-// click, no pitch bend). DEPTH: the late level is normalised by the decay
-// (a longer decay piles up more energy). FREEZE: the input cut, the late
+// click, no pitch bend). DEPTH: the early and the late each made as loud
+// as the dry by the mode's trims (and the late by part of its decay: a
+// longer decay piles up more energy), so MIX 100 % keeps the level. FREEZE: the input cut, the late
 // network holds. NaN / Inf: everything is cleared. MIX 0: the input exactly.
 
 #include "EarlyNet.h"

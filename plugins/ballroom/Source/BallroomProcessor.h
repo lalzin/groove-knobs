@@ -4,12 +4,11 @@
 
 namespace bl
 {
-/** BALLROOM: an algorithmic reverb, SPACE as the one knob.
-    SPACE is a macro (SpaceMap.h): it sets MIX, DECAY, LATE SIZE, DEPTH,
-    PREDELAY and the MOD DEPTHs, then the current preset's own values on top.
-    Moving anything in the ROOM panel leaves the macro ("custom"); moving SPACE
-    again brings it back. A preset sets the mode, FREEZE, SPACE (and so the
-    macro), its own values, and every other setting back to its default. */
+/** BALLROOM: an algorithmic reverb, SPACE as the one knob: the dry / wet,
+    0 .. 100 % (SpaceMap.h). SPACE and MIX are one: moving either moves the
+    other. The room is the preset's: its mode and every setting (the JSON
+    "room"), all of it in the ROOM panel; moving one of them there lights
+    CUSTOM (the room is no longer the preset's) until a preset is loaded. */
 class BallroomProcessor final : public gk::OneKnobProcessor, private juce::AudioProcessorValueTreeState::Listener
 {
 public:
@@ -27,9 +26,9 @@ public:
 
     /** Sets everything from preset `index` (message thread). */
     void applyPreset (int index);
-    /** SPACE's macro now (message thread; it also runs on its own when SPACE moves). */
+    /** SPACE -> MIX, or MIX -> SPACE when MIX moved last (message thread; it also runs on its own). */
     void applyMacro();
-    /** A ROOM setting moved since SPACE last did: the editor shows "custom". */
+    /** A ROOM setting (other than MIX) moved since the preset was loaded: the editor shows "custom". */
     bool isCustom() const noexcept { return custom.load(); }
 
 protected:
@@ -49,6 +48,7 @@ private:
     void set (juce::RangedAudioParameter& p, float plain);
 
     std::atomic<bool> custom { false }, macroPending { false }, presetPending { false };
+    std::atomic<int> mixFollows { 1 }; // 1: MIX follows SPACE, 2: SPACE follows MIX
     bool applying = false; // our own changes do not mark "custom"
     bool loadingState = false;
     int appliedPreset = -1;

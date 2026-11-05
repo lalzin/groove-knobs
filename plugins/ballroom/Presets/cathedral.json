@@ -1,0 +1,25 @@
+{
+  "name": "Cathedral",
+  "mode": "Ballroom",
+  "space": 0.4,
+  "room": {
+    "decay": 9.0,
+    "predelay": 45,
+    "highCut": 5500,
+    "depth": 0.9,
+    "earlySize": 160,
+    "earlyCross": 0.5,
+    "earlyModRate": 0.25,
+    "earlyModDepth": 0.3,
+    "earlySend": 0.7,
+    "diffusion": 0.9,
+    "lateSize": 1.0,
+    "lateCross": 0.6,
+    "lateModRate": 0.25,
+    "lateModDepth": 0.45,
+    "bassMult": 1.5,
+    "bassXover": 300,
+    "highMult": 0.35,
+    "highXover": 3500
+  }
+}

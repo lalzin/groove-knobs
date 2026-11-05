@@ -1,9 +1,25 @@
 {
   "name": "Tight Club",
   "mode": "Club",
-  "space": 0.2,
-  "overrides": {
-    "earlySize": 25,
-    "highCut": 9000
+  "space": 0.3,
+  "room": {
+    "decay": 0.55,
+    "predelay": 2,
+    "highCut": 7500,
+    "depth": 0.3,
+    "earlySize": 22,
+    "earlyCross": 0.55,
+    "earlyModRate": 0.4,
+    "earlyModDepth": 0.15,
+    "earlySend": 0.3,
+    "diffusion": 0.9,
+    "lateSize": 0.25,
+    "lateCross": 0.3,
+    "lateModRate": 0.6,
+    "lateModDepth": 0.15,
+    "bassMult": 1.3,
+    "bassXover": 300,
+    "highMult": 0.45,
+    "highXover": 4000
   }
 }
