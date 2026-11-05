@@ -1,0 +1,11 @@
+{
+  "name": "Vocal Plate",
+  "mode": "Plate",
+  "space": 0.4,
+  "overrides": {
+    "highMult": 0.7,
+    "highCut": 12000,
+    "predelay": 25,
+    "bassMult": 0.8
+  }
+}

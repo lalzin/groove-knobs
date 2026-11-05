@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Builds dist/<Plugin>-<version>-macOS.pkg (universal VST3 + AU + app).
 #
-#   [TEST_SUFFIX=test1] scripts/make_installer_mac.sh [--skip-build] [FF|BT|BW|PP|SIB|KL|SL|CR|HS]
+#   [TEST_SUFFIX=test1] scripts/make_installer_mac.sh [--skip-build] [FF|BT|BW|PP|SIB|KL|SL|CR|HS|BL]
 #   FF = French Filter (default), BT = Boogie Trio, BW = Backwash, PP = Pew Pew,
-#   SIB = Sing It Back, KL = Kick Lock, SL = Slapper, CR = Crackle, HS = Head Spin
+#   SIB = Sing It Back, KL = Kick Lock, SL = Slapper, CR = Crackle, HS = Head Spin, BL = Ballroom
 #
 # Signing: the "Developer ID Application" and "Developer ID Installer"
 # certificates are found in the keychain automatically (or set DEV_ID_APP /
@@ -38,7 +38,7 @@ SKIP_BUILD=0; P=FF
 for a in "$@"; do
   case "$a" in
     --skip-build) SKIP_BUILD=1 ;;
-    FF|BT|BW|PP|SIB|KL|SL|CR|HS) P="$a" ;;
+    FF|BT|BW|PP|SIB|KL|SL|CR|HS|BL) P="$a" ;;
     *) echo "unknown argument: $a"; exit 2 ;;
   esac
 done
@@ -56,6 +56,7 @@ case "$P" in
   SL) DIR=slapper;       TARGET=Slapper;      RES="$ROOT/installer/mac/slapper" ;;
   CR) DIR=crackle;       TARGET=Crackle;      RES="$ROOT/installer/mac/crackle" ;;
   HS) DIR=headspin;      TARGET=HeadSpin;     RES="$ROOT/installer/mac/headspin" ;;
+  BL) DIR=ballroom;      TARGET=Ballroom;     RES="$ROOT/installer/mac/ballroom" ;;
 esac
 FILE_NAME="${PRODUCT// /}"   # "French Filter" -> FrenchFilter
 

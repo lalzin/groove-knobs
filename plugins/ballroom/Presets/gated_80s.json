@@ -1,0 +1,11 @@
+{
+  "name": "Gated 80s",
+  "mode": "Studio",
+  "space": 0.4,
+  "overrides": {
+    "earlySize": 150,
+    "depth": 0.0,
+    "diffusion": 0.9,
+    "mix": 0.45
+  }
+}

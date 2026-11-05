@@ -80,3 +80,10 @@ set(HS_PLUGIN_CODE         "HdSp")
 set(HS_AU_TYPE             "aufx")          # kAudioUnitType_Effect
 set(HS_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.headspin")
 set(HS_VERSION             "0.1.8")
+
+# BALLROOM (an algorithmic reverb, SPACE as the one knob; in test, not in the suite yet)
+set(BL_PRODUCT_NAME        "Ballroom")
+set(BL_PLUGIN_CODE         "Blrm")
+set(BL_AU_TYPE             "aufx")          # kAudioUnitType_Effect
+set(BL_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.ballroom")
+set(BL_VERSION             "0.1.0")

@@ -1,0 +1,9 @@
+{
+  "name": "Disco Ballroom",
+  "mode": "Ballroom",
+  "space": 0.55,
+  "overrides": {
+    "earlySize": 70,
+    "highMult": 0.55
+  }
+}

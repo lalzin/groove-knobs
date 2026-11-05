@@ -19,6 +19,7 @@ case "$PLUGIN" in
   "Slapper")       ART="$BUILD/plugins/slapper/Slapper_artefacts/Release" ;;
   "Crackle")       ART="$BUILD/plugins/crackle/Crackle_artefacts/Release" ;;
   "Head Spin")     ART="$BUILD/plugins/headspin/HeadSpin_artefacts/Release" ;;
+  "Ballroom")      ART="$BUILD/plugins/ballroom/Ballroom_artefacts/Release" ;;
   *) echo "unknown plugin: $PLUGIN"; exit 2 ;;
 esac
 

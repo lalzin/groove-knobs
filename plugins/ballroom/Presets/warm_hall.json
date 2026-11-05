@@ -1,0 +1,10 @@
+{
+  "name": "Warm Hall",
+  "mode": "Ballroom",
+  "space": 0.7,
+  "overrides": {
+    "bassMult": 1.8,
+    "highCut": 5000,
+    "highMult": 0.4
+  }
+}

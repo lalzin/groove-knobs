@@ -1,7 +1,7 @@
 // BALLROOM renders and measurements: the late FDN's RT60 (step 1), the
 // early / depth / send (step 2), the six modes (step 3), clicks, FREEZE, CPU.
 //   render <in-dir with guitar.wav (mono 48 kHz 24-bit)> <out-dir>
-// Build: c++ -std=c++20 -O2 -o render render.cpp LateFdn.cpp EarlyNet.cpp Ballroom.cpp
+// Build: c++ -std=c++20 -O2 -I../../plugins/ballroom/Source -o render render.cpp ../../plugins/ballroom/Source/{LateFdn,EarlyNet,Ballroom}.cpp
 //
 // RT60: the impulse response, band-filtered (eight one-pole high-passes and
 // eight low-passes), Schroeder's backward integration, a straight line fitted

@@ -1,0 +1,10 @@
+{
+  "name": "Velvet Pad",
+  "mode": "Space",
+  "space": 0.8,
+  "overrides": {
+    "lateModDepth": 0.6,
+    "highMult": 0.45,
+    "highCut": 7000
+  }
+}

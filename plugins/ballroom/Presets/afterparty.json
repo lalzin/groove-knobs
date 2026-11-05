@@ -1,0 +1,9 @@
+{
+  "name": "Afterparty",
+  "mode": "Space",
+  "space": 0.95,
+  "overrides": {
+    "decay": 20.0,
+    "highMult": 0.5
+  }
+}

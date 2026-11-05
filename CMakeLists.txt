@@ -73,6 +73,7 @@ add_subdirectory(plugins/kick_lock_send)
 add_subdirectory(plugins/slapper)
 add_subdirectory(plugins/crackle)
 add_subdirectory(plugins/headspin)
+add_subdirectory(plugins/ballroom)
 
 if(GK_BUILD_TOOLS)
     add_subdirectory(tools/ff_render)

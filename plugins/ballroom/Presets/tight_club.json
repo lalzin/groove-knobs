@@ -1,0 +1,9 @@
+{
+  "name": "Tight Club",
+  "mode": "Club",
+  "space": 0.2,
+  "overrides": {
+    "earlySize": 25,
+    "highCut": 9000
+  }
+}

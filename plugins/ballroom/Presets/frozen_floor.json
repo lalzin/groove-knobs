@@ -1,0 +1,9 @@
+{
+  "name": "Frozen Floor",
+  "mode": "Space",
+  "space": 0.9,
+  "overrides": {
+    "mix": 1.0
+  },
+  "freeze": true
+}

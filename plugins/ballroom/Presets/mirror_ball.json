@@ -1,0 +1,13 @@
+{
+  "name": "Mirror Ball",
+  "mode": "Mirror",
+  "space": 0.5,
+  "overrides": {
+    "lateModDepth": 0.75,
+    "earlyModDepth": 0.7,
+    "lateModRate": 1.6,
+    "earlyModRate": 2.2,
+    "highCut": 14000,
+    "highMult": 0.8
+  }
+}

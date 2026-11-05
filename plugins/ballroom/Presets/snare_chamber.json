@@ -1,0 +1,10 @@
+{
+  "name": "Snare Chamber",
+  "mode": "Studio",
+  "space": 0.35,
+  "overrides": {
+    "depth": 0.3,
+    "earlySize": 45,
+    "earlyCross": 0.4
+  }
+}
