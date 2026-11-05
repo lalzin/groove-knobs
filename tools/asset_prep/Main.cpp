@@ -26,6 +26,14 @@
 // hueShift degrees, its saturation and brightness scaled — a character drawn
 // blue brought to the plugin's own colour; outlines, whites, creams untouched.
 //
+// --flood-key (with --key-flat): only the background reached from the cell's
+// border (and enclosed patches of plain background, --pocket-min px and more)
+// is keyed; the rest is the character, opaque, whatever its colour (a dark
+// drawing on a dark background keeps its pixels). --drop-ground-shadow
+// <hueFrom>,<hueTo>: the shadows reached go (dark, saturated, in that hue
+// range). --match-colours: each frame's gold / deep blue / cool greys /
+// creams brought to the first frame's. --contact-magenta: holes show.
+//
 // --drop-hue <hueFrom>,<hueTo>,<minSat>,<bottomFraction>: in the bottom
 // fraction of each frame, every pixel whose hue lies in [hueFrom, hueTo] with
 // at least minSat saturation becomes transparent, and so does every dark
@@ -34,6 +42,7 @@
 // draws its own.
 
 #include <juce_graphics/juce_graphics.h>
+#include <array>
 #include <iostream>
 
 namespace
@@ -73,34 +82,142 @@ juce::Image keyGreen (const juce::Image& src)
 /** Keys out a flat background colour (any hue): distance in RGB from `bg`;
     below `lo` transparent, above `hi` opaque, soft in between (keeps soft
     ground shadows as translucency). */
+int pocketMinPixels = 80;  // --pocket-min <n>: an enclosed patch of plain background this big (or more) is keyed too
+bool floodKey = false;      // --flood-key: only the background reached from the frame's border is keyed (see keyColour)
+bool dropGroundShadow = false; // --drop-ground-shadow <hueFrom>,<hueTo>: with --flood-key, the ground shadows go (the plugin draws its own):
+float shadowHueFrom = 0.0f, shadowHueTo = 0.0f; // background-tinted ones, and dark saturated ones of this hue range (degrees)
+
 juce::Image keyColour (const juce::Image& src, juce::Colour bg, float lo = 34.0f, float hi = 78.0f)
 {
     juce::Image out (juce::Image::ARGB, src.getWidth(), src.getHeight(), true);
     const juce::Image::BitmapData in (src, juce::Image::BitmapData::readOnly);
     juce::Image::BitmapData dst (out, juce::Image::BitmapData::writeOnly);
-    for (int y = 0; y < src.getHeight(); ++y)
-        for (int x = 0; x < src.getWidth(); ++x)
+    const int w = src.getWidth(), h = src.getHeight();
+    auto distance = [&in, bg] (int x, int y)
+    {
+        const auto c = in.getPixelColour (x, y);
+        const float dr = (float) c.getRed() - (float) bg.getRed(), dg = (float) c.getGreen() - (float) bg.getGreen(), db = (float) c.getBlue() - (float) bg.getBlue();
+        return std::sqrt (dr * dr + dg * dg + db * db);
+    };
+    // Ground shadows / painted strokes (background-hued, darker, desaturated)
+    auto isShadow = [bg] (juce::Colour c)
+    {
+        const float lumC = 0.3f * c.getRed() + 0.59f * c.getGreen() + 0.11f * c.getBlue();
+        const float lumB = 0.3f * bg.getRed() + 0.59f * bg.getGreen() + 0.11f * bg.getBlue();
+        float hueDiff = std::abs (c.getHue() - bg.getHue());
+        hueDiff = juce::jmin (hueDiff, 1.0f - hueDiff);
+        return lumC < lumB && hueDiff < 0.14f && c.getSaturation() < 0.45f;
+    };
+    // --flood-key: the background is what can be reached from the border
+    // through background-like pixels (close to it, or its shadows), plus the
+    // enclosed pockets of plain background (between an arm and the body).
+    // Everything else is the character, opaque whatever its colour: a dark
+    // drawing on a dark background (slate facets on dark green) keeps every
+    // pixel.
+    std::vector<char> reach;
+    if (floodKey)
+    {
+        reach.assign ((size_t) (w * h), 0);
+        auto groundShadow = [] (juce::Colour c)
+        {
+            const float hue = c.getHue() * 360.0f;
+            return dropGroundShadow && hue >= shadowHueFrom && hue <= shadowHueTo && c.getSaturation() > 0.3f && c.getBrightness() < 0.3f;
+        };
+        // (a near-black pixel is the drawing's outline, whatever its tint: never background)
+        auto passable = [&] (int x, int y)
         {
             const auto c = in.getPixelColour (x, y);
-            const float dr = (float) c.getRed() - (float) bg.getRed(), dg = (float) c.getGreen() - (float) bg.getGreen(),
-                        db = (float) c.getBlue() - (float) bg.getBlue();
-            const float d = std::sqrt (dr * dr + dg * dg + db * db);
+            return distance (x, y) < hi || (isShadow (c) && c.getBrightness() > 0.15f) || groundShadow (c);
+        };
+        std::vector<int> stack;
+        auto flood = [&] (std::vector<int>& seeds)
+        {
+            while (! seeds.empty())
+            {
+                const int i = seeds.back();
+                seeds.pop_back();
+                const int x = i % w, y = i / w;
+                for (auto [nx, ny] : { std::pair { x + 1, y }, std::pair { x - 1, y }, std::pair { x, y + 1 }, std::pair { x, y - 1 } })
+                    if (nx >= 0 && ny >= 0 && nx < w && ny < h && ! reach[(size_t) (ny * w + nx)] && passable (nx, ny))
+                    {
+                        reach[(size_t) (ny * w + nx)] = 1;
+                        seeds.push_back (ny * w + nx);
+                    }
+            }
+        };
+        for (int x = 0; x < w; ++x)
+            for (int y : { 0, h - 1 })
+                if (passable (x, y) && ! reach[(size_t) (y * w + x)]) { reach[(size_t) (y * w + x)] = 1; stack.push_back (y * w + x); }
+        for (int y = 0; y < h; ++y)
+            for (int x : { 0, w - 1 })
+                if (passable (x, y) && ! reach[(size_t) (y * w + x)]) { reach[(size_t) (y * w + x)] = 1; stack.push_back (y * w + x); }
+        flood (stack);
+        // enclosed pockets: a patch of plain background (very close to it, 80 px and more)
+        std::vector<char> seen ((size_t) (w * h), 0);
+        for (int y = 0; y < h; ++y)
+            for (int x = 0; x < w; ++x)
+            {
+                const int i = y * w + x;
+                if (reach[(size_t) i] || seen[(size_t) i] || distance (x, y) >= 22.0f)
+                    continue;
+                std::vector<int> comp { i }, todo { i };
+                seen[(size_t) i] = 1;
+                while (! todo.empty())
+                {
+                    const int j = todo.back();
+                    todo.pop_back();
+                    const int jx = j % w, jy = j / w;
+                    for (auto [nx, ny] : { std::pair { jx + 1, jy }, std::pair { jx - 1, jy }, std::pair { jx, jy + 1 }, std::pair { jx, jy - 1 } })
+                        if (nx >= 0 && ny >= 0 && nx < w && ny < h && ! seen[(size_t) (ny * w + nx)] && ! reach[(size_t) (ny * w + nx)] && distance (nx, ny) < 22.0f)
+                        {
+                            seen[(size_t) (ny * w + nx)] = 1;
+                            comp.push_back (ny * w + nx);
+                            todo.push_back (ny * w + nx);
+                        }
+                }
+                if (std::getenv ("ASSET_PREP_POCKETS") != nullptr && comp.size() >= 80)
+                {
+                    int x0 = w, y0 = h, x1 = 0, y1 = 0;
+                    for (int j : comp) { x0 = juce::jmin (x0, j % w); x1 = juce::jmax (x1, j % w); y0 = juce::jmin (y0, j / w); y1 = juce::jmax (y1, j / w); }
+                    std::cerr << "pocket " << comp.size() << " px at " << x0 << "," << y0 << " - " << x1 << "," << y1 << " (cell " << w << "x" << h << ")\n";
+                }
+                if (comp.size() >= (size_t) pocketMinPixels)
+                {
+                    for (int j : comp)
+                        reach[(size_t) j] = 1;
+                    flood (comp);
+                }
+            }
+    }
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x)
+        {
+            const auto c = in.getPixelColour (x, y);
+            if (floodKey && ! reach[(size_t) (y * w + x)])
+            {
+                dst.setPixelColour (x, y, c); // the character
+                continue;
+            }
+            if (floodKey && dropGroundShadow)
+            {
+                const float hue = c.getHue() * 360.0f;
+                if (hue >= shadowHueFrom && hue <= shadowHueTo && c.getSaturation() > 0.3f && c.getBrightness() < 0.3f)
+                    continue;
+            }
+            const float d = distance (x, y);
             const float alpha = juce::jlimit (0.0f, 1.0f, (d - lo) / (hi - lo));
             if (alpha <= 0.0f)
                 continue;
-            // Ground shadows / painted strokes (background-hued, darker,
-            // desaturated): neutral translucent shadow instead of tinted paint
+            // shadows: a neutral translucent shadow instead of tinted paint (or nothing)
+            if (isShadow (c))
             {
+                if (floodKey && dropGroundShadow)
+                    continue;
                 const float lumC = 0.3f * c.getRed() + 0.59f * c.getGreen() + 0.11f * c.getBlue();
                 const float lumB = 0.3f * bg.getRed() + 0.59f * bg.getGreen() + 0.11f * bg.getBlue();
-                float hueDiff = std::abs (c.getHue() - bg.getHue());
-                hueDiff = juce::jmin (hueDiff, 1.0f - hueDiff);
-                if (lumC < lumB && hueDiff < 0.14f && c.getSaturation() < 0.45f)
-                {
-                    const float k = lumC / juce::jmax (1.0f, lumB);
-                    dst.setPixelColour (x, y, juce::Colours::black.withAlpha (juce::jlimit (0.0f, 0.55f, (1.0f - k) * 1.3f)));
-                    continue;
-                }
+                const float k = lumC / juce::jmax (1.0f, lumB);
+                dst.setPixelColour (x, y, juce::Colours::black.withAlpha (juce::jlimit (0.0f, 0.55f, (1.0f - k) * 1.3f)));
+                continue;
             }
             if (alpha >= 1.0f)
             {
@@ -458,6 +575,42 @@ juce::Image eraseGridLines (const juce::Image& src, juce::Colour bg)
     return img;
 }
 
+/** --flood-key: specks left on the background (texture, a shadow's rim): opaque
+    regions under `minPixels` go. */
+void dropSpecks (juce::Image& img, int minPixels)
+{
+    const int w = img.getWidth(), h = img.getHeight();
+    juce::Image::BitmapData d (img, juce::Image::BitmapData::readWrite);
+    std::vector<char> seen ((size_t) (w * h), 0);
+    for (int start = 0; start < w * h; ++start)
+    {
+        if (seen[(size_t) start] || d.getPixelColour (start % w, start / w).getAlpha() <= 24)
+            continue;
+        std::vector<int> comp { start }, todo { start };
+        seen[(size_t) start] = 1;
+        while (! todo.empty())
+        {
+            const int j = todo.back();
+            todo.pop_back();
+            const int jx = j % w, jy = j / w;
+            for (int dy = -1; dy <= 1; ++dy)
+                for (int dx = -1; dx <= 1; ++dx)
+                {
+                    const int nx = jx + dx, ny = jy + dy;
+                    if (nx >= 0 && ny >= 0 && nx < w && ny < h && ! seen[(size_t) (ny * w + nx)] && d.getPixelColour (nx, ny).getAlpha() > 24)
+                    {
+                        seen[(size_t) (ny * w + nx)] = 1;
+                        comp.push_back (ny * w + nx);
+                        todo.push_back (ny * w + nx);
+                    }
+                }
+        }
+        if ((int) comp.size() < minPixels)
+            for (int j : comp)
+                d.setPixelColour (j % w, j / w, juce::Colours::transparentBlack);
+    }
+}
+
 /** Cuts cell `index` (row by row) of a cols × rows sheet and keys it. */
 Frame cutFrame (const juce::Image& sheet, int cols, int rows, int index)
 {
@@ -488,6 +641,11 @@ Frame cutFrame (const juce::Image& sheet, int cols, int rows, int index)
         if (despill)
             despillTowards (f.image, keyFlatBackground ? sampleBackground (sheet) : juce::Colour (0xff00ff00));
         keepMainBand (f.image);
+        if (floodKey)
+        {
+            dropEdgeFragments (f.image); // (a neighbour's hand cut by the cell border)
+            dropSpecks (f.image, 400);
+        }
     }
     f.box = opaqueBounds (f.image);
     f.anchorX = headCentreX (f.image, f.box);
@@ -517,6 +675,15 @@ int main (int argc, char** argv)
     const int targetHeight = argInt (args, "--height", 560);
     keyFlatBackground = args.contains ("--key-flat");
     despill = args.contains ("--despill");
+    floodKey = args.contains ("--flood-key");
+    pocketMinPixels = argInt (args, "--pocket-min", 80);
+    if (const int si = args.indexOf ("--drop-ground-shadow"); si >= 0 && si + 1 < args.size())
+    {
+        const auto v = juce::StringArray::fromTokens (args[si + 1], ",", "");
+        dropGroundShadow = v.size() == 2;
+        shadowHueFrom = v[0].getFloatValue();
+        shadowHueTo = v[1].getFloatValue();
+    }
     autoCells = args.contains ("--auto-cells");
     cellInset = argInt (args, "--inset", 0);
     eraseGrid = args.contains ("--erase-grid");
@@ -536,7 +703,8 @@ int main (int argc, char** argv)
         outDir = cwd.getChildFile (args[0]);
         for (int i = 1; i < args.size(); ++i)
         {
-            if (args[i] == "--key-flat" || args[i] == "--despill" || args[i] == "--auto-cells" || args[i] == "--scale-to-first" || args[i] == "--erase-grid")
+            if (args[i] == "--key-flat" || args[i] == "--despill" || args[i] == "--auto-cells" || args[i] == "--scale-to-first" || args[i] == "--erase-grid" || args[i] == "--contact-magenta"
+                || args[i] == "--flood-key" || args[i] == "--match-colours")
                 continue;
             if (args[i].startsWith ("--"))
             {
@@ -712,6 +880,69 @@ int main (int argc, char** argv)
                     }
             }
         }
+        // --match-colours: every frame's main colours brought to the first frame's
+        // (sheets drawn apart come out a little different: a warmer gold, greyer
+        // facets). Classes: the gold (shoes, rim, frames), the deep blue (lenses),
+        // the cool greys (facets), the creams (gloves, light facets); per class
+        // the mean hue / saturation / brightness of this frame against frame 0,
+        // each pixel of the class moved by the difference (hue) or the ratio.
+        if (args.contains ("--match-colours"))
+        {
+            struct Stat { double h = 0, s = 0, v = 0; int n = 0; };
+            auto classOf = [] (juce::Colour c) -> int
+            {
+                if (c.getAlpha() < 200) return -1;
+                const float hue = c.getHue() * 360.0f, sat = c.getSaturation(), bri = c.getBrightness();
+                if (hue >= 30.0f && hue <= 62.0f && sat > 0.45f && bri > 0.3f) return 0; // gold
+                if (hue >= 205.0f && hue <= 250.0f && sat > 0.45f && bri > 0.15f) return 1; // lenses
+                if (hue >= 190.0f && hue <= 240.0f && sat <= 0.45f && sat > 0.08f && bri > 0.2f && bri < 0.8f) return 2; // facets
+                if (bri >= 0.75f && sat < 0.3f) return 3; // creams
+                return -1;
+            };
+            auto stats = [&] (const juce::Image& img)
+            {
+                std::array<Stat, 4> st {};
+                const juce::Image::BitmapData d (img, juce::Image::BitmapData::readOnly);
+                for (int y = 0; y < img.getHeight(); ++y)
+                    for (int x = 0; x < img.getWidth(); ++x)
+                    {
+                        const auto c = d.getPixelColour (x, y);
+                        const int k = classOf (c);
+                        if (k < 0) continue;
+                        st[(size_t) k].h += c.getHue(); st[(size_t) k].s += c.getSaturation(); st[(size_t) k].v += c.getBrightness(); ++st[(size_t) k].n;
+                    }
+                for (auto& t : st)
+                    if (t.n > 0) { t.h /= t.n; t.s /= t.n; t.v /= t.n; }
+                return st;
+            };
+            static std::array<Stat, 4> ref;
+            if (i == 0)
+                ref = stats (frame);
+            else
+            {
+                const auto st = stats (frame);
+                juce::Image::BitmapData d (frame, juce::Image::BitmapData::readWrite);
+                for (int y = 0; y < h; ++y)
+                    for (int x = 0; x < w; ++x)
+                    {
+                        const auto c = d.getPixelColour (x, y);
+                        const int k = classOf (c);
+                        if (k < 0 || st[(size_t) k].n < 50 || ref[(size_t) k].n < 50) continue;
+                        const auto& a = st[(size_t) k];
+                        const auto& r = ref[(size_t) k];
+                        // (limited: a pose shows more or less of a shaded side, the means move a little by themselves)
+                        float hue = c.getHue() + (float) juce::jlimit (-10.0 / 360.0, 10.0 / 360.0, r.h - a.h);
+                        hue -= std::floor (hue);
+                        const float sat = juce::jlimit (0.0f, 1.0f, c.getSaturation() * (float) juce::jlimit (0.8, 1.25, r.s / juce::jmax (1.0e-3, a.s)));
+                        const float bri = juce::jlimit (0.0f, 1.0f, c.getBrightness() * (float) juce::jlimit (0.85, 1.15, r.v / juce::jmax (1.0e-3, a.v)));
+                        d.setPixelColour (x, y, juce::Colour::fromHSV (hue, sat, bri, c.getFloatAlpha()));
+                    }
+                if (std::getenv ("ASSET_PREP_POCKETS") != nullptr)
+                    for (int k = 0; k < 4; ++k)
+                        std::cerr << "frame " << i << " class " << k << ": hue " << 360.0 * (st[(size_t) k].h - ref[(size_t) k].h) << " deg, sat x"
+                                  << ref[(size_t) k].s / juce::jmax (1.0e-3, st[(size_t) k].s) << ", bri x" << ref[(size_t) k].v / juce::jmax (1.0e-3, st[(size_t) k].v) << "\n";
+            }
+        }
         const auto file = outDir.getChildFile ("mascot_" + juce::String ((int) i) + ".png");
         juce::FileOutputStream os (file);
         if (! png.writeImageToStream (frame, os))
@@ -730,7 +961,7 @@ int main (int argc, char** argv)
         const int nRows = ((int) written.size() + perRow - 1) / perRow;
         juce::Image sheet (juce::Image::RGB, perRow * cw, nRows * (ch + 18), true);
         juce::Graphics g (sheet);
-        g.fillAll (juce::Colour (0xff36363c));
+        g.fillAll (juce::Colour (args.contains ("--contact-magenta") ? 0xffff00ff : 0xff36363c)); // (magenta: holes in the alpha show)
         for (size_t i = 0; i < written.size(); ++i)
         {
             const int x = (int) (i % perRow) * cw, y = (int) (i / perRow) * (ch + 18);
