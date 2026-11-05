@@ -25,6 +25,13 @@
 // hue (degrees) lies in [hueFrom, hueTo] (and has some colour) is turned by
 // hueShift degrees, its saturation and brightness scaled — a character drawn
 // blue brought to the plugin's own colour; outlines, whites, creams untouched.
+//
+// --drop-hue <hueFrom>,<hueTo>,<minSat>,<bottomFraction>: in the bottom
+// fraction of each frame, every pixel whose hue lies in [hueFrom, hueTo] with
+// at least minSat saturation becomes transparent, and so does every dark
+// half-transparent one (the keyed shadow's core; the outlines are opaque):
+// a ground shadow tinted by the sheet's background, removed — the plugin
+// draws its own.
 
 #include <juce_graphics/juce_graphics.h>
 #include <iostream>
@@ -659,6 +666,27 @@ int main (int argc, char** argv)
             g.drawImageTransformed (f.image, juce::AffineTransform::translation ((float) -f.anchorX, (float) -f.anchorY)
                                                  .scaled (s)
                                                  .translated ((float) half * outScale, (float) (up + 6) * outScale));
+        }
+        if (const int di = args.indexOf ("--drop-hue"); di >= 0 && di + 1 < args.size())
+        {
+            const auto v = juce::StringArray::fromTokens (args[di + 1], ",", "");
+            if (v.size() == 4)
+            {
+                const float from = v[0].getFloatValue() / 360.0f, to = v[1].getFloatValue() / 360.0f, minSat = v[2].getFloatValue();
+                const int y0 = juce::roundToInt ((float) h * (1.0f - v[3].getFloatValue()));
+                juce::Image::BitmapData d (frame, juce::Image::BitmapData::readWrite);
+                for (int y = juce::jmax (0, y0); y < h; ++y)
+                    for (int x = 0; x < w; ++x)
+                    {
+                        const auto c = d.getPixelColour (x, y);
+                        if (c.getAlpha() == 0)
+                            continue;
+                        const bool tinted = c.getSaturation() >= minSat && c.getHue() >= from && c.getHue() <= to;
+                        const bool shadowCore = c.getBrightness() < 0.3f && c.getAlpha() < 200;
+                        if (tinted || shadowCore)
+                            d.setPixelColour (x, y, juce::Colours::transparentBlack);
+                    }
+            }
         }
         if (const int ri = args.indexOf ("--recolour"); ri >= 0 && ri + 1 < args.size())
         {

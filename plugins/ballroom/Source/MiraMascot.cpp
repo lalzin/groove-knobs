@@ -77,6 +77,16 @@ int MiraMascot::chooseFrame (float macro, float bypass, bool musicOn)
 
 void MiraMascot::paintBehind (juce::Graphics& g, const State& st, juce::Rectangle<float> figure)
 {
+    // her ground shadow, the same under every pose (the sheets' own, tinted
+    // by their green, are removed: scripts/make_mira_frames.sh)
+    {
+        const auto feet = juce::Rectangle<float> (figure.getWidth() * 0.46f, figure.getHeight() * 0.075f)
+                              .withCentre ({ figure.getCentreX(), figure.getBottom() - figure.getHeight() * 0.035f });
+        juce::ColourGradient shadow (juce::Colour (0xff07050c).withAlpha (0.55f), feet.getCentre(), juce::Colour (0xff07050c).withAlpha (0.0f),
+                                     { feet.getRight(), feet.getCentreY() }, true);
+        g.setGradientFill (shadow);
+        g.fillEllipse (feet);
+    }
     // light spots turning round her, more and wider as SPACE goes up
     const float dim = 1.0f - 0.7f * st.bypass;
     const int count = 4 + (int) std::round (14.0f * space);
