@@ -40,6 +40,7 @@ juce::Image shoot (bl::BallroomProcessor& proc, float scale, int roomTab = -1)
     auto* editor = dynamic_cast<bl::BallroomEditor*> (ed.get());
     editor->showRoom (roomTab);
     editor->snapForSnapshot();
+    editor->warmUp (0.45); // a few twinkles on the screenshot
     return editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
 }
 } // namespace

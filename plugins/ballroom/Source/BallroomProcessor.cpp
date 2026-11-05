@@ -37,6 +37,7 @@ namespace
         cfg.alwaysWet = true;          // SPACE 0 is still a small room: the reverb (its MIX) makes the dry / wet
         cfg.engineAlwaysRuns = true;   // the tail rings on
         cfg.presetSetsParameters = true;
+        cfg.amountIsMeta = true;       // SPACE sets MIX, DECAY, SIZE, DEPTH, PREDELAY, the MOD DEPTHs (auval)
         cfg.editorBuildsControls = false;
         cfg.tailSeconds = 30.0;        // Afterparty: 20 s
         cfg.knobs = {

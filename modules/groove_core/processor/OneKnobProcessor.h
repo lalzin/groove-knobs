@@ -86,6 +86,9 @@ struct OneKnobConfig
     bool wantsMidi = false;
     /** Default of "amount" (< 0: 0, or the centre when bipolar). */
     float defaultAmount = -1.0f;
+    /** The main knob sets other parameters (BALLROOM: SPACE is a macro): a
+        meta parameter for the hosts (auval). */
+    bool amountIsMeta = false;
     /** Host ID / name of the main knob (empty: "amount" / "Amount"). */
     juce::String amountParamId, amountParamName;
     /** false: no "preset" parameter (a plugin without presets; config.presets

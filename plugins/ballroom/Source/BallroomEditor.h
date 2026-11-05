@@ -23,6 +23,8 @@ public:
 
     /** Screenshots: the ROOM panel open on a tab (-1: closed). */
     void showRoom (int tab);
+    /** Screenshots: runs the animations (the twinkles) for `seconds`. */
+    void warmUp (double seconds);
 
 protected:
     void editorTick (double dt) override;
@@ -31,9 +33,11 @@ private:
     class RoomButton;
     class CustomChip;
     class RoomPanel;
+    class KnobGlints;
     BallroomProcessor& proc;
     std::unique_ptr<RoomPanel> panel;
     std::unique_ptr<RoomButton> room;
     std::unique_ptr<CustomChip> customChip;
+    std::unique_ptr<KnobGlints> glints;
 };
 } // namespace bl

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BallroomProcessor.h"
+#include "Sparkles.h"
 
 namespace bl
 {
@@ -8,7 +9,8 @@ namespace bl
     plays): calm sway -> arms open -> the disco point -> arms up (and a turn at
     the very top); FREEZE: she stops, hands up, and everything holds still;
     bypass: at rest. Drawn in code: light spots turning round her (more and
-    faster as SPACE goes up) and her facets sparkling with the reverb's level.
+    faster as SPACE goes up, twinkling) and star glints popping on her facets,
+    more with SPACE and the reverb's level (Sparkles).
     Frames: Assets/mira_0..20.png (scripts/make_mira_frames.sh). */
 class MiraMascot final : public gk::MascotComponent
 {
@@ -34,5 +36,6 @@ private:
     double spin = 0.0, lastTime = -1.0, sparkleClock = 0.0;
     float space = 0.0f, level = 0.0f;
     bool frozen = false;
+    Sparkles sparkles; // twinkles on her facets
 };
 } // namespace bl

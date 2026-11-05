@@ -1,5 +1,6 @@
 #include "BallroomEditor.h"
 #include "MiraMascot.h"
+#include "Sparkles.h"
 
 namespace bl
 {
@@ -368,6 +369,30 @@ private:
     int tab = 0;
 };
 
+/** Star glints over SPACE's mirror ball (the knob draws the ball; these
+    twinkle on top), more with SPACE and the reverb; still when frozen. */
+class BallroomEditor::KnobGlints final : public juce::Component
+{
+public:
+    KnobGlints (BallroomProcessor& p, const gk::Palette& pal) : proc (p), palette (pal) { setInterceptsMouseClicks (false, false); }
+    void tick (double dt, bool bypassed)
+    {
+        const float space = proc.getAmountParameter().getValue();
+        const float lv = proc.getDsp().getTelemetry().wetLevel.load (std::memory_order_relaxed);
+        const float level = juce::jlimit (0.0f, 1.0f, (gk::dspmath::gainToDb (lv) + 48.0f) / 40.0f);
+        const auto b = getLocalBounds().toFloat();
+        const auto ball = b.withSizeKeepingCentre (b.getWidth() * 0.58f, b.getHeight() * 0.58f);
+        sparkles.advance (dt, bypassed ? 0.0f : 1.0f + 5.0f * space + 6.0f * level, ball, proc.getDsp().getTelemetry().frozen.load());
+        repaint();
+    }
+    void paint (juce::Graphics& g) override { sparkles.paint (g, palette (white), palette (champagne), getWidth() / 150.0f); }
+
+private:
+    BallroomProcessor& proc;
+    const gk::Palette& palette;
+    Sparkles sparkles;
+};
+
 BallroomEditor::BallroomEditor (BallroomProcessor& p)
     : OneKnobEditor (p, makePalette(), BL_PRODUCT_NAME,
                      [&p] (gk::AudioFeatures& f, const gk::Palette& palette) { return std::make_unique<MiraMascot> (p, f, palette); }),
@@ -376,6 +401,8 @@ BallroomEditor::BallroomEditor (BallroomProcessor& p)
     auto& pal = getPalette();
     getMascot().setBounds (60, 52, 300, 182); // Mira is tall (her chain)
     getKnob().setBodyPainter (paintMirrorFace); // SPACE: a mirror ball (Mira's colours)
+    glints = std::make_unique<KnobGlints> (p, pal);
+    addToCanvas (*glints, juce::Rectangle<int> (262, 262).withCentre ({ 210, 345 })); // over SPACE (the default knob place)
     panel = std::make_unique<RoomPanel> (p, pal);
     addToCanvas (*panel, { 8, 50, 404, 364 }); // (ROOM and CUSTOM stay visible under it)
     panel->setVisible (false);
@@ -396,9 +423,20 @@ void BallroomEditor::showRoom (int tab)
         panel->setTab (tab);
 }
 
+void BallroomEditor::warmUp (double seconds)
+{
+    const float space = proc.getAmountParameter().getValue();
+    for (double t = 0.0; t < seconds; t += 1.0 / 30.0)
+    {
+        getMascot().advance (1.0 / 30.0, space, 0.0f);
+        glints->tick (1.0 / 30.0, false);
+    }
+}
+
 void BallroomEditor::editorTick (double dt)
 {
     customChip->set (proc.isCustom());
+    glints->tick (dt, proc.getBypassParameterObject().get());
     if (panel->isVisible())
         panel->tick (dt);
 }

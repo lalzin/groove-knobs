@@ -168,7 +168,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout OneKnobProcessor::createLayo
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         cfg.amountParamId.isNotEmpty() ? juce::ParameterID { cfg.amountParamId, 1 } : amountId,
         cfg.amountParamName.isNotEmpty() ? cfg.amountParamName : juce::String ("Amount"), juce::NormalisableRange<float> (0.0f, 1.0f), cfg.defaultAmount >= 0.0f ? cfg.defaultAmount : (cfg.bipolar ? 0.5f : 0.0f),
-        juce::AudioParameterFloatAttributes().withStringFromValueFunction (toText).withValueFromStringFunction (fromText)));
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction (toText).withValueFromStringFunction (fromText).withMeta (cfg.amountIsMeta)));
 
     // With toggles, a preset change also sets the toggles: hosts must know it
     // is a "meta" parameter (AU validation checks this).

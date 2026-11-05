@@ -55,6 +55,14 @@ int MiraMascot::chooseFrame (float macro, float bypass, bool musicOn)
         spin += dt * (0.25 + 0.9 * space);
         sparkleClock += dt;
     }
+    // her twinkles: on the ball (the upper part of the figure), more with SPACE and the reverb
+    {
+        const auto fig = getFigureArea();
+        const auto ball = juce::Rectangle<float> (fig.getWidth() * 0.40f, fig.getHeight() * 0.36f)
+                              .withCentre ({ fig.getCentreX(), fig.getY() + 0.40f * fig.getHeight() });
+        const float rate = bypass > 0.5f ? 0.0f : 1.5f + 6.0f * space + 10.0f * level;
+        sparkles.advance (dt, rate, ball, frozen);
+    }
     if (numFrames() < numPoses)
         return 0;
     if (bypass > 0.5f)
@@ -97,44 +105,24 @@ void MiraMascot::paintBehind (juce::Graphics& g, const State& st, juce::Rectangl
         const float r = figure.getWidth() * (0.42f + 0.22f * hash (i + 97)) * (0.8f + 0.35f * space);
         const juce::Point<float> p (c.x + r * std::cos (a), c.y + 0.55f * r * std::sin (a));
         const float sz = 3.0f + 5.0f * hash (i + 31) * (0.5f + space);
-        const float alpha = (0.35f + 0.45f * hash (i + 53)) * dim * (0.5f + 0.5f * space);
+        // each spot twinkles at its own pace (still when frozen: sparkleClock stops)
+        const float twinkle = 0.55f + 0.45f * std::sin ((float) sparkleClock * (2.0f + 4.0f * hash (i + 7)) + twoPi * hash (i + 11));
+        const float alpha = (0.35f + 0.45f * hash (i + 53)) * dim * (0.5f + 0.5f * space) * twinkle;
         const auto col = palette (i % 3 == 0 ? champagne : white);
         // a soft halo, then the spot: light thrown by the ball
-        g.setColour (col.withAlpha (0.25f * alpha));
-        g.fillEllipse (juce::Rectangle<float> (sz * 3.4f, sz * 2.2f).withCentre (p));
-        g.setColour (col.withAlpha (alpha));
-        g.fillEllipse (juce::Rectangle<float> (sz * 1.6f, sz).withCentre (p));
+        juce::ColourGradient glow (col.withAlpha (0.45f * alpha), p, col.withAlpha (0.0f), p.translated (sz * 1.8f, 0.0f), true);
+        g.setGradientFill (glow);
+        g.fillEllipse (juce::Rectangle<float> (sz * 3.6f, sz * 2.4f).withCentre (p));
+        g.setColour (col.withAlpha (juce::jmin (1.0f, 1.3f * alpha)));
+        g.fillEllipse (juce::Rectangle<float> (sz * 1.5f, sz * 0.95f).withCentre (p));
     }
 }
 
 void MiraMascot::paintOverlay (juce::Graphics& g, const State& st, juce::Rectangle<float> figure)
 {
-    // her facets sparkle with the reverb's level (still when frozen)
+    // the twinkles on her facets (held still when frozen)
     if (st.bypass > 0.5f)
         return;
-    const auto ball = juce::Rectangle<float> (figure.getWidth() * 0.46f, figure.getHeight() * 0.40f)
-                          .withCentre ({ figure.getCentreX(), figure.getY() + 0.40f * figure.getHeight() });
-    const int count = (int) std::round (2.0f + 10.0f * level);
-    const double t = sparkleClock * 6.0;
-    for (int i = 0; i < count; ++i)
-    {
-        const int slot = i * 7 + (int) std::floor (t + hash (i)); // each sparkle moves on after a while
-        const float life = (float) (t + hash (i) - std::floor (t + hash (i)));
-        const float glow = std::sin (life * juce::MathConstants<float>::pi) * (0.35f + 0.65f * level);
-        const juce::Point<float> p (ball.getX() + ball.getWidth() * hash (slot), ball.getY() + ball.getHeight() * hash (slot + 1000));
-        if (std::hypot ((p.x - ball.getCentreX()) / ball.getWidth(), (p.y - ball.getCentreY()) / ball.getHeight()) > 0.5f)
-            continue;
-        const float r = 2.0f + 5.0f * glow;
-        juce::Path star;
-        star.startNewSubPath (p.x, p.y - r);
-        star.quadraticTo (p, { p.x + r, p.y });
-        star.quadraticTo (p, { p.x, p.y + r });
-        star.quadraticTo (p, { p.x - r, p.y });
-        star.quadraticTo (p, { p.x, p.y - r });
-        g.setColour (palette (white).withAlpha (juce::jlimit (0.0f, 1.0f, glow)));
-        g.fillPath (star);
-        g.setColour (palette (silver).withAlpha (0.4f * glow));
-        g.fillEllipse (juce::Rectangle<float> (r * 0.8f, r * 0.8f).withCentre (p));
-    }
+    sparkles.paint (g, palette (white), palette (champagne), figure.getHeight() / 120.0f);
 }
 } // namespace bl
