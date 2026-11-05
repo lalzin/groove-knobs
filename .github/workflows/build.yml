@@ -15,7 +15,7 @@ jobs:
   version:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Tag = plug-in versions
         if: startsWith(github.ref, 'refs/tags/')
         run: |
@@ -30,7 +30,7 @@ jobs:
   macos:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build, test, package
         run: |
           brew install ninja
@@ -39,7 +39,7 @@ jobs:
           # the suite: only when every plug-in is at its version (a plug-in
           # released alone runs ahead)
           if scripts/make_suite_installer_mac.sh --check-versions; then scripts/make_suite_installer_mac.sh --skip-build; else echo "suite skipped"; fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: GrooveKnobs-macOS
           path: dist/*
@@ -47,13 +47,13 @@ jobs:
   windows:
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
       - name: Build, test, package
         shell: pwsh
         run: scripts/make_installer_win.ps1 -Plugin ${{ startsWith(github.ref_name, 'kick-lock-v') && 'KL' || 'All' }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: GrooveKnobs-Windows
           path: dist/*.exe
@@ -65,8 +65,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: GrooveKnobs-Windows
           path: release
@@ -78,7 +78,7 @@ jobs:
             *) v="${GITHUB_REF_NAME#v}"; files="FrenchFilter BoogieTrio Backwash PewPew SingItBack KickLock Slapper Crackle HeadSpin Ballroom GrooveKnobs" ;;
           esac
           for f in $files; do ls release/$f-$v-Windows-Setup.exe; done
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           name: ${{ startsWith(github.ref_name, 'kick-lock-v') && 'Kick Lock' || 'Groove Knobs' }} ${{ github.ref_name }}
           body_path: ${{ startsWith(github.ref_name, 'kick-lock-v') && '.github/release-notes-kick-lock.md' || '.github/release-notes.md' }}
