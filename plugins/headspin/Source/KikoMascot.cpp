@@ -47,33 +47,53 @@ int KikoMascot::chooseFrame (float macro, float bypass, bool musicOn)
     if (numFrames() < numPoses)
         return 0;
     const auto& s = getState();
-    if (bypass > 0.5f)
-        return armsCrossed;
-    if (macro < 0.02f || ! musicOn)
-        return handsOnHips;
-    auto& t = proc.getDsp().getTelemetry();
-    const float speed = std::abs (t.turnsPerSecond.load (std::memory_order_relaxed));
-    if (speed > 10.0f)
-        return std::fmod (s.time * 3.0, 1.0) < 0.5 ? capOffA : capOffB;
-    if (speed > 4.0f)
+    // the pose he would take now (wanted), then held: whatever the rotation's
+    // speed, a pose stays at least minHold s (the frames never flicker with a
+    // fast rotation)
+    auto wanted = [&]() -> int
     {
-        // into the spin (crouch, a moment), then the two spin poses at a pace
-        // that follows the speed
-        if (spinStarted < 0.0)
-            spinStarted = s.time;
-        if (s.time - spinStarted < 0.25)
-            return crouch;
-        return std::fmod ((s.time - spinStarted) * juce::jmin (6.0f, 0.6f * speed), 1.0) < 0.5 ? spinA : spinB;
+        if (bypass > 0.5f)
+            return armsCrossed;
+        if (macro < 0.02f || ! musicOn)
+            return handsOnHips;
+        auto& t = proc.getDsp().getTelemetry();
+        const float speed = std::abs (t.turnsPerSecond.load (std::memory_order_relaxed));
+        if (speed > 4.0f)
+        {
+            // the head spin: crouch a moment, then the two spin poses (the cap
+            // flies off above 10 turns / s), at a steady pace, not the speed's
+            if (spinStarted < 0.0)
+                spinStarted = s.time;
+            if (s.time - spinStarted < 0.3)
+                return crouch;
+            const bool a = std::fmod ((s.time - spinStarted) / spinPoseSeconds, 2.0) < 1.0;
+            return speed > 10.0f ? (a ? capOffA : capOffB) : (a ? spinA : spinB);
+        }
+        spinStarted = -1.0;
+        if (speed <= followBelowTurns)
+        {
+            // slow: he follows the sound (a hand on the headphone on its side, looking aside when behind)
+            const float az = t.azimuthDeg.load (std::memory_order_relaxed);
+            if (az > 35.0f && az < 145.0f)
+                return handRight;
+            if (az < -35.0f && az > -145.0f)
+                return handLeft;
+            if (std::abs (az) >= 145.0f)
+                return lookingAside;
+        }
+        // in front, or the sound going round faster than he could follow: the groove, a pose a beat
+        return s.beatPhase < 0.5f ? standing : leaning;
+    }();
+    const bool spinPose = wanted == crouch || wanted == spinA || wanted == spinB || wanted == capOffA || wanted == capOffB;
+    const double hold = spinPose ? spinPoseSeconds : minHold;
+    if (current < 0 || wanted == armsCrossed || wanted == handsOnHips || s.time - lastChange >= hold * 0.98)
+    {
+        if (wanted != current)
+        {
+            current = wanted;
+            lastChange = s.time;
+        }
     }
-    spinStarted = -1.0;
-    const float az = t.azimuthDeg.load (std::memory_order_relaxed);
-    if (az > 35.0f && az < 145.0f)
-        return handRight;
-    if (az < -35.0f && az > -145.0f)
-        return handLeft;
-    if (std::abs (az) >= 145.0f)
-        return lookingAside;
-    // in front: the groove, on the beat
-    return s.beatPhase < 0.5f ? standing : leaning;
+    return current;
 }
 } // namespace hs
