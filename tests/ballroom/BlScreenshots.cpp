@@ -1,12 +1,22 @@
 // BALLROOM editor screenshots: every preset (the music playing a moment), the
 // ROOM panel's three tabs, a contact sheet.
 //   bl_screenshots [out-dir]
+//   bl_screenshots --web [web-assets]   (the website's visuals, then the suite's: gkweb)
 #include "BallroomEditor.h"
 #include "BallroomProcessor.h"
+#include "WebAssets.h"
 #include <iostream>
 
 namespace
 {
+juce::File repoRoot()
+{
+    for (auto d = juce::File::getCurrentWorkingDirectory(); d.exists() && ! d.isRoot(); d = d.getParentDirectory())
+        if (d.getChildFile ("plugins").isDirectory() && d.getChildFile ("modules/groove_core").isDirectory())
+            return d;
+    return juce::File::getCurrentWorkingDirectory();
+}
+
 void writePng (const juce::Image& img, const juce::File& f)
 {
     f.deleteFile();
@@ -43,6 +53,41 @@ juce::Image shoot (bl::BallroomProcessor& proc, float scale, int roomTab = -1)
     editor->warmUp (0.45); // a few twinkles on the screenshot
     return editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
 }
+int presetIndex (const char* name)
+{
+    bl::BallroomProcessor p;
+    return juce::jmax (0, p.getPresets().indexOf (name));
+}
+
+int runWeb (const juce::File& out)
+{
+    auto shotOf = [] (const char* preset, float scale, int tab = -1, float space = -1.0f)
+    {
+        auto proc = playing (presetIndex (preset));
+        if (space >= 0.0f)
+            proc->getAmountParameter().setValueNotifyingHost (space);
+        return shoot (*proc, scale, tab);
+    };
+    std::vector<gkweb::Shot> shots { { "hero", shotOf ("Disco Ballroom", 3.0f, -1, 0.62f) },
+                                     { "room", shotOf ("Disco Ballroom", 2.0f, 0) },
+                                     { "mirror", shotOf ("Mirror Ball", 2.0f, -1, 0.8f) },
+                                     { "late", shotOf ("Cathedral", 2.0f, 2) } };
+    gkweb::PluginInfo info;
+    info.slug = "ballroom";
+    info.name = "Ballroom";
+    info.taglineFr = juce::String::fromUTF8 ("La r\xc3\xa9verbe qui fait de la place \xc3\xa0 ta musique");
+    info.taglineEn = "The reverb that makes room for your music";
+    info.palette = bl::BallroomEditor::makePalette();
+    info.assetsDir = repoRoot().getChildFile ("plugins/ballroom/Assets");
+    info.framePrefix = "mira_";
+    info.heroFrame = std::atoi (std::getenv ("GK_HERO") != nullptr ? std::getenv ("GK_HERO") : "20");
+    for (int i = 0; i < 21; ++i)
+        info.poses.push_back (i);
+    gkweb::writePlugin (info, shots, out);
+    // the suite (every plug-in's visuals already on disk): Ballroom is the last one in
+    gkweb::writeSuite (out, gkweb::suiteVisuals(), info.palette);
+    return 0;
+}
 } // namespace
 
 int main (int argc, char** argv)
@@ -53,6 +98,8 @@ int main (int argc, char** argv)
     setenv ("GK_NO_UPDATE_CHECK", "1", 1);
 #endif
     juce::ScopedJuceInitialiser_GUI init;
+    if (argc > 1 && juce::String (argv[1]) == "--web")
+        return runWeb (juce::File::getCurrentWorkingDirectory().getChildFile (argc > 2 ? argv[2] : "web-assets"));
     const auto dir = juce::File::getCurrentWorkingDirectory().getChildFile (argc > 1 ? argv[1] : "screenshots/ballroom");
     dir.createDirectory();
     std::vector<juce::Image> shots;

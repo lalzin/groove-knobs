@@ -830,3 +830,24 @@ Une ligne par décision : **contexte** — choix — raison.
 - **Presets : 22.** Les 12 refaits, chacun avec sa vraie pièce (de 0,25 s à 100 s), plus 10 nouveaux : Clear Vocal, Power Snare, Disco Strings, Funk Room, Glitter Plate, Dub Chamber, Slapback Club, Chrome Room, Breathing Sky, Tiny Booth. Plusieurs utilisent CLEAR.
 - Frozen Floor ne charge plus FREEZE, qui le rendait muet : c'est maintenant un decay de 100 s, et FREEZE reste au joueur.
 - **Scintillements** : environ 40 % de la cadence précédente (Alan : « il y en a un peu trop »), et des taches de lumière qui varient moins.
+
+## Groove Knobs 0.1.9 — Ballroom dans la suite (2026-11-05)
+- Alan : « une fois corrigé, on passe au build 0.1.9 avec intégration de Groove Knobs global, et on fait les assets pour le site ; modifie aussi l'asset global pour que ce soit plus beau, avec Head Spin qui est différent ». La 0.1.8 (Head Spin) n'a pas été publiée (tag jamais poussé) : la 0.1.9 l'inclut.
+- **Mira** (Alan : « sur quelques frames, ce n'est pas exactement les mêmes couleurs, sur les chaussures et ailleurs ; et il y a des trous de transparence sur les chaussures »). Corrections dans `asset_prep` :
+  - **`--flood-key`** : la cause était un détourage par distance au vert. Les facettes gris-bleu foncé (≈ 37 de distance du vert sombre) devenaient à moitié transparentes. Désormais, seul le fond atteint depuis le bord de la case est retiré, les poches de fond plat ≥ 80 px comprises ; le personnage est opaque quelle que soit sa couleur, et un pixel quasi noir (le contour) n'est jamais du fond.
+  - **`--drop-ground-shadow 140,205`** : les ombres au sol, teal foncé, partent avec le fond. L'ancien `--drop-hue 50,220` trouait les chaussures dorées.
+  - les fragments du voisin et les miettes sont retirés.
+  - **`--match-colours`** : l'or, les verres, les facettes et les crèmes de chaque frame sont ramenés à ceux de la frame 0. Les écarts mesurés allaient jusqu'à −7,7° de teinte et +13 % de saturation sur l'or de la pose héros. La correction est bornée à ±10°, ×0,8–1,25 en saturation et ×0,85–1,15 en luminosité.
+  - `--contact-magenta` pour voir les trous.
+- **Intégration de Ballroom** : `BL_VERSION` 0.1.9 et toute la suite en 0.1.9. Ballroom est ajouté à :
+  - la CI : version, macOS, release ;
+  - Windows : `make_installer_win.ps1`, `GrooveKnobs.iss` (AppId `801517DA-1FBD-4EA0-89FA-9B8B803A76FF`), `GrooveKnobsSuite.iss` (composant `bl`), `Ballroom.ico` ;
+  - macOS : l'installateur de la suite et `welcome.html` ;
+  - l'icône d'application (`app_icon.png`, Mira) ;
+  - les données : `plugins.json`, `versions.json`, `PROMPT-site-update-0.1.9.md`.
+- **Visuels de la suite** (`gkweb::writeSuite`) :
+  - Avant, les fenêtres étaient en éventail serré, et Head Spin, seule fenêtre large, se retrouvait minuscule au bout.
+  - Maintenant, la scène est sur deux plans : les neuf fenêtres en portrait forment un arc au fond, le milieu en haut. Head Spin est au premier plan, au centre, plus bas, et ne cache que le bas des fenêtres du milieu.
+  - Chaque fenêtre a derrière elle un halo à la couleur de son plugin, et il y a un sol éclairé.
+  - Le fond est la palette propre de la suite (anthracite, lettrage crème), et non plus celle du dernier plugin rendu.
+  - `bl_screenshots --web` écrit les visuels de Ballroom puis ceux de la suite.

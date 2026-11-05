@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.9 — 2026-11-05 (toute la suite, dix plugins)
+- **Ballroom** entre dans la suite : la réverbe qui fait de la place à ta musique. SPACE va du sec (0 % : aucune réverbe) au mouillé (100 % : la réverbe seule, au niveau du son d'origine). Sept salles (Studio, Club, Ballroom, Plate, Mirror, Space, Gate) ; early et late réglables séparément ; FREEZE. **CLEAR** : la queue s'efface bande par bande là où la musique joue et revient dans les silences. CUSTOM d'un clic pour retrouver la salle du preset. 22 presets. Mira la boule disco en mascotte.
+- La 0.1.8 (Head Spin) n'a pas été publiée : la 0.1.9 l'inclut. L'installateur de la suite (macOS et Windows) contient les dix plugins. Les autres plugins passent en 0.1.9 sans changement de son.
+- Visuels du site : la bannière et l'image de partage de la suite sont refaites. Les neuf fenêtres en portrait forment un arc, et Head Spin (fenêtre large) est au premier plan, éclairé aux couleurs de chaque plugin.
+
+## Ballroom 0.1.0-test1…test4 — 2026-11-05 (versions de test, hors suite)
+- Le FDN à 8 lignes (RT60 par bande), les early, DEPTH, les six modes, FREEZE. Mira et ses scintillements. SPACE devient un vrai dry/wet avec le wet au niveau du dry. Diffusion dans la boucle, mode Gate, CLEAR, CUSTOM cliquable, 22 presets.
+
 ## 0.1.8 — 2026-11-04 (toute la suite, neuf plugins)
 - **Head Spin** entre dans la suite : le son tourne autour de ta tête, vue de dessus, sur une forme (six formes et le dessin libre au crayon, morphing, étirer / tourner à la souris), calé sur le tempo ou en Hz ; modèle de tête pour les enceintes ou le casque (binaural), 3D, GROOVE, RELANCE ; 7 presets ; Kiko le b-boy en mascotte. L'installateur de la suite (macOS et Windows) contient les neuf plugins. Les autres plugins passent en 0.1.8 sans changement de son.
 

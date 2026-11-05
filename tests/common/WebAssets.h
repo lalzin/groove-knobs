@@ -8,6 +8,7 @@
 //   <out>/groove-knobs-og.png, groove-knobs-banner.png (when all of them exist)
 
 #include <groove_core/groove_core.h>
+#include <algorithm>
 #include <iostream>
 
 namespace gkweb
@@ -259,64 +260,131 @@ inline void writePlugin (const PluginInfo& info, const std::vector<Shot>& shots,
     }
 }
 
-/** The plug-ins in the suite visuals; for the banner, Kick Lock shows its
-    Send (a one-knob window: Kick Lock's own, wide, did not fit among them). */
+/** The plug-ins in the suite visuals, in the order shown; for the banner,
+    Kick Lock shows its Send window (a portrait one). Head Spin (a wide
+    window) sits in the middle: the centrepiece, the portraits fanned round. */
 inline const std::vector<std::pair<juce::String, juce::String>>& suiteVisuals()
 {
     static const std::vector<std::pair<juce::String, juce::String>> v {
-        { "french-filter", "" }, { "boogie-trio", "" }, { "backwash", "" }, { "pew-pew", "" }, { "sing-it-back", "" }, { "kick-lock", "ui-send@3x.png" }, { "slapper", "" }, { "crackle", "" }, { "head-spin", "" }
+        { "french-filter", "" }, { "boogie-trio", "" }, { "backwash", "" }, { "pew-pew", "" }, { "sing-it-back", "" }, { "head-spin", "" },
+        { "kick-lock", "ui-send@3x.png" }, { "slapper", "" }, { "crackle", "" }, { "ballroom", "" }
     };
     return v;
 }
 
-/** The suite visuals, from the plugins' outputs already on disk (the second
-    of each pair: another window for the banner, empty = the same). */
-inline void writeSuite (const juce::File& outRoot, const std::vector<std::pair<juce::String, juce::String>>& slugsAndBanner, const gk::Palette& pal)
+/** The suite's own look: the charcoal of the plug-ins, cream lettering. */
+inline gk::Palette suitePalette()
 {
-    std::vector<juce::Image> uis, bannerUis;
+    gk::Palette p;
+    p.background = juce::Colour (0xff36363c);
+    p.backgroundEdge = juce::Colour (0xff1b1b1f);
+    p.surface = juce::Colour (0xff45454d);
+    p.outline = juce::Colour (0xff141414);
+    p.text = juce::Colour (0xfff3e7c9);
+    return p;
+}
+
+/** The suite visuals, from the plugins' outputs already on disk (the second
+    of each pair: another window for the banner, empty = the same). The
+    palette argument is kept for the callers; the suite has its own look. */
+inline void writeSuite (const juce::File& outRoot, const std::vector<std::pair<juce::String, juce::String>>& slugsAndBanner, const gk::Palette&)
+{
+    std::vector<juce::Image> shown;
     for (const auto& [slug, banner] : slugsAndBanner)
-    {
-        uis.push_back (juce::ImageFileFormat::loadFrom (outRoot.getChildFile (slug + "/ui-hero@3x.png")));
-        bannerUis.push_back (banner.isEmpty() ? uis.back() : juce::ImageFileFormat::loadFrom (outRoot.getChildFile (slug + "/" + banner)));
-    }
-    for (size_t k = 0; k < uis.size(); ++k)
-        if (! uis[k].isValid() || ! bannerUis[k].isValid())
+        shown.push_back (juce::ImageFileFormat::loadFrom (outRoot.getChildFile (slug + "/" + (banner.isEmpty() ? juce::String ("ui-hero@3x.png") : banner))));
+    for (const auto& img : shown)
+        if (! img.isValid())
         {
             std::cout << "suite visuals skipped: render every plugin first\n";
             return;
         }
+    const auto pal = suitePalette();
     const auto cream = pal.text, ink = pal.outline;
+    // each plug-in's own colour (its window's average hue, saturated): the stage lights
+    std::vector<juce::Colour> lights;
+    for (const auto& img : shown)
+    {
+        double r = 0, gg = 0, b = 0, n = 0;
+        const juce::Image::BitmapData d (img, juce::Image::BitmapData::readOnly);
+        for (int y = 0; y < img.getHeight(); y += 7)
+            for (int x = 0; x < img.getWidth(); x += 7)
+            {
+                const auto c = d.getPixelColour (x, y);
+                const double wgt = c.getSaturation() * c.getBrightness(); // the colourful parts count
+                r += wgt * c.getFloatRed(); gg += wgt * c.getFloatGreen(); b += wgt * c.getFloatBlue(); n += wgt;
+            }
+        const auto avg = juce::Colour::fromFloatRGBA ((float) (r / n), (float) (gg / n), (float) (b / n), 1.0f);
+        lights.push_back (juce::Colour::fromHSV (avg.getHue(), 0.75f, 0.95f, 1.0f));
+    }
 
-    auto compose = [&] (int w, int h, float titleH, juce::Rectangle<float> windows, const std::vector<juce::Image>& shown, const juce::String& file)
+    // `back`: the row of portrait windows (an arc, the middle highest); `front`:
+    // the wide one (Head Spin), in front, centred, lower: the centrepiece
+    auto compose = [&] (int w, int h, float titleH, juce::Rectangle<float> back, juce::Rectangle<float> front, const juce::String& file)
     {
         juce::Image img (juce::Image::RGB, w, h, true);
         juce::Graphics g (img);
         const auto b = img.getBounds().toFloat();
-        background (g, b, pal, { b.getCentreX(), b.getHeight() * 0.6f }, b.getWidth() * 0.45f);
+        g.setGradientFill (juce::ColourGradient (pal.background.brighter (0.05f), b.getCentreX(), b.getY(), pal.backgroundEdge.darker (0.5f),
+                                                 b.getCentreX(), b.getBottom(), false));
+        g.fillRect (b);
+        std::vector<int> portraits, wides;
+        for (int k = 0; k < (int) shown.size(); ++k)
+            (shown[(size_t) k].getWidth() > shown[(size_t) k].getHeight() ? wides : portraits).push_back (k);
+        const int n = (int) portraits.size();
+        const float mid = 0.5f * (float) (n - 1);
+        std::vector<juce::Rectangle<float>> areas (shown.size());
+        {
+            const float ph = back.getHeight(), pw = ph * 0.8f; // (the portrait windows are 840 x 1040)
+            const float step = n > 1 ? (back.getWidth() - pw) / (float) (n - 1) : 0.0f;
+            for (int i = 0; i < n; ++i)
+            {
+                const float side = mid > 0.0f ? ((float) i - mid) / mid : 0.0f; // -1 .. 1
+                const float scale = 1.0f - 0.12f * std::abs (side);
+                const auto c = juce::Point<float> (back.getX() + 0.5f * pw + step * (float) i, back.getCentreY() + back.getHeight() * 0.10f * side * side);
+                areas[(size_t) portraits[(size_t) i]] = juce::Rectangle<float> (pw * scale, ph * scale).withCentre (c);
+            }
+            for (size_t j = 0; j < wides.size(); ++j)
+            {
+                const float fw = front.getWidth() / (float) wides.size();
+                areas[(size_t) wides[j]] = juce::Rectangle<float> (front.getX() + fw * (float) j, front.getY(), fw, front.getHeight()).reduced (fw * 0.03f, 0.0f);
+            }
+        }
+        // the stage lights: each plug-in's colour glowing behind its window, and a floor
+        for (size_t k = 0; k < shown.size(); ++k)
+        {
+            const bool wide = shown[k].getWidth() > shown[k].getHeight();
+            const auto c = areas[k].getCentre();
+            const float radius = areas[k].getHeight() * (wide ? 1.1f : 0.7f);
+            g.setGradientFill (juce::ColourGradient (lights[k].withAlpha (wide ? 0.24f : 0.16f), c, lights[k].withAlpha (0.0f), c.translated (radius, 0.0f), true));
+            g.fillEllipse (juce::Rectangle<float> (2.0f * radius, 2.0f * radius).withCentre (c));
+        }
+        {
+            const float floorY = front.getBottom() - front.getHeight() * 0.04f;
+            g.setGradientFill (juce::ColourGradient (cream.withAlpha (0.08f), b.getCentreX(), floorY, cream.withAlpha (0.0f), b.getCentreX() + b.getWidth() * 0.4f,
+                                                     floorY, true));
+            g.fillEllipse (juce::Rectangle<float> (b.getWidth() * 0.8f, front.getHeight() * 0.3f).withCentre ({ b.getCentreX(), floorY }));
+        }
         g.setColour (cream.withAlpha (0.55f));
         g.fillPath (textPath ("by LALZIN  -  with groove and love", titleH * 0.26f, b.getCentreX(), titleH * 1.62f, 0.2f, true));
         cartoonText (g, textPath ("GROOVE KNOBS", titleH, b.getCentreX(), titleH * 1.18f, 0.03f, true), cream, ink, titleH * 0.1f);
-        // the windows side by side, fanned out, the middle one on top
-        const int n = (int) shown.size();
-        const float ww = windows.getWidth() / (float) n;
-        std::vector<int> order;
-        for (int k = 0; k < n; ++k)
-            order.push_back (k);
-        const float mid = 0.5f * (float) (n - 1);
-        std::stable_sort (order.begin(), order.end(), [&] (int x, int y) { return std::abs ((float) x - mid) > std::abs ((float) y - mid); });
+        // the back row: the outer windows first, the middle ones on top; then the front
+        std::vector<int> order (portraits);
+        std::stable_sort (order.begin(), order.end(), [&] (int x, int y)
+                          {
+                              const auto ix = (float) (std::find (portraits.begin(), portraits.end(), x) - portraits.begin());
+                              const auto iy = (float) (std::find (portraits.begin(), portraits.end(), y) - portraits.begin());
+                              return std::abs (ix - mid) > std::abs (iy - mid);
+                          });
         for (int k : order)
         {
-            const float side = mid > 0.0f ? ((float) k - mid) / mid : 0.0f; // -1 .. 1
-            const auto area = juce::Rectangle<float> (windows.getX() + ww * (float) k, windows.getY() + windows.getHeight() * 0.05f * std::abs (side), ww,
-                                                      windows.getHeight())
-                                  .expanded (ww * (n > 3 ? 0.22f : 0.08f), 0.0f);
-            // a wide window (Kick Lock) gets a wider slot, or it is a stamp
-            const bool wideUi = shown[(size_t) k].getWidth() > shown[(size_t) k].getHeight();
-            drawWindow (g, shown[(size_t) k], wideUi ? area.withSizeKeepingCentre (area.getWidth() * 1.4f, area.getHeight() * 0.8f) : area, 0.06f * side);
+            const float i = (float) (std::find (portraits.begin(), portraits.end(), k) - portraits.begin());
+            drawWindow (g, shown[(size_t) k], areas[(size_t) k], mid > 0.0f ? 0.06f * (i - mid) / mid : 0.0f);
         }
+        for (int k : wides)
+            drawWindow (g, shown[(size_t) k], areas[(size_t) k], 0.0f);
         writePng (img, outRoot.getChildFile (file));
     };
-    compose (1200, 630, 64.0f, { 150.0f, 130.0f, 900.0f, 470.0f }, uis, "groove-knobs-og.png");
+    compose (1200, 630, 64.0f, { 40.0f, 140.0f, 1120.0f, 250.0f }, { 400.0f, 345.0f, 400.0f, 252.0f }, "groove-knobs-og.png");
     // the suite's icon (its Windows installer): four mascots' icons, two by two
     {
         juce::Image icon (juce::Image::ARGB, 512, 512, true);
@@ -328,6 +396,6 @@ inline void writeSuite (const juce::File& outRoot, const std::vector<std::pair<j
                 g.drawImage (img, juce::Rectangle<float> ((float) (i % 2) * 256.0f + 4.0f, (float) (i / 2) * 256.0f + 4.0f, 248.0f, 248.0f));
         writePng (icon, outRoot.getChildFile ("groove-knobs-icon-512.png"));
     }
-    compose (2400, 1000, 120.0f, { 360.0f, 230.0f, 1680.0f, 740.0f }, bannerUis, "groove-knobs-banner.png");
+    compose (2400, 1000, 120.0f, { 140.0f, 250.0f, 2120.0f, 430.0f }, { 870.0f, 560.0f, 660.0f, 417.0f }, "groove-knobs-banner.png");
 }
 } // namespace gkweb

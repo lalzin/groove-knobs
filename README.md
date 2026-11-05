@@ -1,4 +1,4 @@
-# Groove Knobs — French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back, Kick Lock, Slapper, Crackle, Head Spin
+# Groove Knobs — French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back, Kick Lock, Slapper, Crackle, Head Spin, Ballroom
 
 La suite **Groove Knobs** (LALZIN) : des plugins à un seul knob pour la funky house et la disco. **French Filter** (le filtre French Touch), **Boogie Trio** (chorus triple de string machine), **Backwash** (reverb inversée calée sur le tempo), **Pew Pew** (le pew disco, instrument) et **Sing It Back** (une foule qui chante avec ta voix).
 VST3 / AU / Standalone, macOS (universel) et Windows.
@@ -287,3 +287,12 @@ Effet : **le son tourne autour de ta tête**, vue de dessus, sur une forme ; **M
 - **Mouvement** : SENS (gauche → droite = horaire vu de dessus, le son passe devant), MODE Sync (8 mesures à 1/32, normal / pointé / triolet, calé sur la mesure) ou Hz (0,01–20), DÉPART, GROOVE (une pause sur chaque temps), RELANCE (une note MIDI ou une attaque ramène le son au départ, glissé de 12 ms).
 - **Rendu** : modèle de tête sphérique (Woodworth, ombre de Brown-Duda par oreille, pavillon avant / arrière, distance 1/r et salle, Doppler limité à ±2 %) ; **RENDER** Enceintes (panoramique + indices) ou Casque (binaural) ; **3D** pousse l'avant / l'arrière et la distance au-delà du réel (devant : présence ; derrière : étouffé, plus de salle) ; DISTANCE, LEVEL ; indicateur de somme mono. Latence nulle, aucune allocation dans le traitement.
 - 7 presets (Merry-Go-Round, Ping Pong Club, Triangle Trance, Behind You, Headspin, Figure Eight, Reverse Ride). Tests : `ctest -R hs_`. Prototype et rendus : `prototypes/headspin/render`. Poses de Kiko : `scripts/make_kiko_frames.sh`.
+
+# Ballroom
+
+Effet : **la réverbe qui fait de la place à ta musique** ; **SPACE** en knob principal, le dry / wet (0 % : l'entrée au bit près ; 100 % : la réverbe seule, au niveau du dry — lié au MIX du panneau). Mascotte : **Mira**, la boule disco (elle danse avec SPACE et le tempo, scintille avec la réverbe).
+
+- **Salles** (MODE) : Studio, Club, Ballroom, Plate, Mirror, Space, Gate. FDN à 8 lignes (Hadamard / Householder), un allpasse dans chaque boucle (densité d'écho), modulation lente par ligne, RT60 par bande (BASS MULT / XOVER, HIGH MULT / XOVER) ; early : allpasses modulés, multi-tap sur EARLY SIZE, smear ; DEPTH (early ↔ late), EARLY SEND, PREDELAY, HIGH CUT, FREEZE.
+- **CLEAR** : la queue recule bande par bande (5 bandes) là où le son sec joue, et revient en 250 ms dans les silences (`Clear.h`).
+- **ROOM** (en bas à droite) : MAIN / EARLY / LATE et la courbe de décroissance ; **CUSTOM** s'allume quand la salle a été modifiée — un clic recharge celle du preset (SPACE gardé).
+- 22 presets. Tests : `ctest -R bl_`. Prototype, rendus et calage des niveaux : `prototypes/ballroom/render` (`quick`). Poses de Mira : `scripts/make_mira_frames.sh`.
