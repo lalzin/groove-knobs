@@ -67,3 +67,4 @@ target_link_libraries(KickLockSend PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags)
 gk_enable_warnings(KickLockSend)
+gk_bundle_art(KickLockSend KickLockArt)

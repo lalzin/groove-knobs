@@ -12,11 +12,10 @@ set_target_properties(KickLockPresets PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # Phaze's poses (scripts/make_phaze_frames.sh)
 file(GLOB KL_PHAZE_FRAMES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/Assets/phaze_*.png)
-juce_add_binary_data(KickLockArt
+gk_add_art(KickLockArt
     HEADER_NAME KickLockArt.h
     NAMESPACE   KLArt
     SOURCES     ${KL_PHAZE_FRAMES})
-set_target_properties(KickLockArt PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(KickLockCode INTERFACE)
 target_sources(KickLockCode INTERFACE
@@ -77,3 +76,4 @@ target_link_libraries(KickLock PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags)
 gk_enable_warnings(KickLock)
+gk_bundle_art(KickLock KickLockArt)

@@ -3,6 +3,7 @@
 ## 0.1.9 — 2026-11-05 (toute la suite, dix plugins)
 - **Ballroom** entre dans la suite : la réverbe qui fait de la place à ta musique. SPACE va du sec (0 % : aucune réverbe) au mouillé (100 % : la réverbe seule, au niveau du son d'origine). Sept salles (Studio, Club, Ballroom, Plate, Mirror, Space, Gate) ; early et late réglables séparément ; FREEZE. **CLEAR** : la queue s'efface bande par bande là où la musique joue et revient dans les silences. CUSTOM d'un clic pour retrouver la salle du preset. 22 presets. Mira la boule disco en mascotte.
 - La 0.1.8 (Head Spin) n'a pas été publiée : la 0.1.9 l'inclut. L'installateur de la suite (macOS et Windows) contient les dix plugins. Les autres plugins passent en 0.1.9 sans changement de son.
+- macOS : les installateurs sont environ 30 % plus légers (la suite passe de 323 à 232 Mo). Les images des mascottes sont désormais stockées une seule fois dans chaque plugin au lieu de deux. Le son et l'apparence ne changent pas.
 - Visuels du site : la bannière et l'image de partage de la suite sont refaites. Les neuf fenêtres en portrait forment un arc, et Head Spin (fenêtre large) est au premier plan, éclairé aux couleurs de chaque plugin.
 
 ## Ballroom 0.1.0-test1…test4 — 2026-11-05 (versions de test, hors suite)

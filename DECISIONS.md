@@ -851,3 +851,15 @@ Une ligne par décision : **contexte** — choix — raison.
   - Chaque fenêtre a derrière elle un halo à la couleur de son plugin, et il y a un sol éclairé.
   - Le fond est la palette propre de la suite (anthracite, lettrage crème), et non plus celle du dernier plugin rendu.
   - `bl_screenshots --web` écrit les visuels de Ballroom puis ceux de la suite.
+
+## Installateurs macOS plus légers : les images hors du binaire (2026-11-06)
+
+- **Le problème.** La suite macOS 0.1.9 faisait 323 Mo, au-delà des 300 Mo qu'accepte l'envoi sur R2 depuis le tableau de bord.
+- **La cause.** Les images des mascottes (juce_add_binary_data) étaient dans le binaire universel : une copie pour x86_64, une pour arm64, et cela dans chacun des trois formats (VST3, AU, app). Cela représentait environ 210 Mo sur 323. Une recompression PNG sans perte (oxipng) ne gagne que 5 %, et retirer les symboles (strip) 3 % une fois compressé.
+- **La solution, macOS seulement.** `cmake/GrooveArt.cmake` :
+  - `gk_add_art` remplace juce_add_binary_data pour l'art. Le code des mascottes appelle toujours `XArt::getNamedResource`, sans changement.
+  - Sur macOS, cette fonction lit le fichier dans `Contents/Resources` du bundle qui l'appelle (trouvé avec dladdr), une seule fois, puis le garde en mémoire : le pointeur reste valide comme avec des données binaires. Si le fichier n'y est pas (tests, outils), elle le lit dans les sources du dépôt.
+  - `gk_bundle_art` copie les images dans les trois bundles après le build, puis re-signe en ad hoc en gardant les entitlements. Les installateurs signent ensuite pour de vrai.
+  - Windows ne change pas : l'art reste dans le binaire, car il n'y a qu'une architecture.
+- **Le résultat.** La suite fait 232 Mo, Ballroom 36 → 25 Mo, Kick Lock 75 → 48 Mo. Tous les paquets sont renotarisés. Le binaire Ballroom passe de 18,6 à 10,9 Mo, et les 193 tests passent.
+- **La version.** Elle reste 0.1.9 : les paquets macOS n'avaient pas encore été mis en ligne, et le tag v0.1.9 (Windows) ne change pas.

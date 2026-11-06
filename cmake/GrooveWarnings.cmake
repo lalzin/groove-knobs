@@ -16,3 +16,7 @@ function(gk_enable_warnings target)
         endif()
     endif()
 endfunction()
+
+# The plug-ins' art (gk_add_art / gk_bundle_art), with the warnings so that
+# every plug-in has it.
+include(${CMAKE_CURRENT_LIST_DIR}/GrooveArt.cmake)
