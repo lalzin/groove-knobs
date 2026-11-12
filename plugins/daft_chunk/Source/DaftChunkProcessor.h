@@ -85,6 +85,43 @@ public:
     /** Tests: applies the host tempo now and waits for the stretch. */
     void stretchNow();
 
+    //== the ideas (step 3) ======================================================
+    static constexpr int numIdeas = 8;
+    struct Idea
+    {
+        Pattern pattern;
+        bool used = false, starred = false;
+        unsigned age = 0;
+    };
+    const Idea& getIdea (int i) const noexcept { return ideas[(size_t) juce::jlimit (0, numIdeas - 1, i)]; }
+    /** DÉ: a new loop (CHOP, the style) into a free slot (or the oldest without a star). Returns its slot, -1: all starred. */
+    int rollDice();
+    /** ENCORE: 4 close variants of the selected idea. Returns how many were made. */
+    int encore();
+    void toggleStar (int i);
+    void deleteIdea (int i);
+    /** Plays idea `i` locked to the host's bars (again: stops). */
+    void togglePlay (int i);
+    void stopIdea() { setPlaying (-1); }
+    int getPlayingIdea() const noexcept { return playingIdea; }
+    int getSelectedIdea() const noexcept { return selectedIdea; }
+    void selectIdea (int i);
+    /** The sequencer: step `k` of idea `i` edited by hand. */
+    void setStep (int i, int k, const Step& s);
+    /** Locked slices: the dice never move them. */
+    bool isLocked (int slice) const noexcept { return juce::isPositiveAndBelow (slice, (int) locked.size()) && locked[(size_t) slice]; }
+    void toggleLock (int slice);
+    bool canUndo() const noexcept { return ! undoStack.empty(); }
+    bool canRedo() const noexcept { return ! redoStack.empty(); }
+    void undo();
+    void redo();
+    /** +1 at every change of the ideas (the editor redraws them). */
+    int getIdeasVersion() const noexcept { return ideasVersion; }
+    /** +1 at every DÉ / ENCORE (Chunky shakes his dice). */
+    int getDiceVersion() const noexcept { return diceVersion; }
+    /** The generator's view of the current slices. */
+    SourceInfo sourceInfo() const;
+
     /** +1 at every new kit (the editor redraws). */
     int getKitVersion() const noexcept { return kitVersion; }
 
@@ -100,6 +137,11 @@ private:
     void freeRetired (bool force);
     void republish(); // the same slices, new settings
     void updateStretch (bool now);
+    struct Snapshot { std::array<Idea, 8> ideas; std::vector<bool> locked; };
+    void remember();   // before an action: for ANNULER
+    void ideasChanged();
+    void setPlaying (int i);
+    int freeSlot (int except = -1);
 
     SampleLoader loader;
     StretchWorker stretcher;
@@ -114,6 +156,14 @@ private:
     SliceSettings settings;
     std::vector<int64_t> boundaries;   // the current cuts (0 .. end)
     std::vector<SliceParams> sliceParams;
+    std::array<Idea, 8> ideas {};
+    std::vector<bool> locked;
+    int playingIdea = -1, selectedIdea = -1, ideasVersion = 0, diceVersion = 0;
+    unsigned ideaAge = 0;
+    std::vector<Snapshot> undoStack, redoStack;
+    std::shared_ptr<const Pattern> sequence; // the pattern the engine plays
+    struct RetiredSeq { std::shared_ptr<const Pattern> pattern; double since; };
+    std::vector<RetiredSeq> retiredSeqs;
     int selected = 0;
     bool userCuts = false;
     std::vector<double> taps;

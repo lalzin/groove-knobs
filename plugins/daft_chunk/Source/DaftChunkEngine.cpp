@@ -43,12 +43,27 @@ void DaftChunkEngine::setChoices (const int* indices, int n)
 
 void DaftChunkEngine::noteOn (int note, float velocity, int previewSamples)
 {
-    const int index = (previewSamples >= 0 ? note : note - baseNote);
+    // a key (slice = note - C1), or a preview (`note` is the slice)
+    if (previewSamples >= 0)
+        startSlice (note, velocity, -1, previewSamples, 0.0f, false);
+    else
+        startSlice (note - baseNote, velocity, note, -1, 0.0f, false);
+}
+
+void DaftChunkEngine::cutAll() noexcept
+{
+    for (auto& v : voices)
+        if (v.active() && v.cutLeft < 0)
+            v.cutLeft = cutFade;
+}
+
+void DaftChunkEngine::startSlice (int index, float velocity, int note, int gateSamples, float extraPitch, bool flipReverse)
+{
     if (current == nullptr || index < 0 || index >= (int) current->slices.size())
         return;
     // COUPE: everything playing is cut; POLY: only the same key again
     for (auto& v : voices)
-        if (v.active() && v.cutLeft < 0 && (mode == cut || (previewSamples < 0 && v.note == note)))
+        if (v.active() && v.cutLeft < 0 && (mode == cut || (note >= 0 && v.note == note)))
             v.cutLeft = cutFade;
 
     // a free voice, else the oldest
@@ -74,21 +89,56 @@ void DaftChunkEngine::noteOn (int note, float velocity, int previewSamples)
     const double s0 = (double) s.start * scale, s1 = std::min (audioLen, (double) s.end * scale), len = s1 - s0;
     v = {};
     v.slice = index;
-    v.note = previewSamples >= 0 ? -1 : note;
+    v.note = note;
     v.first = s0 + juce::jlimit (0.0, 0.9, (double) p.start) * len;
     v.last = s1 - juce::jlimit (0.0, 0.9, (double) p.end) * len;
     if (v.last - v.first < 64.0)
         v.last = std::min (s1, v.first + 64.0);
-    v.reverse = p.reverse;
+    v.reverse = p.reverse != flipReverse;
     v.pos = v.reverse ? v.last - 2.0 : v.first;
     const float sens = juce::jlimit (0.0f, 1.0f, knobs[velocityKnob]);
     v.gain = (1.0f - sens * (1.0f - juce::jlimit (0.0f, 1.0f, velocity))) * juce::Decibels::decibelsToGain (p.gainDb, -60.0f);
     v.env = 0.0f;
     v.stage = Stage::attack;
-    v.held = true;
-    v.previewLeft = previewSamples;
+    v.held = note >= 0;
+    v.previewLeft = gateSamples;
+    v.extraPitch = extraPitch;
     v.age = ++ageCounter;
     lead = (int) (slot - voices.data());
+}
+
+void DaftChunkEngine::collectSequence (int numSamples, const gk::BlockTiming& timing)
+{
+    numSeqEvents = 0;
+    const auto* seq = sequence.load (std::memory_order_acquire);
+    seqInUse.store (seq, std::memory_order_release);
+    if (seq == nullptr || seq->steps.empty() || timing.beatsPerSample <= 0.0)
+    {
+        telemetry.step.store (-1, std::memory_order_relaxed);
+        return;
+    }
+    // 16ths locked to the host's beats; the odd ones swung (SWING 75 %: 3/8 of a 16th late)
+    const int n = seq->numSteps();
+    const double b0 = timing.beatsAt (0), b1 = timing.beatsAt (numSamples);
+    const double swingDelay = juce::jlimit (0.0f, 0.75f, knobs[swingKnob]) * 0.125;
+    const auto first = (long long) std::floor (b0 * 4.0) - 1, last = (long long) std::floor (b1 * 4.0);
+    for (long long k = first; k <= last; ++k)
+    {
+        const auto& st = seq->steps[(size_t) (((k % n) + n) % n)];
+        const int reps = std::max (1, st.repeat);
+        const double stepStart = (double) k * 0.25 + ((k & 1) != 0 ? swingDelay : 0.0);
+        for (int j = 0; j < reps && numSeqEvents < (int) seqEvents.size(); ++j)
+        {
+            const double t = stepStart + j * 0.25 / reps;
+            if (t < b0 || t >= b1 || (st.slice < 0 && ! st.cut))
+                continue;
+            seqEvents[(size_t) numSeqEvents++] = { juce::jlimit (0, numSamples - 1, (int) ((t - b0) / timing.beatsPerSample)), &st,
+                                                   std::max (1, (int) (0.25 / reps / timing.beatsPerSample)) };
+        }
+    }
+    // (k, then j: already in time order, but swing can put an odd step after the next even one's start: sort)
+    std::sort (seqEvents.begin(), seqEvents.begin() + numSeqEvents, [] (const SeqEvent& x, const SeqEvent& y) { return x.at < y.at; });
+    telemetry.step.store ((int) ((((long long) std::floor (b1 * 4.0)) % n + n) % n), std::memory_order_relaxed);
 }
 
 void DaftChunkEngine::releaseVoice (Voice& v) noexcept
@@ -114,7 +164,7 @@ void DaftChunkEngine::render (Voice& v, float* const* out, int numChannels, int 
     const auto& audio = k.audio();
     const int srcChans = audio.getNumChannels();
     const SliceParams p = v.slice < (int) k.params.size() ? k.params[(size_t) v.slice] : SliceParams {};
-    const double step = k.sample->sampleRate / sampleRate * rate * std::exp2 ((knobs[pitchKnob] + p.pitch) / 12.0);
+    const double step = k.sample->sampleRate / sampleRate * rate * std::exp2 ((knobs[pitchKnob] + p.pitch + v.extraPitch) / 12.0);
     const double fade = 0.002 * k.sample->sampleRate; // the 2 ms fades, in source samples
     const double length = v.last - v.first;
     const float attackInc = (float) (1.0 / (std::max (0.0005, (double) knobs[attackKnob]) * sampleRate));
@@ -247,12 +297,28 @@ void DaftChunkEngine::processWet (juce::AudioBuffer<float>& buffer, int numSampl
                     render (v, out, chans, pos, to);
         pos = std::max (pos, to);
     };
+    // the idea's steps and the keys, merged in time order
+    collectSequence (numSamples, timing);
+    int e = 0;
+    auto playSteps = [&] (int until)
+    {
+        for (; e < numSeqEvents && seqEvents[(size_t) e].at <= until; ++e)
+        {
+            const auto& ev = seqEvents[(size_t) e];
+            renderTo (ev.at);
+            if (ev.step->cut)
+                cutAll();
+            else
+                startSlice (ev.step->slice, ev.step->velocity, -1, ev.gate, (float) ev.step->pitch, ev.step->reverse);
+        }
+    };
     if (midi != nullptr)
         for (const auto meta : *midi)
         {
             const int t = meta.samplePosition - midiStart;
             if (t < 0 || t >= midiCount)
                 continue;
+            playSteps (std::min (t, numSamples) - 1);
             const auto msg = meta.getMessage();
             renderTo (std::min (t, numSamples));
             if (msg.isNoteOn())
@@ -260,10 +326,9 @@ void DaftChunkEngine::processWet (juce::AudioBuffer<float>& buffer, int numSampl
             else if (msg.isNoteOff())
                 noteOff (msg.getNoteNumber());
             else if (msg.isAllNotesOff() || msg.isAllSoundOff())
-                for (auto& v : voices)
-                    if (v.active() && v.cutLeft < 0)
-                        v.cutLeft = cutFade;
+                cutAll();
         }
+    playSteps (numSamples);
     renderTo (numSamples);
 
     if (lead >= 0 && voices[(size_t) lead].active())

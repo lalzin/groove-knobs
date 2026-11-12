@@ -17,10 +17,12 @@ using namespace daftchunk;
 using gktest::setParam;
 
 // --- allocation counter (only counts while `countAllocations` is set, on this thread)
+thread_local bool dcCountAllocations = false; // (also used by DcGeneratorTests.cpp)
+std::atomic<int> dcAllocations { 0 };
 namespace
 {
-thread_local bool countAllocations = false;
-std::atomic<int> allocations { 0 };
+thread_local bool& countAllocations = dcCountAllocations;
+std::atomic<int>& allocations = dcAllocations;
 } // namespace
 void* operator new (std::size_t n)
 {

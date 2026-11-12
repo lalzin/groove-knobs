@@ -57,6 +57,23 @@ int ChunkyMascot::chooseFrame (float macro, float bypass, bool)
         wasAnalysing = false;
         seenKit = proc.getKitVersion();
     }
+    // the dice (DE, ENCORE): he shakes it, then hands the idea over to the slots
+    if (proc.getDiceVersion() != seenDice)
+    {
+        seenDice = proc.getDiceVersion();
+        diceStarted = t;
+        giveStarted = -1.0;
+    }
+    if (diceStarted >= 0.0)
+    {
+        const double d = t - diceStarted;
+        if (d < 0.45)
+            return hold (dice0 + (int) std::fmod (d / 0.09, 3.0), 0.0);
+        if (d < 0.65)
+            return hold (diceHappy, 0.0);
+        diceStarted = -1.0;
+        giveStarted = t;
+    }
     if (giveStarted >= 0.0)
     {
         const double g = t - giveStarted;

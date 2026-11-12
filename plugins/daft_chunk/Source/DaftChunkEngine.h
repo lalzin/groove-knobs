@@ -11,6 +11,7 @@
 // DaftChunkProcessor). No allocation here.
 
 #include "SampleLoader.h"
+#include "Generator.h"
 #include <groove_core/groove_core.h>
 
 namespace daftchunk
@@ -22,8 +23,8 @@ public:
     static constexpr int numVoices = 16;
 
     /** The host parameters (OneKnobConfig::knobs / choices, in this order). */
-    enum Knob { attackKnob, decayKnob, sustainKnob, releaseKnob, pitchKnob, cutoffKnob, resoKnob, velocityKnob, volumeKnob, numKnobs };
-    enum Choice { modeChoice, playChoice, syncChoice, numChoices };
+    enum Knob { attackKnob, decayKnob, sustainKnob, releaseKnob, pitchKnob, cutoffKnob, resoKnob, velocityKnob, volumeKnob, swingKnob, numKnobs };
+    enum Choice { modeChoice, playChoice, syncChoice, styleChoice, numChoices };
     enum Mode { cut = 0, poly = 1 };
     enum Play { oneShot = 0, gate = 1 };
     /** LIBRE: the sample's own speed; TEMPO: at the host's tempo, same pitch
@@ -48,6 +49,10 @@ public:
     /** The kit the audio thread is using (the processor frees retired kits only when safe). */
     const Kit* kitInUse() const noexcept { return inUse.load (std::memory_order_acquire); }
 
+    /** Message thread: the idea to play, locked to the host's bars (null: none). */
+    void setSequence (const Pattern* p) noexcept { sequence.store (p, std::memory_order_release); }
+    const Pattern* sequenceInUse() const noexcept { return seqInUse.load (std::memory_order_acquire); }
+
     /** The UI: play slice `index` now (a click on it), as a short note. */
     void preview (int index) noexcept { previewRequest.store (index, std::memory_order_relaxed); }
 
@@ -57,6 +62,7 @@ public:
         std::atomic<int> slice { -1 };
         std::atomic<float> position { 0.0f };
         std::atomic<double> hostBpm { 0.0 }; // 0: the host gives none
+        std::atomic<int> step { -1 };         // the idea's step playing (-1: none)
     };
     const Telemetry& getTelemetry() const noexcept { return telemetry; }
 
@@ -70,17 +76,27 @@ private:
         float gain = 0.0f, env = 0.0f;
         Stage stage = Stage::off;
         int cutLeft = -1;      // >= 0: being cut (fading out over 3 ms)
-        int previewLeft = -1;  // a preview: note-off after this many samples
+        int previewLeft = -1;  // a preview or an idea's step: note-off after this many samples
+        float extraPitch = 0.0f; // an idea's step: on top of the slice's own
         gk::TptSvf filter[2];
         unsigned age = 0;
         bool active() const noexcept { return stage != Stage::off; }
     };
     void noteOn (int note, float velocity, int previewSamples = -1);
+    /** Starts slice `index` (an idea's step, a preview: `note` -1). */
+    void startSlice (int index, float velocity, int note, int gateSamples, float extraPitch, bool flipReverse);
+    void cutAll() noexcept;
+    /** The idea's step events in this block, in time order (no rendering). */
+    void collectSequence (int numSamples, const gk::BlockTiming& timing);
+    struct SeqEvent { int at; const Step* step; int gate; };
+    std::array<SeqEvent, 256> seqEvents {};
+    int numSeqEvents = 0;
     void noteOff (int note);
     void releaseVoice (Voice& v) noexcept;
     void render (Voice& v, float* const* out, int numChannels, int from, int to);
 
     std::atomic<const Kit*> kit { nullptr }, inUse { nullptr };
+    std::atomic<const Pattern*> sequence { nullptr }, seqInUse { nullptr };
     std::atomic<int> previewRequest { -1 };
     Telemetry telemetry;
     const Kit* current = nullptr;
@@ -91,7 +107,7 @@ private:
     int midiStart = 0, midiCount = 0;
     double sampleRate = 44100.0;
     int cutFade = 132;              // 3 ms
-    std::array<float, numKnobs> knobs { 0.0005f, 0.3f, 1.0f, 0.05f, 0.0f, 20000.0f, 0.0f, 0.7f, 0.0f };
+    std::array<float, numKnobs> knobs { 0.0005f, 0.3f, 1.0f, 0.05f, 0.0f, 20000.0f, 0.0f, 0.7f, 0.0f, 0.0f };
     int mode = cut, play = gate, sync = tempo;
     bool hostTempoKnown = false;
     double rate = 1.0; // the host's tempo / the kit's (TEMPO, VINYLE), this block

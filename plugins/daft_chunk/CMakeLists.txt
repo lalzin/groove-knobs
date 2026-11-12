@@ -32,10 +32,12 @@ target_sources(DaftChunkCode INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/Analysis.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/SampleLoader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/Stretcher.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/Generator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/DaftChunkEngine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/DaftChunkProcessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/DaftChunkEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/WaveformView.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/IdeasView.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/ChunkyMascot.cpp)
 target_include_directories(DaftChunkCode INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
 # (system includes: their warnings are not ours)

@@ -8,6 +8,7 @@ namespace daftchunk
       - idle: the bounce (0..3);
       - analysing a sample: he shakes the dice (4..6);
       - a sample ready: he hands a block to the right (12..15), once;
+      - the dice (DÉ, ENCORE): he shakes it (4..7), then hands the idea over;
       - CHOP high (> 75 %): he glitches (8..11) and his blocks slip sideways;
       - slices playing: he dances, one pose per slice played (16..29);
       - bypass: sitting (31).
@@ -32,7 +33,8 @@ protected:
 private:
     DaftChunkProcessor& proc;
     int current = idle0, lastSlice = -1, danceStep = 0, seenKit = 0;
-    double lastChange = 0.0, giveStarted = -1.0;
+    double lastChange = 0.0, giveStarted = -1.0, diceStarted = -1.0;
+    int seenDice = 0;
     bool wasAnalysing = false;
     float glitch = 0.0f;
 };

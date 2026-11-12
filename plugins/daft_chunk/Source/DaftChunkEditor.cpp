@@ -1,6 +1,7 @@
 #include "DaftChunkEditor.h"
 #include "ChunkyMascot.h"
 #include "WaveformView.h"
+#include "IdeasView.h"
 
 namespace daftchunk
 {
@@ -36,7 +37,7 @@ public:
     Panels() { setInterceptsMouseClicks (false, false); }
     void paint (juce::Graphics& g) override
     {
-        const juce::Rectangle<float> areas[] { { 6, 62, 848, 238 }, { 6, 306, 176, 206 }, { 188, 306, 480, 206 }, { 674, 306, 180, 206 } };
+        const juce::Rectangle<float> areas[] { { 6, 62, 848, 238 }, { 6, 306, 176, 206 }, { 188, 306, 480, 206 }, { 674, 306, 180, 206 }, { 6, 518, 848, 78 } };
         for (const auto& r : areas)
         {
             g.setColour (panel.withAlpha (0.95f));
@@ -103,6 +104,8 @@ class DaftChunkEditor::MiniSlider final : public juce::Component, public juce::S
 {
 public:
     std::function<void (float)> onChange;
+    juce::String caption { "SENS" };
+    float maximum = 1.0f; // the value shown at the right end (SWING: 75 %)
     void setValue (float v)
     {
         if (std::abs (v - value) > 1.0e-4f)
@@ -122,7 +125,7 @@ public:
         g.drawRoundedRectangle (b, 6.0f, 1.5f);
         g.setColour (cream);
         g.setFont (gk::GrooveFonts::font (12.0f));
-        g.drawText ("SENS " + juce::String (juce::roundToInt (value * 100.0f)) + " %", b, juce::Justification::centred);
+        g.drawText (caption + " " + juce::String (juce::roundToInt (value * maximum * 100.0f)) + " %", b, juce::Justification::centred);
     }
     void mouseDown (const juce::MouseEvent& e) override { mouseDrag (e); }
     void mouseDrag (const juce::MouseEvent& e) override
@@ -248,27 +251,6 @@ private:
     std::function<juce::String (float)> format;
 };
 
-/** The 8 idea slots (step 3): empty for now. */
-class DaftChunkEditor::IdeaSlots final : public juce::Component, public juce::SettableTooltipClient
-{
-public:
-    IdeaSlots() { setTooltip (juce::String::fromUTF8 ("Les 8 emplacements d'id\xc3\xa9""es : les boucles que g\xc3\xa9n\xc3\xa8re le D\xc3\x89, \xc3\xa0 glisser dans Ableton (\xc3\xa9tape 3)")); }
-    void paint (juce::Graphics& g) override
-    {
-        const auto b = getLocalBounds().toFloat();
-        const float w = (b.getWidth() - 6.0f) / 2.0f, h = (b.getHeight() - 9.0f) / 4.0f;
-        for (int i = 0; i < 8; ++i)
-        {
-            const auto r = juce::Rectangle<float> (b.getX() + (float) (i % 2) * (w + 6.0f), b.getY() + (float) (i / 2) * (h + 3.0f), w, h);
-            g.setColour (surface.withAlpha (0.7f));
-            g.fillRoundedRectangle (r, 6.0f);
-            g.setColour (cream.withAlpha (0.25f));
-            g.setFont (gk::GrooveFonts::font (12.0f));
-            g.drawText (juce::String (i + 1), r, juce::Justification::centred);
-        }
-    }
-};
-
 //==============================================================================
 DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
     : OneKnobEditor (p, makePalette(), "DAFT CHUNK",
@@ -286,7 +268,7 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
     wave = std::make_unique<WaveformView> (p);
     addToCanvas (*wave, { 14, 100, 832, 192 });
     keys = std::make_unique<SliceKeys> (p);
-    addToCanvas (*keys, { 6, 518, 848, 56 });
+    addToCanvas (*keys, { 6, 602, 848, 52 });
 
     // the toolbar
     load = std::make_unique<Pill> ("CHARGER", [this] { chooseFile(); });
@@ -343,30 +325,53 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
     sensitivity->onChange = [this] (float v) { proc.setSensitivity (v); };
     addToCanvas (*sensitivity, { 768, 68, 78, 26 });
 
-    // the generator (step 3), with the idea slots on the right
-    dice = std::make_unique<Pill> (juce::String::fromUTF8 ("D\xc3\x89"), [] {}, 15.0f);
-    encore = std::make_unique<Pill> ("ENCORE", [] {}, 15.0f);
-    style = std::make_unique<Pill> ("FILTER TOUCH", [] {}, 12.0f);
-    for (auto* b : { dice.get(), encore.get(), style.get() })
+    // the generator (right panel) and the 8 ideas (the strip)
+    dice = std::make_unique<Pill> (juce::String::fromUTF8 ("D\xc3\x89"), [this] { proc.rollDice(); showPage (page); }, 16.0f);
+    dice->setTooltip (juce::String::fromUTF8 ("Une nouvelle boucle de 1, 2 ou 4 mesures, selon CHOP et le style. Elle part dans un emplacement libre et se joue, cal\xc3\xa9""e sur Ableton."));
+    encore = std::make_unique<Pill> ("ENCORE", [this] { proc.encore(); }, 15.0f);
+    encore->setTooltip (juce::String::fromUTF8 ("4 variantes proches de l'id\xc3\xa9""e choisie (10 \xc3\xa0 25 % des pas changent), au lieu de tout relancer"));
+    style = std::make_unique<Pill> ("FILTER TOUCH", [this] { showStyleMenu(); }, 12.0f);
+    style->setTooltip (juce::String::fromUTF8 ("Le style du D\xc3\x89 : FILTER TOUCH (une phrase r\xc3\xa9p\xc3\xa9t\xc3\xa9""e), DISCO LOOP (fid\xc3\xa8le), VOCAL CHOP, STUTTER HOUSE, "
+                                           "REVERSE PARTY, PITCH PARTY (une m\xc3\xa9lodie d'une tranche)"));
+    swing = std::make_unique<MiniSlider>();
+    swing->caption = "SWING";
+    swing->maximum = 0.75f;
+    swing->setTooltip (juce::String::fromUTF8 ("Le swing des doubles croches des id\xc3\xa9""es (0 \xc3\xa0 75 %)"));
+    swing->onChange = [this] (float v)
     {
-        b->setEnabled (false);
-        b->setTooltip (juce::String::fromUTF8 ("\xc3\x89tape 3 : le g\xc3\xa9n\xc3\xa9rateur d'id\xc3\xa9""es"));
-    }
-    addToCanvas (*dice, { 682, 316, 78, 32 });
-    addToCanvas (*encore, { 766, 316, 80, 32 });
-    addToCanvas (*style, { 682, 354, 164, 26 });
-    ideas = std::make_unique<IdeaSlots>();
-    addToCanvas (*ideas, { 682, 388, 164, 116 });
+        auto& sw = proc.getKnobParameter (DaftChunkEngine::swingKnob);
+        sw.beginChangeGesture();
+        sw.setValueNotifyingHost (sw.convertTo0to1 (v * 0.75f));
+        sw.endChangeGesture();
+    };
+    undoButton = std::make_unique<Pill> ("ANNULER", [this] { proc.undo(); }, 11.5f);
+    redoButton = std::make_unique<Pill> (juce::String::fromUTF8 ("R\xc3\x89TABLIR"), [this] { proc.redo(); }, 11.5f);
+    ideaInfo = std::make_unique<InfoLabel>();
+    addToCanvas (*dice, { 682, 314, 80, 38 });
+    addToCanvas (*encore, { 766, 314, 80, 38 });
+    addToCanvas (*style, { 682, 358, 164, 26 });
+    addToCanvas (*swing, { 682, 390, 164, 26 });
+    addToCanvas (*undoButton, { 682, 422, 80, 26 });
+    addToCanvas (*redoButton, { 766, 422, 80, 26 });
+    addToCanvas (*ideaInfo, { 682, 456, 164, 48 });
+    ideaStrip = std::make_unique<IdeaStrip> (p);
+    ideaStrip->onSelect = [this] { showPage (2); };
+    addToCanvas (*ideaStrip, { 6, 518, 848, 78 });
 
     // the pages under the tabs: SON (the host parameters) and TRANCHE (the selected slice's own)
     tabSound = std::make_unique<Pill> ("SON", [this] { showPage (0); }, 12.0f);
     tabSlice = std::make_unique<Pill> ("TRANCHE", [this] { showPage (1); }, 12.0f);
     tabSound->setTooltip (juce::String::fromUTF8 ("Le son de toutes les tranches : l'enveloppe, le pitch, le filtre, la v\xc3\xa9locit\xc3\xa9, le mode"));
     tabSlice->setTooltip (juce::String::fromUTF8 ("Les r\xc3\xa9glages de la tranche s\xc3\xa9lectionn\xc3\xa9""e (clique une tranche ou une touche)"));
-    addToCanvas (*tabSound, { 340, 314, 64, 22 });
-    addToCanvas (*tabSlice, { 408, 314, 82, 22 });
+    tabSequence = std::make_unique<Pill> (juce::String::fromUTF8 ("S\xc3\x89QUENCE"), [this] { showPage (2); }, 12.0f);
+    tabSequence->setTooltip (juce::String::fromUTF8 ("Les pas de l'id\xc3\xa9""e choisie, \xc3\xa0 corriger \xc3\xa0 la main"));
+    addToCanvas (*tabSound, { 340, 314, 56, 22 });
+    addToCanvas (*tabSlice, { 400, 314, 76, 22 });
+    addToCanvas (*tabSequence, { 480, 314, 90, 22 });
     sliceTitle = std::make_unique<InfoLabel>();
-    addToCanvas (*sliceTitle, { 494, 314, 168, 22 });
+    addToCanvas (*sliceTitle, { 574, 314, 88, 22 });
+    stepGrid = std::make_unique<StepGrid> (p);
+    addToCanvas (*stepGrid, { 336, 342, 328, 162 });
 
     {
         using E = DaftChunkEngine;
@@ -425,9 +430,12 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
         resetSlice->setTooltip (juce::String::fromUTF8 ("Remet cette tranche \xc3\xa0 z\xc3\xa9ro"));
         applyAll = std::make_unique<Pill> (juce::String::fromUTF8 ("\xc3\x80 TOUTES"), [this] { proc.applyToAllSlices (proc.getSelectedSlice()); }, 12.0f);
         applyAll->setTooltip (juce::String::fromUTF8 ("Donne les r\xc3\xa9glages de cette tranche \xc3\xa0 toutes les tranches"));
-        addToCanvas (*reverse, { 340, 440, 100, 30 });
-        addToCanvas (*resetSlice, { 448, 440, 90, 30 });
-        addToCanvas (*applyAll, { 546, 440, 116, 30 });
+        lockButton = std::make_unique<Pill> ("VERROU", [this] { proc.toggleLock (proc.getSelectedSlice()); }, 12.0f);
+        lockButton->setTooltip (juce::String::fromUTF8 ("Verrouill\xc3\xa9""e, la tranche garde sa place : le D\xc3\x89 ne la d\xc3\xa9place jamais"));
+        addToCanvas (*reverse, { 338, 440, 80, 30 });
+        addToCanvas (*lockButton, { 422, 440, 74, 30 });
+        addToCanvas (*resetSlice, { 500, 440, 70, 30 });
+        addToCanvas (*applyAll, { 574, 440, 88, 30 });
     }
     showPage (0);
 
@@ -504,6 +512,23 @@ void DaftChunkEditor::editorTick (double)
         if (load != nullptr)
             updateToolbar();
     }
+    if (ideaStrip != nullptr)
+    {
+        ideaStrip->refresh();
+        stepGrid->refresh();
+        if (proc.getIdeasVersion() != shownIdeas || proc.getKitVersion() != shownGenKit || proc.getStatus() != shownStatus)
+        {
+            shownIdeas = proc.getIdeasVersion();
+            shownGenKit = proc.getKitVersion();
+            shownStatus = proc.getStatus();
+            updateGenerator();
+            if (page == 1)
+                updateSlicePage();
+        }
+        const float sw = proc.getKnobParameter (DaftChunkEngine::swingKnob).convertFrom0to1 (proc.getKnobParameter (DaftChunkEngine::swingKnob).getValue());
+        swing->setValue (sw / 0.75f);
+        style->setText (styleName ((Style) proc.getChoiceParameter (DaftChunkEngine::styleChoice).getIndex()));
+    }
     if (proc.getSelectedSlice() != shownSelected || proc.getKitVersion() != shownSliceVersion)
     {
         shownSelected = proc.getSelectedSlice();
@@ -518,6 +543,9 @@ void DaftChunkEditor::showPage (int index)
     page = index;
     tabSound->setSelected (page == 0);
     tabSlice->setSelected (page == 1);
+    tabSequence->setSelected (page == 2);
+    stepGrid->setVisible (page == 2);
+    lockButton->setVisible (page == 1);
     for (auto& k : soundKnobs)
         k->setVisible (page == 0);
     modeSelector->setVisible (page == 0);
@@ -537,7 +565,7 @@ void DaftChunkEditor::updateSlicePage()
     const bool has = kit != nullptr && juce::isPositiveAndBelow (sel, (int) kit->slices.size());
     const auto sp = proc.getSliceParams (sel);
     const auto dot = juce::String::fromUTF8 (" \xc2\xb7 ");
-    sliceTitle->set (has ? "TRANCHE " + juce::String (sel + 1) + dot + typeName (kit->slices[(size_t) sel].type) + dot + SliceKeys::noteName (DaftChunkEngine::baseNote + sel)
+    sliceTitle->set (has ? juce::String (sel + 1) + dot + typeName (kit->slices[(size_t) sel].type) + dot + SliceKeys::noteName (DaftChunkEngine::baseNote + sel)
                          : juce::String ("PAS DE TRANCHE"),
                      ! has);
     const float v[] { sp.pitch, sp.gainDb, sp.filter, sp.start, sp.end };
@@ -547,7 +575,8 @@ void DaftChunkEditor::updateSlicePage()
         sliceKnobs[(size_t) i]->setEnabled (has);
     }
     reverse->setSelected (sp.reverse);
-    for (auto* b : { reverse.get(), resetSlice.get(), applyAll.get() })
+    lockButton->setSelected (proc.isLocked (sel));
+    for (auto* b : { reverse.get(), resetSlice.get(), applyAll.get(), lockButton.get() })
         b->setEnabled (has);
 }
 
@@ -568,6 +597,48 @@ void DaftChunkEditor::chooseFile()
                                   proc.loadFile (f);
                               updateToolbar();
                           });
+}
+
+void DaftChunkEditor::updateGenerator()
+{
+    const bool has = proc.getSample() != nullptr && proc.getKit() != nullptr && ! proc.getKit()->slices.empty();
+    dice->setEnabled (has);
+    dice->setSelected (has);
+    const int sel = proc.getSelectedIdea();
+    encore->setEnabled (has && sel >= 0);
+    undoButton->setEnabled (proc.canUndo());
+    redoButton->setEnabled (proc.canRedo());
+    if (proc.getStatus().isNotEmpty() && proc.getSample() != nullptr)
+        ideaInfo->set (proc.getStatus(), true);
+    else if (sel >= 0)
+    {
+        const auto& pt = proc.getIdea (sel).pattern;
+        ideaInfo->set (juce::String::fromUTF8 ("ID\xc3\x89""E ") + juce::String (sel + 1) + juce::String::fromUTF8 (" \xc2\xb7 ") + juce::String (pt.bars) + " MES."
+                       + juce::String::fromUTF8 (" \xc2\xb7 #") + juce::String ((juce::int64) pt.seed % 100000));
+        ideaInfo->setTooltip (juce::String::fromUTF8 ("La graine de l'id\xc3\xa9""e : la m\xc3\xaame graine redonne la m\xc3\xaame boucle. CHOP ") + juce::String (juce::roundToInt (pt.chop * 100.0f)) + " %, "
+                              + styleName (pt.style));
+    }
+    else
+        ideaInfo->set (has ? juce::String::fromUTF8 ("Lance le D\xc3\x89 !") : juce::String ("Charge un sample"), true);
+}
+
+void DaftChunkEditor::showStyleMenu()
+{
+    juce::PopupMenu m;
+    auto& c = proc.getChoiceParameter (DaftChunkEngine::styleChoice);
+    for (int i = 0; i < numStyles; ++i)
+        m.addItem (i + 1, styleName ((Style) i), true, c.getIndex() == i);
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (style.get()),
+                     [this] (int r)
+                     {
+                         if (r < 1)
+                             return;
+                         auto& ch = proc.getChoiceParameter (DaftChunkEngine::styleChoice);
+                         ch.beginChangeGesture();
+                         ch.setValueNotifyingHost (ch.convertTo0to1 ((float) (r - 1)));
+                         ch.endChangeGesture();
+                         style->setText (styleName ((Style) (r - 1)));
+                     });
 }
 
 void DaftChunkEditor::showSyncMenu()

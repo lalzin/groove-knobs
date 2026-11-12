@@ -93,6 +93,22 @@ int main (int argc, char* argv[])
         p->setSliceParams (6, sp);
         writePng (shoot (*p, 1.0f, 1), out.getChildFile ("dc_slice_page.png"));
     }
+    {
+        // the ideas: three dice, an ENCORE, one playing, the SEQUENCE page
+        p->setMode (daftchunk::SliceMode::grid);
+        p->setDivision (16);
+        p->getAmountParameter().setValueNotifyingHost (0.55f);
+        p->rollDice();
+        p->rollDice();
+        p->rollDice();
+        p->selectIdea (1);
+        p->encore();
+        p->toggleStar (1);
+        p->togglePlay (1);
+        playSlice (*p, 3);
+        writePng (shoot (*p, 1.0f, 2), out.getChildFile ("dc_ideas.png"));
+        writePng (shoot (*p, 2.0f, 2), out.getChildFile ("dc_ideas@2x.png"));
+    }
     std::cout << "screenshots in " << out.getFullPathName() << std::endl;
     return 0;
 }

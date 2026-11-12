@@ -24,7 +24,7 @@ namespace
         cfg.hasPresetParameter = false; // the presets come with step 5
         cfg.editorBuildsControls = false;
         cfg.editorWidth = 860;
-        cfg.editorHeight = 580;
+        cfg.editorHeight = 660;
         // the sound (the SON page): host parameters, in DaftChunkEngine::Knob order
         using E = DaftChunkEngine;
         cfg.knobs = { { "attack", "Attack", "ATTACK", 0.0005f, 0.0005f, 2.0f, 0.25f, "s" },
@@ -35,7 +35,8 @@ namespace
                       { "cutoff", "Filter", "FILTER", 20000.0f, 20.0f, 20000.0f, 0.25f, "Hz" },
                       { "reso", "Resonance", "RESO", 0.0f },
                       { "velocity", "Velocity", "VEL", 0.7f },
-                      { "volume", "Volume", "VOLUME", 0.0f, -60.0f, 6.0f, 3.02f, "dB" } };
+                      { "volume", "Volume", "VOLUME", 0.0f, -60.0f, 6.0f, 3.02f, "dB" },
+                      { "swing", "Swing", "SWING", 0.0f, 0.0f, 0.75f, 1.0f, "%" } };
         const auto time = [] (float v) { return v < 1.0f ? juce::String (v * 1000.0f, v < 0.01f ? 1 : 0) + " ms" : juce::String (v, 2) + " s"; };
         cfg.knobs[E::attackKnob].textFromValue = time;
         cfg.knobs[E::decayKnob].textFromValue = time;
@@ -46,7 +47,8 @@ namespace
         cfg.outputGainKnob = E::volumeKnob;
         cfg.choices = { { "mode", "Mode", "MODE", { "Coupe", "Poly" }, E::cut, true },
                         { "play", "Play", "LECTURE", { "One shot", "Gate" }, E::gate, true },
-                        { "sync", "Sync", "SYNC", { "Libre", "Tempo", "Vinyle" }, E::tempo, true } };
+                        { "sync", "Sync", "SYNC", { "Libre", "Tempo", "Vinyle" }, E::tempo, true },
+                        { "style", "Style", "STYLE", { "Filter Touch", "Disco Loop", "Vocal Chop", "Stutter House", "Reverse Party", "Pitch Party" }, 0, true } };
         cfg.tailSeconds = 0.1;
         cfg.featuresFromOutput = true; // (an instrument: Chunky hears what it plays)
         return cfg;
@@ -81,6 +83,7 @@ DaftChunkProcessor::~DaftChunkProcessor()
 {
     stopTimer();
     getDsp().setKit (nullptr);
+    getDsp().setSequence (nullptr);
 }
 
 juce::AudioProcessorEditor* DaftChunkProcessor::createEditor()
@@ -95,6 +98,7 @@ void DaftChunkProcessor::loadFile (const juce::File& file)
     settings.firstBeat = -1.0;
     pendingBoundaries.clear();
     sliceParams.clear();
+    locked.clear();
     selected = 0;
     samplePath = file.getFullPathName();
     status = {};
@@ -296,6 +300,198 @@ void DaftChunkProcessor::freeRetired (bool force)
     retired.erase (std::remove_if (retired.begin(), retired.end(),
                                    [&] (const Retired& r) { return force || (t - r.since > 1.0 && r.kit.get() != inUse); }),
                    retired.end());
+    const auto* seqInUse = getDsp().sequenceInUse();
+    retiredSeqs.erase (std::remove_if (retiredSeqs.begin(), retiredSeqs.end(),
+                                       [&] (const RetiredSeq& r) { return force || (t - r.since > 1.0 && r.pattern.get() != seqInUse); }),
+                       retiredSeqs.end());
+}
+
+//==============================================================================
+SourceInfo DaftChunkProcessor::sourceInfo() const
+{
+    if (kit == nullptr || sample == nullptr || kit->slices.empty())
+        return {};
+    const double sixteenth = sample->analysis.beatSamples (getBpm()) / 4.0;
+    return describe (kit->slices, sample->analysis.key, getFirstBeat(), sixteenth, sample->analysis.numSamples, locked);
+}
+
+void DaftChunkProcessor::remember()
+{
+    undoStack.push_back ({ ideas, locked });
+    if (undoStack.size() > 50)
+        undoStack.erase (undoStack.begin());
+    redoStack.clear();
+}
+
+void DaftChunkProcessor::ideasChanged()
+{
+    ++ideasVersion;
+    // what plays follows its edits (a new pattern object: the old one retires)
+    if (playingIdea >= 0 && ideas[(size_t) playingIdea].used)
+    {
+        if (sequence != nullptr)
+            retiredSeqs.push_back ({ sequence, now() });
+        sequence = std::make_shared<const Pattern> (ideas[(size_t) playingIdea].pattern);
+        getDsp().setSequence (sequence.get());
+    }
+    else if (playingIdea >= 0)
+        setPlaying (-1);
+    sendChangeMessage();
+}
+
+void DaftChunkProcessor::setPlaying (int i)
+{
+    playingIdea = juce::isPositiveAndBelow (i, numIdeas) && ideas[(size_t) i].used ? i : -1;
+    if (sequence != nullptr)
+        retiredSeqs.push_back ({ sequence, now() });
+    sequence = playingIdea >= 0 ? std::make_shared<const Pattern> (ideas[(size_t) playingIdea].pattern) : nullptr;
+    getDsp().setSequence (sequence.get());
+    ++ideasVersion;
+    sendChangeMessage();
+}
+
+int DaftChunkProcessor::freeSlot (int except)
+{
+    for (int i = 0; i < numIdeas; ++i)
+        if (! ideas[(size_t) i].used)
+            return i;
+    int oldest = -1;
+    for (int i = 0; i < numIdeas; ++i)
+        if (i != except && ! ideas[(size_t) i].starred && (oldest < 0 || ideas[(size_t) i].age < ideas[(size_t) oldest].age))
+            oldest = i;
+    return oldest;
+}
+
+int DaftChunkProcessor::rollDice()
+{
+    const auto src = sourceInfo();
+    if (src.types.empty())
+        return -1;
+    const int slot = freeSlot();
+    if (slot < 0)
+    {
+        status = juce::String::fromUTF8 ("Les 8 id\xc3\xa9""es ont une \xc3\xa9toile : enl\xc3\xa8ve-en une");
+        sendChangeMessage();
+        return -1;
+    }
+    remember();
+    const auto style = (Style) getChoiceParameter (DaftChunkEngine::styleChoice).getIndex();
+    const float chop = getAmountParameter().convertFrom0to1 (getAmountParameter().getValue());
+    const auto seed = (uint32_t) juce::Random::getSystemRandom().nextInt (0x7fffffff);
+    auto& idea = ideas[(size_t) slot];
+    idea.pattern = generate (src, style, chop, seed);
+    idea.used = true;
+    idea.starred = false;
+    idea.age = ++ideaAge;
+    selectedIdea = slot;
+    ++diceVersion;
+    setPlaying (slot); // heard at once, on the host's bars
+    ideasChanged();
+    return slot;
+}
+
+int DaftChunkProcessor::encore()
+{
+    const auto src = sourceInfo();
+    if (src.types.empty() || ! juce::isPositiveAndBelow (selectedIdea, numIdeas) || ! ideas[(size_t) selectedIdea].used)
+        return 0;
+    remember();
+    const auto base = ideas[(size_t) selectedIdea].pattern;
+    int made = 0;
+    for (int v = 0; v < 4; ++v)
+    {
+        const int slot = freeSlot (selectedIdea);
+        if (slot < 0 || slot == selectedIdea)
+            break;
+        auto& idea = ideas[(size_t) slot];
+        idea.pattern = mutate (base, src, (uint32_t) juce::Random::getSystemRandom().nextInt (0x7fffffff));
+        idea.used = true;
+        idea.starred = false;
+        idea.age = ++ideaAge;
+        ++made;
+    }
+    ++diceVersion;
+    ideasChanged();
+    return made;
+}
+
+void DaftChunkProcessor::toggleStar (int i)
+{
+    if (! juce::isPositiveAndBelow (i, numIdeas) || ! ideas[(size_t) i].used)
+        return;
+    remember();
+    ideas[(size_t) i].starred = ! ideas[(size_t) i].starred;
+    ideasChanged();
+}
+
+void DaftChunkProcessor::deleteIdea (int i)
+{
+    if (! juce::isPositiveAndBelow (i, numIdeas) || ! ideas[(size_t) i].used)
+        return;
+    remember();
+    ideas[(size_t) i] = {};
+    if (selectedIdea == i)
+        selectedIdea = -1;
+    ideasChanged();
+}
+
+void DaftChunkProcessor::togglePlay (int i)
+{
+    if (! juce::isPositiveAndBelow (i, numIdeas) || ! ideas[(size_t) i].used)
+        return;
+    selectedIdea = i;
+    setPlaying (playingIdea == i ? -1 : i);
+}
+
+void DaftChunkProcessor::selectIdea (int i)
+{
+    selectedIdea = juce::isPositiveAndBelow (i, numIdeas) && ideas[(size_t) i].used ? i : -1;
+    ++ideasVersion;
+    sendChangeMessage();
+}
+
+void DaftChunkProcessor::setStep (int i, int k, const Step& st)
+{
+    if (! juce::isPositiveAndBelow (i, numIdeas) || ! ideas[(size_t) i].used || ! juce::isPositiveAndBelow (k, ideas[(size_t) i].pattern.numSteps()))
+        return;
+    if (ideas[(size_t) i].pattern.steps[(size_t) k] == st)
+        return;
+    remember();
+    ideas[(size_t) i].pattern.steps[(size_t) k] = st;
+    ideasChanged();
+}
+
+void DaftChunkProcessor::toggleLock (int slice)
+{
+    const int n = kit != nullptr ? (int) kit->slices.size() : 0;
+    if (! juce::isPositiveAndBelow (slice, n))
+        return;
+    remember();
+    locked.resize ((size_t) n, false);
+    locked[(size_t) slice] = ! locked[(size_t) slice];
+    ideasChanged();
+}
+
+void DaftChunkProcessor::undo()
+{
+    if (undoStack.empty())
+        return;
+    redoStack.push_back ({ ideas, locked });
+    ideas = undoStack.back().ideas;
+    locked = undoStack.back().locked;
+    undoStack.pop_back();
+    ideasChanged();
+}
+
+void DaftChunkProcessor::redo()
+{
+    if (redoStack.empty())
+        return;
+    undoStack.push_back ({ ideas, locked });
+    ideas = redoStack.back().ideas;
+    locked = redoStack.back().locked;
+    redoStack.pop_back();
+    ideasChanged();
 }
 
 void DaftChunkProcessor::setMode (SliceMode m)
@@ -443,6 +639,31 @@ void DaftChunkProcessor::saveExtraState (juce::ValueTree& state)
                     + juce::String (p.end, 4) + " " + (p.reverse ? "1" : "0"));
         state.setProperty ("sliceParams", ps.joinIntoString (";"), nullptr);
     }
+    {
+        // ideas: "used starred bars seed style chop filterBars pump|step;step;..." per slot, "/" between slots
+        juce::StringArray slots;
+        for (const auto& idea : ideas)
+        {
+            if (! idea.used)
+            {
+                slots.add ("-");
+                continue;
+            }
+            const auto& pt = idea.pattern;
+            juce::StringArray st;
+            for (const auto& x : pt.steps)
+                st.add (juce::String (x.slice) + ":" + juce::String (x.pitch) + ":" + juce::String (x.repeat) + ":" + (x.reverse ? "1" : "0") + ":" + (x.cut ? "1" : "0") + ":"
+                        + juce::String (x.velocity, 3));
+            slots.add ((idea.starred ? juce::String ("1 ") : juce::String ("0 ")) + juce::String (pt.bars) + " " + juce::String ((juce::int64) pt.seed) + " " + juce::String ((int) pt.style) + " "
+                       + juce::String (pt.chop, 3) + " " + juce::String (pt.filterBars) + " " + (pt.pump ? "1" : "0") + "|" + st.joinIntoString (";"));
+        }
+        state.setProperty ("ideas", slots.joinIntoString ("/"), nullptr);
+        juce::StringArray lk;
+        for (bool b : locked)
+            lk.add (b ? "1" : "0");
+        state.setProperty ("locked", lk.joinIntoString (","), nullptr);
+        state.setProperty ("selectedIdea", selectedIdea, nullptr);
+    }
     state.setProperty ("sampleLength", sample != nullptr ? (juce::int64) sample->analysis.numSamples : (juce::int64) -1, nullptr);
 }
 
@@ -472,6 +693,54 @@ void DaftChunkProcessor::loadExtraState (const juce::ValueTree& state)
             p.reverse = v[5] == "1";
         }
         sliceParams.push_back (p);
+    }
+    {
+        ideas = {};
+        const auto slots = juce::StringArray::fromTokens (state.getProperty ("ideas").toString(), "/", "");
+        for (int i = 0; i < std::min (slots.size(), numIdeas); ++i)
+        {
+            const auto head = slots[i].upToFirstOccurrenceOf ("|", false, false);
+            const auto body = slots[i].fromFirstOccurrenceOf ("|", false, false);
+            const auto h = juce::StringArray::fromTokens (head, " ", "");
+            if (slots[i] == "-" || h.size() < 7)
+                continue;
+            auto& idea = ideas[(size_t) i];
+            idea.used = true;
+            idea.starred = h[0] == "1";
+            idea.age = ++ideaAge;
+            auto& pt = idea.pattern;
+            pt.bars = juce::jlimit (1, 4, h[1].getIntValue());
+            pt.seed = (uint32_t) h[2].getLargeIntValue();
+            pt.style = (Style) juce::jlimit (0, numStyles - 1, h[3].getIntValue());
+            pt.chop = h[4].getFloatValue();
+            pt.filterBars = h[5].getIntValue();
+            pt.pump = h[6] == "1";
+            for (const auto& st : juce::StringArray::fromTokens (body, ";", ""))
+            {
+                const auto f = juce::StringArray::fromTokens (st, ":", "");
+                Step x;
+                if (f.size() >= 6)
+                {
+                    x.slice = f[0].getIntValue();
+                    x.pitch = juce::jlimit (-24, 24, f[1].getIntValue());
+                    x.repeat = juce::jlimit (1, 4, f[2].getIntValue());
+                    x.reverse = f[3] == "1";
+                    x.cut = f[4] == "1";
+                    x.velocity = juce::jlimit (0.0f, 1.0f, f[5].getFloatValue());
+                }
+                pt.steps.push_back (x);
+            }
+            pt.steps.resize ((size_t) pt.bars * Pattern::stepsPerBar);
+        }
+        locked.clear();
+        for (const auto& b : juce::StringArray::fromTokens (state.getProperty ("locked").toString(), ",", ""))
+            locked.push_back (b == "1");
+        selectedIdea = (int) state.getProperty ("selectedIdea", -1);
+        if (! juce::isPositiveAndBelow (selectedIdea, numIdeas) || ! ideas[(size_t) selectedIdea].used)
+            selectedIdea = -1;
+        undoStack.clear();
+        redoStack.clear();
+        setPlaying (-1);
     }
     samplePath = state.getProperty ("samplePath").toString();
     status = {};

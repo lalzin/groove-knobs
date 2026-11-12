@@ -3,7 +3,8 @@ juce_add_console_app(dc_tests PRODUCT_NAME "dc_tests")
 target_sources(dc_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../TestMain.cpp
     DcAnalysisTests.cpp
-    DcTests.cpp)
+    DcTests.cpp
+    DcGeneratorTests.cpp)
 target_include_directories(dc_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../common)
 target_link_libraries(dc_tests PRIVATE
     DaftChunkCode

@@ -908,3 +908,41 @@ Une ligne par décision : **contexte** — choix — raison.
 - **L'interface.** Un sélecteur SYNC dans la barre d'outils, qui affiche « CALAGE… » pendant le calcul et donne le tempo d'Ableton dans son menu.
 - **Les tests.** Avec un hôte à 126 BPM et un sample à 120 : en TEMPO, la tranche d'un temps dure un temps à 126 et reste à 220 Hz ; en VINYLE, elle est plus courte et plus aiguë de 5 % ; en LIBRE, rien ne change ; sans hôte, rien ne change ; un changement de tempo ou de BPM du sample relance l'étirement.
 - **Un bug corrigé en passant.** Un `WaitableEvent (true)` n'est pas signalé au départ : attendre un worker qui n'avait rien reçu bloquait.
+
+## DAFT CHUNK — étape 3 : le générateur d'idées (2026-11-12)
+
+- **Le générateur** (`Generator.cpp`, sans JUCE) écrit une boucle de 1, 2 ou 4 mesures en doubles croches. Chaque pas porte : une tranche ou rien, un décalage de hauteur, une répétition (x2 = 1/32, x4 = 1/64), une inversion, une coupure, une vélocité. Il part de `describe()` : la tranche qui démarre sur chaque 16e de la grille du sample depuis le temps 1, les types, les hauteurs, la tonalité et les verrous.
+- **CHOP** dose des probabilités en courbes douces :
+  - 0 : l'ordre d'origine, exactement ;
+  - à partir de 0,05 : des échanges entre tranches du même rôle (kick, snare, hat, autre) ;
+  - vers 0,25 : le temps 3 reprend la tranche du temps 1 ;
+  - vers 0,5 : des stutters ;
+  - à partir de 0,4 : un peu d'inversion ;
+  - à partir de 0,6 : les tranches tonales pitchées sur la gamme, et des syncopes (une croche poussée sur la 16e suivante) ;
+  - à partir de 0,8 : n'importe quelle tranche et des remplissages ;
+  - à partir de 0,85 : des coupures rythmiques, et des boucles plus courtes.
+- **Les règles** s'appliquent aux pas que le dé a changés, pour que CHOP 0 reste le sample tel quel :
+  - le temps 1 de chaque mesure reçoit un KICK ou la tranche d'origine, jamais une coupure ;
+  - les temps 2 et 4 prennent une SNARE à 70 % ;
+  - toute tranche tonale ou VOIX pitchée retombe sur la gamme (la note la plus proche) ;
+  - le dernier pas relance la boucle : la dernière tranche d'origine avant la barre de mesure, ou un stutter de la précédente.
+- **Les styles :**
+  - FILTER TOUCH : une phrase de 1 ou 2 temps répétée, avec un filtre qui s'ouvre sur 8 mesures et une pompe ; ces deux gestes sont notés dans l'idée pour l'étape 5 ;
+  - DISCO LOOP : fidèle, les changements seulement dans la dernière mesure ;
+  - VOCAL CHOP : seulement les VOIX (sinon TONAL), sur les croches et quelques doubles ;
+  - STUTTER HOUSE : le dernier temps de chaque mesure en répétitions de plus en plus serrées ;
+  - REVERSE PARTY : une tranche jouée sur quatre inversée ;
+  - PITCH PARTY : une mélodie faite d'une seule tranche tonale, par une marche sur la gamme.
+- **Bit pour bit.** Le hasard est un splitmix64 maison avec ses propres tirages, parce que les distributions de `std::` diffèrent entre libc++ et MSVC. La même graine redonne la même boucle sur toutes les machines, et le même son (testé sur deux processeurs).
+- **ENCORE** fait 4 variantes de l'idée choisie. Dans chacune, 10 à 25 % des pas changent : un échange de même rôle, un pas ajouté ou vidé (jamais un temps), une répétition, une inversion ou une hauteur. Le temps 1 reste.
+- **Les 8 emplacements.** Un DÉ va dans un emplacement libre, sinon dans le plus ancien sans étoile ; si les 8 sont étoilés, un message le dit. L'idée se joue tout de suite, calée sur les mesures d'Ableton : le pas vient de la position de l'hôte, qui avance aussi à l'arrêt grâce à `HostSync`.
+- **Le swing** (0 à 75 %, paramètre) retarde les doubles croches impaires de swing × 1/8 de temps, soit 3/8 de double croche à 75 %. Le test le vérifie à 150 échantillons près.
+- **Le moteur** fusionne dans l'ordre du temps les pas de l'idée et les notes MIDI, sans `std::function` ni allocation dans le fil audio (testé). Un pas dure sa double croche, divisée par sa répétition, en GATE ; une coupure coupe tout en 3 ms.
+- **Les verrous** (bouton VERROU de la page TRANCHE) : une tranche verrouillée garde ses pas et n'est mise nulle part ailleurs.
+- **ANNULER / RÉTABLIR** gardent 50 instantanés des idées et des verrous.
+- **La session** garde les idées (pas, graine, style, CHOP, étoile), les verrous et l'idée choisie. Rien ne joue à la réouverture.
+- **L'interface** passe à 860 × 660 :
+  - une bande de 8 idées sous le milieu : chaque idée en miniature, avec lecture, étoile et croix ;
+  - DÉ, ENCORE, STYLE, SWING, ANNULER et RÉTABLIR à droite, avec la graine de l'idée choisie ;
+  - un onglet SÉQUENCE avec 16 pas par page (MESURE 1 à 4) : un clic pose la tranche sélectionnée, la molette change la tranche (maj : la hauteur), le clic droit donne inverser, répéter, hauteur, couper et vider.
+- **Chunky** secoue le dé, puis tend le bloc vers les idées.
