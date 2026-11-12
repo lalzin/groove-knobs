@@ -70,21 +70,89 @@ namespace
         return t == SliceType::tonal || t == SliceType::voice;
     }
 
-    /** The semitone offset that puts slice `slice` on scale degree `degree` (any octave, near 0). */
+    /** The semitone offset that puts slice `slice` on scale degree `degree`: degree 0 is the
+        scale note nearest the slice's own pitch, +7 an octave up (so a melody stays around it). */
     int scaleOffset (const SourceInfo& src, int slice, int degree) noexcept
     {
-        const auto scale = src.key.scale();
-        const int octave = (int) std::floor (degree / 7.0);
-        const int d = ((degree % 7) + 7) % 7;
-        const int target = scale[(size_t) d] + 12 * octave; // a pitch class (+ octaves)
+        const auto scale = src.key.scale(); // pitch classes, tonic first
         const float root = slice >= 0 && slice < (int) src.roots.size() ? src.roots[(size_t) slice] : -1.0f;
         const int rootPc = root >= 0.0f ? ((int) std::lround (root) % 12 + 12) % 12 : src.key.tonic;
-        int off = target - rootPc;
-        while (off > 12)
-            off -= 12;
-        while (off < -12)
-            off += 12;
-        return off;
+        // the scale degree nearest the root
+        int near0 = 0, best = 99;
+        for (int d = 0; d < 7; ++d)
+        {
+            int diff = ((scale[(size_t) d] - rootPc) % 12 + 12) % 12;
+            if (diff > 6)
+                diff -= 12;
+            if (std::abs (diff) < best)
+            {
+                best = std::abs (diff);
+                near0 = d;
+            }
+        }
+        // semitones above the tonic of scale degree d (any d: octaves included)
+        auto semis = [&] (int d) { const int o = (int) std::floor (d / 7.0); return ((scale[(size_t) (((d % 7) + 7) % 7)] - scale[0]) % 12 + 12) % 12 + 12 * o; };
+        int nearOff = ((scale[(size_t) near0] - rootPc) % 12 + 12) % 12;
+        if (nearOff > 6)
+            nearOff -= 12;
+        const int off = nearOff + semis (near0 + degree) - semis (near0);
+        return std::clamp (off, -24, 24);
+    }
+
+    /** A pool of melodic slices: the voices, topped up with tones, then the rest (3 at least). */
+    std::vector<int> melodicPool (const Pools& p, bool preferTonal)
+    {
+        std::vector<int> pool = preferTonal ? p.tonal : p.voice;
+        for (const auto* more : { preferTonal ? &p.voice : &p.tonal, &p.byRole[3], &p.all })
+            if (pool.size() < 3)
+                for (int i : *more)
+                    if (std::find (pool.begin(), pool.end(), i) == pool.end())
+                        pool.push_back (i);
+        return pool;
+    }
+
+    /** Up to `count` different slices from `pool`. */
+    std::vector<int> palette (std::vector<int> pool, int count, Random& r)
+    {
+        std::vector<int> out;
+        while ((int) out.size() < count && ! pool.empty())
+        {
+            const int i = r.below ((int) pool.size());
+            out.push_back (pool[(size_t) i]);
+            pool.erase (pool.begin() + i);
+        }
+        return out;
+    }
+
+    /** One-bar rhythms (1 = a hit on that 16th): tresillos, offbeats, house chops. */
+    constexpr uint16_t rhythms[] {
+        0b1001001010010010, // 3-3-2-3-3-2
+        0b1010010100101000, // 2-3-2-3...
+        0b1000101000101010,
+        0b1101001011010010,
+        0b1001000110010010,
+        0b1010101000100010,
+    };
+    bool hitAt (uint16_t rhythm, int k) noexcept { return ((rhythm >> (15 - (k % 16))) & 1u) != 0; }
+
+    /** Euclid: `hits` spread as evenly as possible over 16 steps, turned by `rotation` (always a hit on step 0). */
+    uint16_t euclid (int hits, int rotation) noexcept
+    {
+        hits = std::clamp (hits, 1, 16);
+        uint16_t m = 0;
+        for (int k = 0; k < 16; ++k)
+            if (((k + rotation) * hits) % 16 < hits)
+                m = (uint16_t) (m | (1u << (15 - k)));
+        // the rotation moves the downbeat: put a hit back on step 0
+        return (uint16_t) (m | 0x8000u);
+    }
+
+    /** A one-bar rhythm: a house template or a Euclidean one (3..9 hits, any rotation). */
+    uint16_t randomRhythm (Random& r, int minHits, int maxHits) noexcept
+    {
+        if (r.chance (0.35))
+            return rhythms[r.below ((int) (sizeof (rhythms) / sizeof (rhythms[0])))];
+        return euclid (minHits + r.below (maxHits - minHits + 1), r.below (16));
     }
 
     /** Pitched slices land on the scale. */
@@ -131,13 +199,21 @@ namespace
     void applyRules (Pattern& p, const SourceInfo& src, const std::vector<int>& base, const Pools& pools, Random& r)
     {
         const int n = p.numSteps();
+        const bool melodic = p.style == Style::vocalChop || p.style == Style::pitchParty;
         for (int k = 0; k < n; ++k)
         {
             auto& s = p.steps[(size_t) k];
             if (isLocked (src, base[(size_t) k]))
                 continue;
             const int inBar = k % Pattern::stepsPerBar;
-            if (inBar == 0)
+            if (inBar == 0 && melodic)
+            {
+                // a melodic style: beat 1 plays its own line (no kick forced in)
+                s.cut = false;
+                if (s.slice < 0)
+                    s.slice = base[(size_t) k] >= 0 ? base[(size_t) k] : soundingAt (src, k);
+            }
+            else if (inBar == 0)
             {
                 // beat 1: a KICK, or the sample's own beat 1
                 const int own = base[(size_t) k] >= 0 ? base[(size_t) k] : soundingAt (src, k);
@@ -151,7 +227,7 @@ namespace
                 if (s.slice < 0)
                     s.slice = own;
             }
-            else if ((inBar == 4 || inBar == 12) && s.slice >= 0 && s.slice != base[(size_t) k] && roleAt (src, s.slice) != snareRole
+            else if (! melodic && (inBar == 4 || inBar == 12) && s.slice >= 0 && s.slice != base[(size_t) k] && roleAt (src, s.slice) != snareRole
                      && ! pools.byRole[snareRole].empty() && r.chance (0.7))
             {
                 // beats 2 and 4 lean on the snares
@@ -270,20 +346,42 @@ Pattern generate (const SourceInfo& src, Style style, float chopIn, uint32_t see
     if (base[0] < 0)
         base[0] = soundingAt (src, from);
 
+    const bool melodic = style == Style::vocalChop || style == Style::pitchParty;
+    if (melodic)
+        std::fill (base.begin(), base.end(), -1); // their own line, not the sample's order
+    int phraseLen = n; // the steps the dice work on; FILTER TOUCH: its phrase, then repeated as it is
+
     switch (style)
     {
         case Style::filterTouch:
         {
-            // a phrase of 1 or 2 beats, repeated (the French touch gesture); the filter opens over 8 bars
-            const int len = r.chance (0.5) ? 4 : 8;
-            const int beats = std::max (1, total / 4 - len / 4 + 1);
-            const int start = (c < 0.05 ? 0 : r.below (beats)) * 4;
-            for (int k = 0; k < n; ++k)
+            // a phrase of 1 or 2 beats, from a beat that starts with a hit, repeated (the French touch
+            // gesture: the same short loop, the filter opening over 8 bars)
+            phraseLen = c > 0.5 && r.chance (0.25) ? 2 : r.chance (0.5) ? 4 : 8;
+            // the phrase starts on a beat (or an off-beat 8th) that has a hit
+            std::vector<int> starts;
+            for (int k = 0; k + phraseLen <= total; k += 2)
+                if (originalAt (src, k) >= 0 && (k % 4 == 0 || r.chance (0.3)))
+                    starts.push_back (k);
+            auto startAt = [&] { return c < 0.05 || starts.empty() ? 0 : starts[(size_t) r.below ((int) starts.size())]; };
+            const int start = startAt();
+            for (int k = 0; k < phraseLen; ++k)
+                base[(size_t) k] = originalAt (src, start + k);
+            if (base[0] < 0)
+                base[0] = soundingAt (src, start);
+            for (int k = phraseLen; k < n; ++k)
+                base[(size_t) k] = base[(size_t) (k % phraseLen)];
+            // A A A B: the bar's last phrase from elsewhere (with CHOP)
+            if (c > 0.3 && phraseLen < Pattern::stepsPerBar && r.chance (0.6))
             {
-                int s = originalAt (src, start + k % len);
-                if (k % len == 0 && s < 0)
-                    s = soundingAt (src, start);
-                base[(size_t) k] = s;
+                const int other = startAt(), from2 = Pattern::stepsPerBar - phraseLen;
+                for (int k = 0; k < phraseLen; ++k)
+                    base[(size_t) (from2 + k)] = originalAt (src, other + k);
+                if (base[(size_t) from2] < 0)
+                    base[(size_t) from2] = soundingAt (src, other);
+                phraseLen = Pattern::stepsPerBar; // the whole bar is the phrase now
+                for (int k = phraseLen; k < n; ++k)
+                    base[(size_t) k] = base[(size_t) (k % phraseLen)];
             }
             p.filterBars = 8;
             p.pump = true;
@@ -291,30 +389,84 @@ Pattern generate (const SourceInfo& src, Style style, float chopIn, uint32_t see
         }
         case Style::vocalChop:
         {
-            const auto& pool = ! pools.voice.empty() ? pools.voice : ! pools.tonal.empty() ? pools.tonal : pools.byRole[otherRole].empty() ? pools.all : pools.byRole[otherRole];
-            for (int k = 0; k < n; ++k)
+            // a one-bar rhythm, a small palette of voices (A A B A C...), the second bar answers the first
+            const auto pal = palette (melodicPool (pools, false), 2 + (c > 0.4 ? 1 : 0) + (c > 0.75 ? 1 : 0), r);
+            if (pal.empty())
+                break;
+            const auto rhythm = randomRhythm (r, 4, 8 + (c > 0.5 ? 1 : 0));
+            // how the voices take turns: one of a few orders (A A B A, A B A C, A B B A...)
+            static constexpr int orders[][8] { { 0, 0, 1, 0, 2, 1, 0, 3 }, { 0, 1, 0, 2, 0, 1, 0, 3 }, { 0, 1, 1, 0, 2, 2, 0, 3 },
+                                               { 0, 0, 0, 1, 0, 0, 2, 3 }, { 0, 1, 2, 0, 1, 2, 3, 0 } };
+            const auto& order = orders[r.below (5)];
+            const int shift = r.below ((int) pal.size());
+            int hit = 0;
+            for (int k = 0; k < Pattern::stepsPerBar; ++k)
             {
-                const bool eighth = k % 2 == 0;
-                base[(size_t) k] = r.chance (eighth ? 0.75 : 0.2 + 0.3 * c) ? pick (pool, r) : -1;
+                const bool extra = ! hitAt (rhythm, k) && k % 2 == 1 && r.chance (0.3 * c); // denser with CHOP: "ta-ta"
+                if (! hitAt (rhythm, k) && ! extra)
+                    continue;
+                base[(size_t) k] = extra && k > 0 && base[(size_t) k - 1] >= 0 ? base[(size_t) k - 1] : pal[(size_t) ((order[hit % 8] + shift) % (int) pal.size())];
+                ++hit;
             }
-            for (int k = 0; k < n; k += Pattern::stepsPerBar) // beat 1 of every bar plays
-                if (base[(size_t) k] < 0)
-                    base[(size_t) k] = pick (pool, r);
+            if (base[0] < 0)
+                base[0] = pal[0];
+            for (int k = Pattern::stepsPerBar; k < n; ++k)
+            {
+                const int inBar = k % Pattern::stepsPerBar, bar = k / Pattern::stepsPerBar;
+                int sl = base[(size_t) inBar];
+                if (sl >= 0 && bar % 2 == 1 && inBar >= 8 && pal.size() > 1) // the answer: the second half, other voices
+                    sl = pal[(size_t) ((std::find (pal.begin(), pal.end(), sl) - pal.begin() + 1) % (long) pal.size())];
+                base[(size_t) k] = sl;
+                if (sl >= 0 && bar % 2 == 1 && inBar >= 8 && c > 0.4 && pitched (src, sl))
+                    p.steps[(size_t) k].pitch = scaleOffset (src, sl, 2); // a third up
+            }
             break;
         }
         case Style::pitchParty:
         {
-            // a melody from one tonal slice
-            const auto& pool = ! pools.tonal.empty() ? pools.tonal : ! pools.voice.empty() ? pools.voice : pools.all;
-            const int slice = pick (pool, r);
-            int degree = 0;
+            // a melody from one tonal slice: a one-bar motif, the second bar answers and comes home
+            const auto pool = melodicPool (pools, true);
+            std::vector<int> withRoot;
+            for (int i : pool)
+                if (src.roots[(size_t) i] >= 0.0f)
+                    withRoot.push_back (i);
+            const int slice = pick (withRoot.empty() ? pool : withRoot, r);
+            if (slice < 0)
+                break;
+            const auto rhythm = c < 0.25 && r.chance (0.5) ? (uint16_t) 0b1010101010101010 : randomRhythm (r, 5, 9);
+            // the melody's shape: a walk, a rise, an arch or a fall
+            std::vector<int> degrees;
+            const int shape = r.below (4);
+            int d = shape == 3 ? 5 : 0, hits = 0;
+            for (int k = 0; k < Pattern::stepsPerBar; ++k)
+                hits += hitAt (rhythm, k) || k == 0 ? 1 : 0;
+            for (int i = 0; i < hits; ++i)
+            {
+                degrees.push_back (d);
+                const int walk[] { -2, -1, 1, 1, 2, 3 };
+                const int move = shape == 0 ? walk[r.below (6)]
+                               : shape == 1 ? (r.chance (0.75) ? 1 + r.below (2) : -1)
+                               : shape == 2 ? (i < hits / 2 ? 1 + r.below (2) : -1 - r.below (2))
+                                            : (r.chance (0.75) ? -1 - r.below (2) : 1);
+                d = std::clamp (d + move, -3, 7);
+            }
             for (int k = 0; k < n; ++k)
             {
-                if (! r.chance (k % 2 == 0 ? 0.8 : 0.15 + 0.25 * c) && k % Pattern::stepsPerBar != 0)
+                const int inBar = k % Pattern::stepsPerBar, bar = k / Pattern::stepsPerBar;
+                if (! hitAt (rhythm, inBar) && inBar != 0)
                     continue;
+                int idx = 0;
+                for (int j = 0; j < inBar; ++j)
+                    idx += hitAt (rhythm, j) || j == 0 ? 1 : 0;
+                int degree = degrees[(size_t) std::min (idx, (int) degrees.size() - 1)];
+                if (bar % 2 == 1 && inBar >= 8)
+                    degree = inBar >= 12 ? 0 : degree - 2;      // the answer comes home to the root
+                if (bar >= 2 && c > 0.5 && inBar < 8)
+                    degree += 2;                                 // bars 3-4 lift a little
                 base[(size_t) k] = slice;
                 p.steps[(size_t) k].pitch = scaleOffset (src, slice, degree);
-                degree = std::clamp (degree + r.below (5) - 2, -4, 9); // a walk on the scale
+                if (c > 0.6 && r.chance (0.12 * c))
+                    p.steps[(size_t) k].repeat = 2;
             }
             break;
         }
@@ -322,6 +474,79 @@ Pattern generate (const SourceInfo& src, Style style, float chopIn, uint32_t see
         case Style::stutterHouse:
         case Style::reverseParty:
             break;
+    }
+    // beat juggling: whole beats of the sample (4 sixteenths) moved around, the way a chopper
+    // rearranges a break; each beat keeps its own groove. Never a beat holding a locked slice.
+    if (! melodic && style != Style::filterTouch && c > 0.05)
+    {
+        const std::vector<int> own = base; // the sample's order here, before any juggling
+        std::vector<int> beats; // source beats that start with a hit and hold no locked slice
+        for (int k = 0; k + 4 <= total; k += 4)
+        {
+            bool ok = originalAt (src, k) >= 0;
+            for (int q = 0; q < 4 && ok; ++q)
+                ok = ! isLocked (src, originalAt (src, k + q));
+            if (ok)
+                beats.push_back (k);
+        }
+        auto beatFree = [&] (int k0)
+        {
+            for (int q = 0; q < 4; ++q)
+                if (isLocked (src, base[(size_t) (k0 + q)]))
+                    return false;
+            return true;
+        };
+        auto juggle = [&] (int barStart, double chance, int firstBeat)
+        {
+            if (beats.empty())
+                return;
+            for (int j = firstBeat; j < 4; ++j)
+            {
+                const int k0 = barStart + j * 4;
+                if (! beatFree (k0) || ! r.chance (chance))
+                    continue;
+                // beat 1 only takes another bar's beat 1 (the rule: a kick, or the sample's own beat 1)
+                std::vector<int> pool;
+                for (int b : beats)
+                    if (j != 0 || b % Pattern::stepsPerBar == 0)
+                        pool.push_back (b);
+                if (pool.empty())
+                    continue;
+                const int from0 = pool[(size_t) r.below ((int) pool.size())];
+                for (int q = 0; q < 4; ++q)
+                    base[(size_t) (k0 + q)] = originalAt (src, from0 + q);
+            }
+        };
+        const double pj = 0.12 + 0.6 * smooth (0.1, 0.75, c);
+        const bool faithful = style == Style::discoLoop && c <= 0.5;
+        if (faithful)
+            juggle (n - Pattern::stepsPerBar, pj, 1); // DISCO LOOP: its own bars in order, the last one varied
+        else
+        {
+            // bar A, and a form over the bars (A B, A A A B, A B A B, A A B A, A B A C)
+            juggle (0, pj, c > 0.6 ? 0 : 1);
+            const std::vector<int> barA (base.begin(), base.begin() + Pattern::stepsPerBar);
+            auto variant = [&] (int bar, double extra)
+            {
+                std::copy (barA.begin(), barA.end(), base.begin() + bar * Pattern::stepsPerBar);
+                juggle (bar * Pattern::stepsPerBar, extra, 2); // beats 3 and 4 changed: a turnaround
+            };
+            static constexpr const char* forms4[] { "AAAB", "ABAB", "AABA", "ABAC", "AAAC" };
+            const char* form = bars == 4 ? forms4[r.below (5)] : bars == 2 ? (r.chance (0.8) ? "AB" : "AA") : "A";
+            for (int b = 1; b < bars; ++b)
+            {
+                if (form[b] == 'A')
+                    std::copy (barA.begin(), barA.end(), base.begin() + b * Pattern::stepsPerBar);
+                else
+                    variant (b, form[b] == 'C' ? 0.9 : 0.6);
+            }
+        }
+        // locked slices: back on their own steps, and taken off any other (a copied bar may carry them)
+        for (int k = 0; k < n; ++k)
+            if (isLocked (src, own[(size_t) k]) || isLocked (src, base[(size_t) k]))
+                base[(size_t) k] = own[(size_t) k];
+        if (base[0] < 0)
+            base[0] = soundingAt (src, from);
     }
     for (int k = 0; k < n; ++k)
         p.steps[(size_t) k].slice = base[(size_t) k];
@@ -332,12 +557,12 @@ Pattern generate (const SourceInfo& src, Style style, float chopIn, uint32_t see
 
     // how much the dice change (DISCO LOOP: only its last bar)
     const bool faithful = style == Style::discoLoop;
-    auto mutable_ = [&] (int k) { return ! frozen[(size_t) k] && (! faithful || k >= n - Pattern::stepsPerBar); };
+    auto mutable_ = [&] (int k) { return k < phraseLen && ! frozen[(size_t) k] && (! faithful || k >= n - Pattern::stepsPerBar); };
     const double amount = faithful ? 0.25 + 0.3 * c : 1.0;
 
-    if (c > 0.02)
+    if (c > 0.02 && ! melodic)
     {
-        for (int k = 0; k < n; ++k)
+        for (int k = 0; k < phraseLen; ++k)
         {
             if (! mutable_ (k))
                 continue;
@@ -354,7 +579,7 @@ Pattern generate (const SourceInfo& src, Style style, float chopIn, uint32_t see
             if (s.slice >= 0 && r.chance (amount * 0.25 * smooth (0.3, 0.8, c)))
             {
                 s.repeat = c > 0.85 && r.chance (0.5) ? 4 : 2;
-                if (k + 1 < n && r.chance (0.4) && mutable_ (k + 1))
+                if (k + 1 < phraseLen && r.chance (0.4) && mutable_ (k + 1))
                     p.steps[(size_t) k + 1].slice = s.slice;
             }
             // a little reverse
@@ -362,9 +587,9 @@ Pattern generate (const SourceInfo& src, Style style, float chopIn, uint32_t see
                 s.reverse = true;
             // tonal slices pitched on the scale
             if (pitched (src, s.slice) && r.chance (amount * 0.6 * smooth (0.6, 1.0, c)))
-                s.pitch = scaleOffset (src, s.slice, r.below (12) - 4);
+                s.pitch = scaleOffset (src, s.slice, r.below (9) - 2);
             // syncopation: an 8th pushed onto the next 16th
-            if (s.slice >= 0 && inBar % 2 == 0 && inBar != 0 && k + 1 < n && p.steps[(size_t) k + 1].slice < 0 && mutable_ (k + 1)
+            if (s.slice >= 0 && inBar % 2 == 0 && inBar != 0 && k + 1 < phraseLen && p.steps[(size_t) k + 1].slice < 0 && mutable_ (k + 1)
                 && r.chance (amount * 0.3 * smooth (0.6, 1.0, c)))
             {
                 std::swap (s, p.steps[(size_t) k + 1]);
@@ -384,33 +609,54 @@ Pattern generate (const SourceInfo& src, Style style, float chopIn, uint32_t see
                 s.cut = true;
             }
         }
+        // FILTER TOUCH: the phrase, changed once, repeated as it is
+        for (int k = phraseLen; k < n; ++k)
+            p.steps[(size_t) k] = p.steps[(size_t) (k % phraseLen)];
         // the style's own gesture
         if (style == Style::stutterHouse)
             for (int bar = 0; bar < bars; ++bar)
             {
-                const int k0 = bar * Pattern::stepsPerBar + 12; // the last beat: the same slice, faster and faster
+                // the end of the bar (or its middle), the same slice, faster and faster
+                const int at[] { 12, 12, 14, 10, 8 };
+                const int k0 = bar * Pattern::stepsPerBar + at[r.below (bar % 2 == 1 ? 5 : 3)];
+                const int len = Pattern::stepsPerBar - k0 % Pattern::stepsPerBar;
                 if (frozen[(size_t) k0])
                     continue;
                 const int s = p.steps[(size_t) k0].slice >= 0 ? p.steps[(size_t) k0].slice : soundingAt (src, from + k0);
-                const int reps[4] { 1, 2, 2, c > 0.6 ? 4 : 2 };
-                for (int j = 0; j < 4; ++j)
+                for (int j = 0; j < len; ++j)
                     if (! frozen[(size_t) k0 + (size_t) j])
-                        p.steps[(size_t) k0 + (size_t) j] = { s, p.steps[(size_t) k0].pitch, reps[j], false, false, j == 0 ? 1.0f : 0.85f };
+                    {
+                        const int rep = j < len / 2 ? (j == 0 ? 1 : 2) : (c > 0.6 && j == len - 1 ? 4 : 2);
+                        p.steps[(size_t) k0 + (size_t) j] = { s, p.steps[(size_t) k0].pitch, rep, false, false, j == 0 ? 1.0f : 0.85f };
+                    }
             }
-        if (style == Style::reverseParty)
-        {
-            int count = 0;
-            for (int k = 0; k < n; ++k)
-                if (p.steps[(size_t) k].slice >= 0 && ! frozen[(size_t) k] && count++ % 4 == 3)
-                    p.steps[(size_t) k].reverse = true;
-        }
+    }
+    if (style == Style::reverseParty)
+    {
+        // one slice in four reversed (which one: the seed's), or a whole beat backwards
+        int count = 0;
+        const int phase = r.below (4);
+        for (int k = 0; k < n; ++k)
+            if (p.steps[(size_t) k].slice >= 0 && ! frozen[(size_t) k] && count++ % 4 == phase && k % Pattern::stepsPerBar != 0)
+                p.steps[(size_t) k].reverse = true;
+        if (c > 0.4)
+            for (int bar = 0; bar < bars; ++bar)
+                if (r.chance (0.5))
+                    for (int q = 0; q < 4; ++q)
+                        if (auto& st = p.steps[(size_t) (bar * Pattern::stepsPerBar + 8 + q)]; st.slice >= 0 && ! frozen[(size_t) (bar * Pattern::stepsPerBar + 8 + q)])
+                            st.reverse = true;
+    }
+    if (c > 0.02 || melodic)
         applyRules (p, src, base, pools, r);
 
-        // the end relaunches the loop: the sample's last slice before the bar line, or a stutter
+    // the end relaunches the loop: the sample's last slice before the bar line, or a stutter
+    // (not the melodic styles, which come home themselves, nor FILTER TOUCH's plain repeat)
+    if (c > 0.02 && ! melodic && (style != Style::filterTouch || c > 0.5))
+    {
         const int last = n - 1;
         if (! frozen[(size_t) last])
         {
-            if (r.chance (0.5))
+            if (r.chance (0.5) && style != Style::filterTouch)
             {
                 const int s = soundingAt (src, from + n - 1);
                 p.steps[(size_t) last] = { s, 0, 1, false, false, 1.0f };
@@ -421,13 +667,6 @@ Pattern generate (const SourceInfo& src, Style style, float chopIn, uint32_t see
                 p.steps[(size_t) last] = { s, p.steps[(size_t) last - 1].pitch, 2, false, false, 0.9f };
             }
         }
-    }
-    else if (style == Style::reverseParty)
-    {
-        int count = 0;
-        for (int k = 0; k < n; ++k)
-            if (p.steps[(size_t) k].slice >= 0 && ! frozen[(size_t) k] && count++ % 4 == 3)
-                p.steps[(size_t) k].reverse = true;
     }
     return p;
 }

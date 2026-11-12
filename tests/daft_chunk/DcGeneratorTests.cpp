@@ -138,14 +138,17 @@ TEST_CASE ("DC G3 the rules: beat 1, the key, the bars", "[dc][generator]")
             for (int bar = 0; bar < pt.bars; ++bar)
             {
                 const auto& s = pt.steps[(size_t) bar * 16];
-                const int own = src.original[(size_t) ((bar * 16) % (int) src.original.size())];
+                // the sample's own beat 1: of any of its bars (the loop may start further in, or take another bar's)
+                bool own = false;
+                for (size_t b = 0; b < src.original.size(); b += 16)
+                    own = own || src.original[b] == s.slice;
                 const bool kick = s.slice >= 0 && src.types[(size_t) s.slice] == SliceType::kick;
                 INFO ("style " << st << " chop " << chop << " seed " << seed << " bar " << bar);
                 CHECK (s.slice >= 0);
                 CHECK_FALSE (s.cut);
                 // (the vocal chop and the pitch party build on their own slices: their beat 1 is a kick only when there is one)
                 if (st != (int) Style::vocalChop && st != (int) Style::pitchParty && st != (int) Style::filterTouch)
-                    CHECK ((kick || s.slice == own || chop < 0.03f));
+                    CHECK ((kick || own || chop < 0.03f));
             }
             for (const auto& s : pt.steps)
                 if (s.slice >= 0 && s.pitch != 0 && src.roots[(size_t) s.slice] >= 0.0f
@@ -340,4 +343,70 @@ TEST_CASE ("DC G8 an idea plays on the host's bars, swung, without allocation", 
         allocs = dcAllocations.load();
     }
     CHECK (allocs == 0);
+}
+
+TEST_CASE ("DC G9 variety: 20 seeds, at least 16 different loops in every style", "[dc][generator]")
+{
+    auto p = loopKit();
+    const auto src = p->sourceInfo();
+    for (int st = 0; st < numStyles; ++st)
+        for (float chop : { 0.3f, 0.6f, 0.9f })
+        {
+            std::vector<Pattern> seen;
+            for (uint32_t seed = 100; seed < 120; ++seed)
+            {
+                const auto pt = generate (src, (Style) st, chop, seed);
+                bool known = false;
+                for (const auto& q : seen)
+                    known = known || q.steps == pt.steps;
+                if (! known)
+                    seen.push_back (pt);
+            }
+            INFO (styleName ((Style) st) << " chop " << chop);
+            CHECK (seen.size() >= 16);
+        }
+}
+
+// A dump of the generated patterns for a real file (not run by default):
+//   DC_DUMP_FILE=/path/sample.mp3 dc_tests "[.dump]"
+TEST_CASE ("DC dump patterns", "[.dump]")
+{
+    const char* path = std::getenv ("DC_DUMP_FILE");
+    if (path == nullptr)
+        return;
+    DaftChunkProcessor p;
+    p.loadFile (juce::File (path));
+    p.waitForAnalysis();
+    if (const char* mode = std::getenv ("DC_DUMP_GRID"); mode != nullptr)
+    {
+        p.setMode (SliceMode::grid);
+        p.setDivision (juce::String (mode).getIntValue());
+    }
+    const auto src = p.sourceInfo();
+    std::string types;
+    for (size_t i = 0; i < src.types.size(); ++i)
+        types += std::to_string (i + 1) + typeName (src.types[i])[0] + " ";
+    std::printf ("%s  %d slices, %d bars, key %s\n%s\n", path, (int) src.types.size(), src.bars, src.key.name().toRawUTF8(), types.c_str());
+    for (int st = 0; st < numStyles; ++st)
+        for (float chop : { 0.2f, 0.5f, 0.8f })
+            for (uint32_t seed : { 11u, 12u })
+            {
+                const auto pt = generate (src, (Style) st, chop, seed);
+                std::string line;
+                for (int k = 0; k < pt.numSteps(); ++k)
+                {
+                    const auto& s = pt.steps[(size_t) k];
+                    if (k % 16 == 0)
+                        line += "| ";
+                    line += s.cut ? "X" : s.slice < 0 ? "." : std::to_string (s.slice + 1);
+                    if (s.repeat > 1)
+                        line += "*";
+                    if (s.reverse)
+                        line += "r";
+                    if (s.pitch != 0)
+                        line += (s.pitch > 0 ? "+" : "") + std::to_string (s.pitch);
+                    line += " ";
+                }
+                std::printf ("%-14s %.1f #%u: %s\n", styleName ((Style) st), chop, seed, line.c_str());
+            }
 }

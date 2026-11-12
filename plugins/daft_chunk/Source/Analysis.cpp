@@ -771,8 +771,7 @@ SliceType classify (const float* x, int64_t start, int64_t end, double sr, float
         e2 = rms (end - sliceLen / 3, end);
     const double decay = e2 / (e1 + 1.0e-9);
     // a hard attack in a full mix counts as a hit even if the rest sustains
-    const bool hit = cues != nullptr && cues->total > 0.4f;
-    const bool percussive = decay < 0.45 || hit;
+    const bool hitCue = cues != nullptr && cues->total > 0.4f;
 
     // pitch: YIN at 3 points (how stable, and the root)
     const int yw = (int) std::min<int64_t> ((int64_t) (0.05 * sr), sliceLen);
@@ -800,6 +799,10 @@ SliceType classify (const float* x, int64_t start, int64_t end, double sr, float
         meanAp += aper[i];
     meanAp = np > 0 ? meanAp / np : 1.0;
     const bool harmonic = np > 0 && meanAp < 0.2;
+    // a hard attack in a full mix counts as a hit even if the rest sustains; but a pitched,
+    // held sound (a sung phrase starts hard too) stays a voice or a tone
+    const bool hit = hitCue && ! (harmonic && decay >= 0.45);
+    const bool percussive = decay < 0.45 || hit;
     double spread = 0.0; // semitones, max - min
     if (np >= 2)
     {

@@ -946,3 +946,21 @@ Une ligne par décision : **contexte** — choix — raison.
   - DÉ, ENCORE, STYLE, SWING, ANNULER et RÉTABLIR à droite, avec la graine de l'idée choisie ;
   - un onglet SÉQUENCE avec 16 pas par page (MESURE 1 à 4) : un clic pose la tranche sélectionnée, la molette change la tranche (maj : la hauteur), le clic droit donne inverser, répéter, hauteur, couper et vider.
 - **Chunky** secoue le dé, puis tend le bloc vers les idées.
+- **Retour d'Alan sur le test3** : « plusieurs styles pas terribles, VOCAL CHOP utilise toujours le sample 1, les patterns sont presque toujours les mêmes ; il faut plus de hasard mais cohérent ».
+  - **Les causes**, trouvées en sortant les boucles générées sur ses fichiers (`DC_DUMP_FILE=… dc_tests "[.dump]"`) :
+    - sur l'a cappella « sybil », presque toutes les tranches étaient étiquetées SNARE. La règle « attaque franche = coup », faite pour les morceaux complets, passait avant la hauteur. VOCAL CHOP n'avait donc aucune VOIX, retombait sur les deux seules tranches tonales et jouait surtout la 1 ;
+    - en GATE, un pas ne durait qu'une double croche : le son se coupait au lieu de tenir jusqu'au déclenchement suivant, et les boucles sonnaient creuses ;
+    - PITCH PARTY faisait des sauts d'octave (-12, +15, +17) et laissait des tranches d'origine sur les pas sans note ;
+    - il n'y avait que 6 rythmes, et le dé échangeait des pas isolés : peu de variété, et sans forme.
+  - **Les corrections :**
+    - une attaque franche ne fait plus un coup si le son est tenu et a une hauteur (YIN) ;
+    - un pas tient jusqu'au prochain événement de l'idée, comme dans le sample ;
+    - **le jonglage de temps** : le dé déplace des temps entiers du sample (4 doubles croches), comme un chopper réarrange un break ; chaque morceau garde son groove. Le temps 1 ne reçoit que le temps 1 d'une autre mesure, et rien de verrouillé ne bouge ;
+    - **les formes** sur plusieurs mesures : AB ou AA sur 2 mesures ; AAAB, ABAB, AABA, ABAC ou AAAC sur 4. La mesure B ou C reprend A en changeant ses temps 3 et 4, comme un tournant. DISCO LOOP reste fidèle à ses mesures jusqu'à CHOP 0,5 ; au-delà, il prend aussi une forme ;
+    - **les rythmes** : 6 modèles house, plus des rythmes euclidiens (3 à 9 coups sur 16, avec rotation et un coup gardé sur le 1). Ils servent à VOCAL CHOP et PITCH PARTY ;
+    - **VOCAL CHOP** : une palette de 2 à 4 voix (complétée par les tons, puis le reste, s'il y en a moins de 3), l'un de 5 ordres (A A B A, A B A C…), et une 2e mesure qui répond (d'autres voix, une tierce au-dessus avec CHOP) ;
+    - **PITCH PARTY** : une seule tranche, avec un contour au choix (marche, montée, arche ou descente) centré sur sa propre note ; la réponse revient à la fondamentale ;
+    - **FILTER TOUCH** : une phrase de 2, 4 ou 8 doubles croches, qui commence sur un temps ou un contretemps sonore. Avec CHOP, la fin de mesure vient d'ailleurs (AAAB dans la mesure). La phrase est variée une fois, puis répétée telle quelle ;
+    - **STUTTER HOUSE** : le stutter tombe à différents endroits (fin, milieu, dernier contretemps) ;
+    - **REVERSE PARTY** : les tranches inversées changent de place selon la graine, et avec CHOP un demi-temps entier se joue à l'envers.
+  - **Les tests.** 20 graines donnent au moins 16 boucles différentes, dans chaque style et pour CHOP 0,3, 0,6 et 0,9. Les règles et les verrous restent vrais.

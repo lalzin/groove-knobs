@@ -132,8 +132,19 @@ void DaftChunkEngine::collectSequence (int numSamples, const gk::BlockTiming& ti
             const double t = stepStart + j * 0.25 / reps;
             if (t < b0 || t >= b1 || (st.slice < 0 && ! st.cut))
                 continue;
+            // a slice holds until the idea's next event (the empty steps after it), like the sample itself
+            int run = 1;
+            if (j == reps - 1)
+                while (run < n)
+                {
+                    const auto& nx = seq->steps[(size_t) (((k + run) % n + n) % n)];
+                    if (nx.slice >= 0 || nx.cut)
+                        break;
+                    ++run;
+                }
+            const double length = j < reps - 1 ? 0.25 / reps : 0.25 / reps + (run - 1) * 0.25;
             seqEvents[(size_t) numSeqEvents++] = { juce::jlimit (0, numSamples - 1, (int) ((t - b0) / timing.beatsPerSample)), &st,
-                                                   std::max (1, (int) (0.25 / reps / timing.beatsPerSample)) };
+                                                   std::max (1, (int) (length / timing.beatsPerSample)) };
         }
     }
     // (k, then j: already in time order, but swing can put an odd step after the next even one's start: sort)
