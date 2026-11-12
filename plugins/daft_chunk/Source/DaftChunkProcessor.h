@@ -123,6 +123,10 @@ public:
     /** CHOP moved: the idea playing (else the one selected) made again from its own seed and
         style at the new CHOP (the timer does it once the knob rests 120 ms; tests call it). */
     void applyChop();
+    /** LONGUEUR changed: the same, with the new number of bars (AUTO: the style's). */
+    void applyLength();
+    /** Ableton's PLAY pressed (the transport starts): the loop playing in the plug-in stops. The timer calls it. */
+    void checkTransport();
 
     /** The generator's view of the current slices. */
     SourceInfo sourceInfo() const;
@@ -155,6 +159,8 @@ private:
     int stretchId = 0;
     bool stretchWanted = false;
     float lastChop = -1.0f;
+    int lastLength = -1;
+    bool wasHostPlaying = false;
     double chopMoved = -1.0, chopRemembered = -10.0;
     std::shared_ptr<const LoadedSample> sample;
     std::shared_ptr<const Kit> kit;

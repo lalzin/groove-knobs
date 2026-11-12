@@ -326,10 +326,14 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
     addToCanvas (*sensitivity, { 768, 68, 78, 26 });
 
     // the generator (right panel) and the 8 ideas (the strip)
-    dice = std::make_unique<Pill> (juce::String::fromUTF8 ("D\xc3\x89"), [this] { proc.rollDice(); showPage (page); }, 16.0f);
-    dice->setTooltip (juce::String::fromUTF8 ("Une nouvelle boucle de 1, 2 ou 4 mesures, selon CHOP et le style. Elle part dans un emplacement libre et se joue, cal\xc3\xa9""e sur Ableton."));
+    dice = std::make_unique<Pill> ("LOOP CREATOR", [this] { proc.rollDice(); showPage (page); }, 15.0f);
+    dice->setTooltip (juce::String::fromUTF8 ("Cr\xc3\xa9""e une nouvelle boucle \xc3\xa0 partir des tranches : sa longueur (LONGUEUR), son style (STYLE), "
+                                          "et CHOP de l'ordre d'origine (ORDER) \xc3\xa0 la d\xc3\xa9""coupe sauvage (WILD). Elle part dans un emplacement libre en bas "
+                                          "et se joue, cal\xc3\xa9""e sur Ableton."));
+    length = std::make_unique<Pill> ("AUTO", [this] { showLengthMenu(); }, 11.5f);
+    length->setTooltip (juce::String::fromUTF8 ("La longueur de la boucle : AUTO (selon le style), 1, 2 ou 4 mesures. Change aussi la boucle choisie."));
     encore = std::make_unique<Pill> ("ENCORE", [this] { proc.encore(); }, 15.0f);
-    encore->setTooltip (juce::String::fromUTF8 ("4 variantes proches de l'id\xc3\xa9""e choisie (10 \xc3\xa0 25 % des pas changent), au lieu de tout relancer"));
+    encore->setTooltip (juce::String::fromUTF8 ("ENCORE : 4 variantes proches de la boucle choisie (10 \xc3\xa0 25 % des pas changent), au lieu de tout recr\xc3\xa9""er"));
     style = std::make_unique<Pill> ("FILTER TOUCH", [this] { showStyleMenu(); }, 12.0f);
     style->setTooltip (juce::String::fromUTF8 ("Le style du D\xc3\x89 : FILTER TOUCH (une phrase r\xc3\xa9p\xc3\xa9t\xc3\xa9""e), DISCO LOOP (fid\xc3\xa8le), VOCAL CHOP, STUTTER HOUSE, "
                                            "REVERSE PARTY, PITCH PARTY (une m\xc3\xa9lodie d'une tranche)"));
@@ -347,13 +351,14 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
     undoButton = std::make_unique<Pill> ("ANNULER", [this] { proc.undo(); }, 11.5f);
     redoButton = std::make_unique<Pill> (juce::String::fromUTF8 ("R\xc3\x89TABLIR"), [this] { proc.redo(); }, 11.5f);
     ideaInfo = std::make_unique<InfoLabel>();
-    addToCanvas (*dice, { 682, 314, 80, 38 });
-    addToCanvas (*encore, { 766, 314, 80, 38 });
-    addToCanvas (*style, { 682, 358, 164, 26 });
-    addToCanvas (*swing, { 682, 390, 164, 26 });
-    addToCanvas (*undoButton, { 682, 422, 80, 26 });
-    addToCanvas (*redoButton, { 766, 422, 80, 26 });
-    addToCanvas (*ideaInfo, { 682, 454, 164, 22 });
+    addToCanvas (*dice, { 682, 313, 164, 36 });
+    addToCanvas (*encore, { 682, 354, 80, 24 });
+    addToCanvas (*length, { 766, 354, 80, 24 });
+    addToCanvas (*style, { 682, 382, 164, 24 });
+    addToCanvas (*swing, { 682, 410, 164, 22 });
+    addToCanvas (*undoButton, { 682, 436, 80, 22 });
+    addToCanvas (*redoButton, { 766, 436, 80, 22 });
+    addToCanvas (*ideaInfo, { 682, 462, 164, 20 });
     capture = std::make_unique<Pill> ("MIDI CAPTURE", [this]
     {
         auto& c = proc.getChoiceParameter (DaftChunkEngine::captureChoice);
@@ -363,7 +368,7 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
     }, 11.5f);
     capture->setTooltip (juce::String::fromUTF8 ("MIDI CAPTURE : l'id\xc3\xa9""e qui joue envoie aussi ses notes en sortie MIDI. Dans Ableton, une piste MIDI dont l'entr\xc3\xa9""e est "
                                              "Daft Chunk les enregistre."));
-    addToCanvas (*capture, { 682, 480, 164, 24 });
+    addToCanvas (*capture, { 682, 486, 164, 20 });
     ideaStrip = std::make_unique<IdeaStrip> (p);
     ideaStrip->onSelect = [this] { showPage (2); };
     addToCanvas (*ideaStrip, { 6, 518, 848, 78 });
@@ -388,7 +393,7 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
         struct K { int knob; juce::Rectangle<int> at; juce::Colour colour; };
         const K ks[] { { E::attackKnob, { 336, 342, 66, 70 }, cream }, { E::decayKnob, { 402, 342, 66, 70 }, cream },
                        { E::sustainKnob, { 468, 342, 66, 70 }, cream }, { E::releaseKnob, { 534, 342, 66, 70 }, coral },
-                       { E::pitchKnob, { 336, 424, 66, 70 }, coral }, { E::cutoffKnob, { 402, 424, 66, 70 }, coral },
+                       { E::pitchKnob, { 336, 424, 66, 70 }, coral }, { E::filterKnob, { 402, 424, 66, 70 }, coral },
                        { E::resoKnob, { 468, 424, 66, 70 }, cream }, { E::velocityKnob, { 534, 424, 66, 70 }, cream },
                        { E::volumeKnob, { 600, 430, 66, 70 }, cream } };
         for (const auto& k : ks)
@@ -407,15 +412,22 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
     {
         auto st = [] (float v) { const int x = juce::roundToInt (v); return (x > 0 ? "+" : "") + juce::String (x) + " st"; };
         auto db = [] (float v) { return (v > 0.05f ? "+" : "") + juce::String (v, 1) + " dB"; };
-        auto oct = [] (float v) { return v > -0.05f ? juce::String ("OPEN") : juce::String (v, 1) + " oct"; };
+        auto oct = [] (float v)
+        {
+            if (std::abs (v) < 0.01f)
+                return juce::String ("OPEN");
+            const auto [lp, hp] = DaftChunkEngine::filterCutoffs (v);
+            const double hz = v < 0.0f ? lp : hp;
+            return juce::String (v < 0.0f ? "LP " : "HP ") + (hz >= 1000.0 ? juce::String (hz / 1000.0, 1) + "k" : juce::String (juce::roundToInt (hz)));
+        };
         auto pct = [] (float v) { return juce::String (juce::roundToInt (v * 100.0f)) + " %"; };
         sliceKnobs[0] = std::make_unique<SliceKnob> ("PITCH", -24.0f, 24.0f, 0.0f, true, st);
         sliceKnobs[1] = std::make_unique<SliceKnob> ("GAIN", -24.0f, 12.0f, 0.0f, true, db);
-        sliceKnobs[2] = std::make_unique<SliceKnob> ("FILTER", -8.0f, 0.0f, 0.0f, false, oct);
+        sliceKnobs[2] = std::make_unique<SliceKnob> ("FILTER", -1.0f, 1.0f, 0.0f, true, oct);
         sliceKnobs[3] = std::make_unique<SliceKnob> (juce::String::fromUTF8 ("D\xc3\x89""BUT"), 0.0f, 0.9f, 0.0f, false, pct);
         sliceKnobs[4] = std::make_unique<SliceKnob> ("FIN", 0.0f, 0.9f, 0.0f, false, pct);
         const char* tips[] { "Le pitch de cette tranche (en plus du PITCH global)", "Le volume de cette tranche",
-                             "Le filtre de cette tranche : sous le FILTER global, en octaves", "Le d\xc3\xa9""but fin : rogne le d\xc3\xa9""but de la tranche",
+                             "Le filtre de cette tranche : \xc3\xa0 gauche un passe-bas, \xc3\xa0 droite un passe-haut (en plus du FILTER global)", "Le d\xc3\xa9""but fin : rogne le d\xc3\xa9""but de la tranche",
                              "La fin fine : rogne la fin de la tranche" };
         const juce::Rectangle<int> at[] { { 336, 342, 66, 70 }, { 402, 342, 66, 70 }, { 468, 342, 66, 70 }, { 534, 342, 66, 70 }, { 600, 342, 66, 70 } };
         for (int i = 0; i < 5; ++i)
@@ -538,6 +550,10 @@ void DaftChunkEditor::editorTick (double)
         const float sw = proc.getKnobParameter (DaftChunkEngine::swingKnob).convertFrom0to1 (proc.getKnobParameter (DaftChunkEngine::swingKnob).getValue());
         swing->setValue (sw / 0.75f);
         capture->setSelected (proc.getChoiceParameter (DaftChunkEngine::captureChoice).getIndex() == 1);
+        {
+            const char* names[] { "AUTO", "1 MESURE", "2 MESURES", "4 MESURES" };
+            length->setText (names[juce::jlimit (0, 3, proc.getChoiceParameter (DaftChunkEngine::lengthChoice).getIndex())]);
+        }
         style->setText (styleName ((Style) proc.getChoiceParameter (DaftChunkEngine::styleChoice).getIndex()));
     }
     if (proc.getSelectedSlice() != shownSelected || proc.getKitVersion() != shownSliceVersion)
@@ -636,7 +652,26 @@ void DaftChunkEditor::updateGenerator()
                               + styleName (pt.style));
     }
     else
-        ideaInfo->set (has ? juce::String::fromUTF8 ("Lance le D\xc3\x89 !") : juce::String ("Charge un sample"), true);
+        ideaInfo->set (has ? juce::String ("Clique LOOP CREATOR !") : juce::String ("Charge un sample"), true);
+}
+
+void DaftChunkEditor::showLengthMenu()
+{
+    juce::PopupMenu m;
+    auto& c = proc.getChoiceParameter (DaftChunkEngine::lengthChoice);
+    const char* names[] { "AUTO (selon le style)", "1 MESURE", "2 MESURES", "4 MESURES" };
+    for (int i = 0; i < 4; ++i)
+        m.addItem (i + 1, names[i], true, c.getIndex() == i);
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (length.get()),
+                     [this] (int r)
+                     {
+                         if (r < 1)
+                             return;
+                         auto& ch = proc.getChoiceParameter (DaftChunkEngine::lengthChoice);
+                         ch.beginChangeGesture();
+                         ch.setValueNotifyingHost (ch.convertTo0to1 ((float) (r - 1)));
+                         ch.endChangeGesture();
+                     });
 }
 
 void DaftChunkEditor::showStyleMenu()

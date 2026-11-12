@@ -393,6 +393,58 @@ TEST_CASE ("DC G10 CHOP live: the idea follows the knob (same seed and style), A
     CHECK (p->getIdea (0).pattern.chop == Catch::Approx (0.1f));
 }
 
+TEST_CASE ("DC G11 LONGUEUR: 1, 2 or 4 bars, at creation and live", "[dc][generator]")
+{
+    auto p = loopKit();
+    const int expect[] { 1, 2, 4 };
+    for (int i = 1; i <= 3; ++i)
+    {
+        setParam (p->getChoiceParameter (E::lengthChoice), (float) i);
+        const int slot = p->rollDice();
+        REQUIRE (slot >= 0);
+        CHECK (p->getIdea (slot).pattern.bars == expect[i - 1]);
+    }
+    const auto seed = p->getIdea (p->getSelectedIdea()).pattern.seed;
+    setParam (p->getChoiceParameter (E::lengthChoice), 1.0f);
+    p->applyLength();
+    CHECK (p->getIdea (p->getSelectedIdea()).pattern.bars == 1);
+    CHECK (p->getIdea (p->getSelectedIdea()).pattern.seed == seed);
+}
+
+TEST_CASE ("DC G12 Ableton's PLAY stops the loop heard in the plug-in", "[dc][generator]")
+{
+    auto p = loopKit();
+    MovingPlayHead ph;
+    p->setPlayHead (&ph);
+    REQUIRE (p->rollDice() == 0);
+    REQUIRE (p->getPlayingIdea() == 0);
+    struct Stopped final : juce::AudioPlayHead
+    {
+        juce::Optional<PositionInfo> getPosition() const override
+        {
+            PositionInfo i;
+            i.setBpm (120.0);
+            i.setIsPlaying (false);
+            return i;
+        }
+    } stopped;
+    juce::AudioBuffer<float> b (2, 256);
+    juce::MidiBuffer m;
+    p->setPlayHead (&stopped);
+    p->processBlock (b, m);
+    // (the timer's job: called by hand here, no message loop)
+    p->checkTransport();
+    CHECK (p->getPlayingIdea() == 0); // stopped transport: it plays on
+    p->setPlayHead (&ph);
+    p->processBlock (b, m);
+    p->checkTransport();
+    CHECK (p->getPlayingIdea() == -1); // PLAY pressed: it stops
+    p->togglePlay (0);
+    p->processBlock (b, m);
+    p->checkTransport();
+    CHECK (p->getPlayingIdea() == 0); // its own play, while Ableton plays: it plays
+}
+
 // A dump of the generated patterns for a real file (not run by default):
 //   DC_DUMP_FILE=/path/sample.mp3 dc_tests "[.dump]"
 TEST_CASE ("DC dump patterns", "[.dump]")

@@ -88,7 +88,7 @@ int main (int argc, char* argv[])
     {
         daftchunk::SliceParams sp;
         sp.pitch = 7.0f;
-        sp.filter = -2.5f;
+        sp.filter = -0.4f;
         sp.start = 0.15f;
         sp.reverse = true;
         p->selectSlice (6);

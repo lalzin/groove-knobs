@@ -57,7 +57,7 @@ namespace
 //==============================================================================
 IdeaStrip::IdeaStrip (DaftChunkProcessor& p) : proc (p)
 {
-    setTooltip (juce::String::fromUTF8 ("Les id\xc3\xa9""es : chaque D\xc3\x89 en remplit une. Lecture (cal\xc3\xa9""e sur Ableton), \xc3\xa9toile pour la garder, "
+    setTooltip (juce::String::fromUTF8 ("Les boucles : chaque LOOP CREATOR en remplit une. Lecture (cal\xc3\xa9""e sur Ableton), \xc3\xa9toile pour la garder, "
                                         "croix pour la jeter. Glisse WAV (la boucle au tempo), MIDI (les notes) ou KIT (les tranches, sur un Drum Rack) dans Ableton. "
                                         "Clic sur une id\xc3\xa9""e : la page S\xc3\x89QUENCE la montre. Les fichiers vont dans Musique/Daft Chunk."));
 }
@@ -287,7 +287,7 @@ void StepGrid::paint (juce::Graphics& g)
     if (idea < 0)
     {
         g.setColour (cream.withAlpha (0.5f));
-        g.drawFittedText (juce::String::fromUTF8 ("Lance le D\xc3\x89, puis choisis une id\xc3\xa9""e en bas : ses pas s'affichent ici."), getLocalBounds().reduced (10),
+        g.drawFittedText (juce::String::fromUTF8 ("Clique LOOP CREATOR, puis choisis une boucle en bas : ses pas s'affichent ici."), getLocalBounds().reduced (10),
                           juce::Justification::centred, 3);
         return;
     }

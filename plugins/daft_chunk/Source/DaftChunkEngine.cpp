@@ -14,7 +14,7 @@ void DaftChunkEngine::reset()
     for (auto& v : voices)
         v = {};
     lead = -1;
-    cutoffSmoothed = knobs[cutoffKnob];
+    filterSmoothed = knobs[filterKnob];
     telemetry.slice.store (-1, std::memory_order_relaxed);
 }
 
@@ -227,9 +227,13 @@ void DaftChunkEngine::render (Voice& v, float* const* out, int numChannels, int 
     const float releaseCoef = (float) std::exp (-4.6 / (std::max (0.003, (double) knobs[releaseKnob]) * sampleRate));
     const float sustain = juce::jlimit (0.0f, 1.0f, knobs[sustainKnob]);
 
-    const double cutoff = juce::jlimit (20.0, 0.45 * sampleRate, cutoffSmoothed * std::exp2 ((double) p.filter));
-    const bool filtered = cutoff < 19000.0 || knobs[resoKnob] > 0.01f;
-    const auto coeffs = gk::TptSvf::Coeffs::make (cutoff, sampleRate, 0.707 + 8.0 * juce::jlimit (0.0f, 1.0f, knobs[resoKnob]));
+    // FILTER and the slice's own, in series: the lower low-pass, the higher high-pass
+    const auto [lpG, hpG] = filterCutoffs (filterSmoothed);
+    const auto [lpS, hpS] = filterCutoffs ((double) p.filter);
+    const double lpHz = juce::jlimit (20.0, 0.45 * sampleRate, std::min (lpG, lpS)), hpHz = juce::jlimit (10.0, 0.45 * sampleRate, std::max (hpG, hpS));
+    const double q = 0.707 + 8.0 * juce::jlimit (0.0f, 1.0f, knobs[resoKnob]);
+    const bool lowPassed = lpHz < 19000.0, highPassed = hpHz > 21.0;
+    const auto lpCoeffs = gk::TptSvf::Coeffs::make (lpHz, sampleRate, q), hpCoeffs = gk::TptSvf::Coeffs::make (hpHz, sampleRate, q);
     const float* src[2] { audio.getReadPointer (0), audio.getReadPointer (std::min (1, srcChans - 1)) };
 
     for (int i = from; i < to; ++i)
@@ -296,8 +300,10 @@ void DaftChunkEngine::render (Voice& v, float* const* out, int numChannels, int 
         {
             const float* x = src[std::min (c, 1)];
             double y = x[k0] + f * (x[k0 + 1] - x[k0]);
-            if (filtered)
-                y = v.filter[c].processLowpass (y, coeffs);
+            if (lowPassed)
+                y = v.lowPass[c].processLowpass (y, lpCoeffs);
+            if (highPassed)
+                y = v.highPass[c].processHighpass (y, hpCoeffs);
             out[c][i] += g * (float) y;
         }
         v.pos += v.reverse ? -step : step;
@@ -308,6 +314,7 @@ void DaftChunkEngine::processWet (juce::AudioBuffer<float>& buffer, int numSampl
 {
     buffer.clear (0, numSamples);
     telemetry.hostBpm.store (hostTempoKnown ? timing.bpm : 0.0, std::memory_order_relaxed);
+    telemetry.hostPlaying.store (hostTempoKnown && timing.isPlaying, std::memory_order_relaxed);
     const auto* k = kit.load (std::memory_order_acquire);
     if (k != current)
     {
@@ -331,11 +338,11 @@ void DaftChunkEngine::processWet (juce::AudioBuffer<float>& buffer, int numSampl
     // TEMPO / VINYLE: the speed that puts the kit's tempo on the host's (TEMPO: ~1 once stretched)
     rate = hostTempoKnown && sync != free && timing.bpm > 0.0 && current->playBpm > 0.0 ? juce::jlimit (0.25, 4.0, timing.bpm / current->playBpm) : 1.0;
 
-    // FILTER glides (log), over ~20 ms
+    // FILTER glides, over ~20 ms
     {
-        const double target = juce::jlimit (20.0, 20000.0, (double) knobs[cutoffKnob]);
+        const double target = juce::jlimit (-1.0, 1.0, (double) knobs[filterKnob]);
         const double a = std::min (1.0, numSamples / (0.02 * sampleRate));
-        cutoffSmoothed = std::exp (std::log (cutoffSmoothed) + a * (std::log (target) - std::log (cutoffSmoothed)));
+        filterSmoothed += a * (target - filterSmoothed);
     }
     auto* const* out = buffer.getArrayOfWritePointers();
     const int chans = std::min (buffer.getNumChannels(), 2);

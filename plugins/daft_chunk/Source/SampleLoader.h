@@ -25,7 +25,7 @@ struct SliceParams
 {
     float pitch = 0.0f;     // semitones, -24..24
     float gainDb = 0.0f;    // -24..+12
-    float filter = 0.0f;    // octaves under the global FILTER, -8..0
+    float filter = 0.0f;    // -1..1: left a low-pass, right a high-pass, 0 open (on top of FILTER)
     float start = 0.0f;     // fine start: 0..0.9 of the slice, from its start
     float end = 0.0f;       // fine end: 0..0.9 of the slice, from its end
     bool reverse = false;

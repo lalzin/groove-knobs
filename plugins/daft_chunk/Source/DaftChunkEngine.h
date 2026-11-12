@@ -23,13 +23,21 @@ public:
     static constexpr int numVoices = 16;
 
     /** The host parameters (OneKnobConfig::knobs / choices, in this order). */
-    enum Knob { attackKnob, decayKnob, sustainKnob, releaseKnob, pitchKnob, cutoffKnob, resoKnob, velocityKnob, volumeKnob, swingKnob, numKnobs };
-    enum Choice { modeChoice, playChoice, syncChoice, styleChoice, captureChoice, numChoices };
+    enum Knob { attackKnob, decayKnob, sustainKnob, releaseKnob, pitchKnob, filterKnob, resoKnob, velocityKnob, volumeKnob, swingKnob, numKnobs };
+    enum Choice { modeChoice, playChoice, syncChoice, styleChoice, captureChoice, lengthChoice, numChoices };
     enum Mode { cut = 0, poly = 1 };
     enum Play { oneShot = 0, gate = 1 };
     /** LIBRE: the sample's own speed; TEMPO: at the host's tempo, same pitch
         (the slices stretched); VINYLE: at the host's tempo by speed (the pitch follows). */
     enum Sync { free = 0, tempo = 1, vinyl = 2 };
+
+    /** FILTER (and a slice's own): -1..1, the left a low-pass (down to 20 Hz), the right a
+        high-pass (up to 20 kHz), the middle open. Returns {low-pass Hz, high-pass Hz}. */
+    static std::pair<double, double> filterCutoffs (double x) noexcept
+    {
+        x = juce::jlimit (-1.0, 1.0, x);
+        return { x < 0.0 ? 20000.0 * std::pow (0.001, -x) : 20000.0, x > 0.0 ? 20.0 * std::pow (1000.0, x) : 20.0 };
+    }
 
     /** The processor, before each block: whether the host gives a tempo (not the standalone app). */
     void setHostTempoKnown (bool known) noexcept { hostTempoKnown = known; }
@@ -69,6 +77,7 @@ public:
         std::atomic<float> position { 0.0f };
         std::atomic<double> hostBpm { 0.0 }; // 0: the host gives none
         std::atomic<int> step { -1 };         // the idea's step playing (-1: none)
+        std::atomic<bool> hostPlaying { false };
     };
     const Telemetry& getTelemetry() const noexcept { return telemetry; }
 
@@ -84,7 +93,7 @@ private:
         int cutLeft = -1;      // >= 0: being cut (fading out over 3 ms)
         int previewLeft = -1;  // a preview or an idea's step: note-off after this many samples
         float extraPitch = 0.0f; // an idea's step: on top of the slice's own
-        gk::TptSvf filter[2];
+        gk::TptSvf lowPass[2], highPass[2];
         unsigned age = 0;
         bool active() const noexcept { return stage != Stage::off; }
     };
@@ -122,10 +131,10 @@ private:
     int midiStart = 0, midiCount = 0;
     double sampleRate = 44100.0;
     int cutFade = 132;              // 3 ms
-    std::array<float, numKnobs> knobs { 0.0005f, 0.3f, 1.0f, 0.05f, 0.0f, 20000.0f, 0.0f, 0.7f, 0.0f, 0.0f };
+    std::array<float, numKnobs> knobs { 0.0005f, 0.3f, 1.0f, 0.05f, 0.0f, 0.0f, 0.0f, 0.7f, 0.0f, 0.0f };
     int mode = cut, play = gate, sync = tempo;
     bool hostTempoKnown = false;
     double rate = 1.0; // the host's tempo / the kit's (TEMPO, VINYLE), this block
-    double cutoffSmoothed = 20000.0;
+    double filterSmoothed = 0.0;
 };
 } // namespace daftchunk

@@ -51,6 +51,7 @@ private:
     void showModeMenu();
     void showSyncMenu();
     void showStyleMenu();
+    void showLengthMenu();
     void updateGenerator();
     void updateToolbar();
     void updateSlicePage();
@@ -67,7 +68,7 @@ private:
     std::unique_ptr<IdeaStrip> ideaStrip;
     std::unique_ptr<StepGrid> stepGrid;
     std::unique_ptr<MiniSlider> swing;
-    std::unique_ptr<Pill> undoButton, redoButton, tabSequence, lockButton, capture;
+    std::unique_ptr<Pill> undoButton, redoButton, tabSequence, lockButton, capture, length;
     std::unique_ptr<InfoLabel> ideaInfo;
     int shownIdeas = -1, shownGenKit = -1;
     juce::String shownStatus;

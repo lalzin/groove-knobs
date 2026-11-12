@@ -32,7 +32,7 @@ namespace
                       { "sustain", "Sustain", "SUSTAIN", 1.0f },
                       { "release", "Release", "RELEASE", 0.05f, 0.003f, 5.0f, 0.3f, "s" },
                       { "pitch", "Pitch", "PITCH", 0.0f, -24.0f, 24.0f, 1.0f, "st" },
-                      { "cutoff", "Filter", "FILTER", 20000.0f, 20.0f, 20000.0f, 0.25f, "Hz" },
+                      { "filter", "Filter", "FILTER", 0.0f, -1.0f, 1.0f, 1.0f, "" }, // left a low-pass, right a high-pass
                       { "reso", "Resonance", "RESO", 0.0f },
                       { "velocity", "Velocity", "VEL", 0.7f },
                       { "volume", "Volume", "VOLUME", 0.0f, -60.0f, 6.0f, 3.02f, "dB" },
@@ -42,14 +42,22 @@ namespace
         cfg.knobs[E::decayKnob].textFromValue = time;
         cfg.knobs[E::releaseKnob].textFromValue = time;
         cfg.knobs[E::pitchKnob].textFromValue = [] (float v) { const int st = juce::roundToInt (v); return (st > 0 ? "+" : "") + juce::String (st) + " st"; };
-        cfg.knobs[E::cutoffKnob].textFromValue = [] (float v) { return v >= 19900.0f ? juce::String ("OPEN") : v >= 1000.0f ? juce::String (v / 1000.0f, 1) + " kHz" : juce::String (juce::roundToInt (v)) + " Hz"; };
+        cfg.knobs[E::filterKnob].textFromValue = [] (float v)
+        {
+            const auto [lp, hp] = DaftChunkEngine::filterCutoffs (v);
+            const double hz = v < 0.0f ? lp : hp;
+            if (std::abs (v) < 0.01f)
+                return juce::String ("OPEN");
+            return juce::String (v < 0.0f ? "LP " : "HP ") + (hz >= 1000.0 ? juce::String (hz / 1000.0, 1) + " kHz" : juce::String (juce::roundToInt (hz)) + " Hz");
+        };
         cfg.knobs[E::volumeKnob].textFromValue = [] (float v) { return v <= -59.9f ? juce::String ("-inf") : juce::String (v, 1) + " dB"; };
         cfg.outputGainKnob = E::volumeKnob;
         cfg.choices = { { "mode", "Mode", "MODE", { "Coupe", "Poly" }, E::cut, true },
                         { "play", "Play", "LECTURE", { "One shot", "Gate" }, E::gate, true },
                         { "sync", "Sync", "SYNC", { "Libre", "Tempo", "Vinyle" }, E::tempo, true },
                         { "style", "Style", "STYLE", { "Filter Touch", "Disco Loop", "Vocal Chop", "Stutter House", "Reverse Party", "Pitch Party" }, 0, true },
-                        { "capture", "MIDI Capture", "MIDI CAPTURE", { "Off", "On" }, 0, true } };
+                        { "capture", "MIDI Capture", "MIDI CAPTURE", { "Off", "On" }, 0, true },
+                        { "length", "Loop length", "LONGUEUR", { "Auto", "1 bar", "2 bars", "4 bars" }, 0, true } };
         cfg.tailSeconds = 0.1;
         cfg.featuresFromOutput = true; // (an instrument: Chunky hears what it plays)
         return cfg;
@@ -165,6 +173,42 @@ void DaftChunkProcessor::timerCallback()
         chopMoved = -1.0;
         applyChop();
     }
+    // LONGUEUR changed: the idea too (same seed, style and CHOP)
+    const int length = getChoiceParameter (DaftChunkEngine::lengthChoice).getIndex();
+    if (lastLength < 0)
+        lastLength = length;
+    if (length != lastLength)
+    {
+        lastLength = length;
+        applyLength();
+    }
+    checkTransport();
+}
+
+void DaftChunkProcessor::checkTransport()
+{
+    // Ableton's PLAY: the loop heard in the plug-in stops (the track plays; its own play button starts it again, in time)
+    const bool hostPlaying = getDsp().getTelemetry().hostPlaying.load (std::memory_order_relaxed);
+    if (hostPlaying && ! wasHostPlaying && playingIdea >= 0)
+        stopIdea();
+    wasHostPlaying = hostPlaying;
+}
+
+void DaftChunkProcessor::applyLength()
+{
+    const int i = playingIdea >= 0 ? playingIdea : selectedIdea;
+    if (! juce::isPositiveAndBelow (i, numIdeas) || ! ideas[(size_t) i].used)
+        return;
+    const auto src = sourceInfo();
+    if (src.types.empty())
+        return;
+    const int lengths[] { 0, 1, 2, 4 };
+    const int bars = lengths[juce::jlimit (0, 3, getChoiceParameter (DaftChunkEngine::lengthChoice).getIndex())];
+    auto& idea = ideas[(size_t) i];
+    const auto old = idea.pattern;
+    remember();
+    idea.pattern = generate (src, old.style, old.chop, old.seed, bars);
+    ideasChanged();
 }
 
 void DaftChunkProcessor::applyChop()
@@ -416,7 +460,7 @@ int DaftChunkProcessor::rollDice()
     const int slot = freeSlot();
     if (slot < 0)
     {
-        status = juce::String::fromUTF8 ("Les 8 id\xc3\xa9""es ont une \xc3\xa9toile : enl\xc3\xa8ve-en une");
+        status = juce::String::fromUTF8 ("Les 8 boucles ont une \xc3\xa9toile : enl\xc3\xa8ve-en une");
         sendChangeMessage();
         return -1;
     }
@@ -425,7 +469,8 @@ int DaftChunkProcessor::rollDice()
     const float chop = getAmountParameter().convertFrom0to1 (getAmountParameter().getValue());
     const auto seed = (uint32_t) juce::Random::getSystemRandom().nextInt (0x7fffffff);
     auto& idea = ideas[(size_t) slot];
-    idea.pattern = generate (src, style, chop, seed);
+    const int lengths[] { 0, 1, 2, 4 };
+    idea.pattern = generate (src, style, chop, seed, lengths[juce::jlimit (0, 3, getChoiceParameter (DaftChunkEngine::lengthChoice).getIndex())]);
     idea.used = true;
     idea.starred = false;
     idea.age = ++ideaAge;
@@ -733,7 +778,7 @@ void DaftChunkProcessor::loadExtraState (const juce::ValueTree& state)
         {
             p.pitch = juce::jlimit (-24.0f, 24.0f, v[0].getFloatValue());
             p.gainDb = juce::jlimit (-24.0f, 12.0f, v[1].getFloatValue());
-            p.filter = juce::jlimit (-8.0f, 0.0f, v[2].getFloatValue());
+            p.filter = juce::jlimit (-1.0f, 1.0f, v[2].getFloatValue());
             p.start = juce::jlimit (0.0f, 0.9f, v[3].getFloatValue());
             p.end = juce::jlimit (0.0f, 0.9f, v[4].getFloatValue());
             p.reverse = v[5] == "1";
@@ -787,7 +832,8 @@ void DaftChunkProcessor::loadExtraState (const juce::ValueTree& state)
         undoStack.clear();
         redoStack.clear();
         setPlaying (-1);
-        lastChop = -1.0f; // (the restored CHOP is not a move)
+        lastChop = -1.0f; // (the restored CHOP and LONGUEUR are not moves)
+        lastLength = -1;
         chopMoved = -1.0;
     }
     samplePath = state.getProperty ("samplePath").toString();

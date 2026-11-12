@@ -422,7 +422,7 @@ TEST_CASE ("DC S4 a slice's own: reverse, pitch +12, fine start and end, filter"
     CHECK (rmsOf (rev, len - 3000, 2500) > 2.0f * rmsOf (rev, 200, 2500));
 
     sp = {};
-    sp.filter = -6.0f; // 20 kHz -> ~300 Hz
+    sp.filter = -0.6f; // the slice's low-pass: ~320 Hz
     p->setSliceParams (1, sp);
     const auto dull = playEvents (*p, { { 0, 37, true } }, len + 2000);
     auto treble = [] (const juce::AudioBuffer<float>& b)
@@ -435,7 +435,23 @@ TEST_CASE ("DC S4 a slice's own: reverse, pitch +12, fine start and end, filter"
     CHECK (treble (dull) < 0.1 * treble (plain));
     CHECK (p->getSliceParams (0).isDefault());
     p->applyToAllSlices (1);
-    CHECK (p->getSliceParams (0).filter == Catch::Approx (-6.0f));
+    CHECK (p->getSliceParams (0).filter == Catch::Approx (-0.6f));
+    // the right side: a high-pass (the lows go)
+    sp = {};
+    sp.filter = 0.6f; // ~1.3 kHz high-pass
+    p->setSliceParams (1, sp);
+    const auto thin = playEvents (*p, { { 0, 37, true } }, len + 2000);
+    auto lows = [] (const juce::AudioBuffer<float>& b)
+    {
+        double e = 0.0, lp = 0.0;
+        for (int i = 0; i < b.getNumSamples(); ++i)
+        {
+            lp += 0.01 * (b.getSample (0, i) - lp); // ~70 Hz low-pass
+            e += lp * lp;
+        }
+        return e;
+    };
+    CHECK (lows (thin) < 0.05 * lows (plain));
 }
 
 TEST_CASE ("DC S5 the session keeps the slices' own settings", "[dc][plugin][state]")
