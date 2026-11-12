@@ -291,9 +291,9 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
     // the toolbar
     load = std::make_unique<Pill> ("CHARGER", [this] { chooseFile(); });
     load->setTooltip ("Charger un sample (WAV, AIFF, FLAC, MP3, 60 s au plus). Tu peux aussi le glisser sur le plug-in.");
-    addToCanvas (*load, { 14, 68, 80, 26 });
+    addToCanvas (*load, { 14, 68, 70, 26 });
     fileName = std::make_unique<InfoLabel>();
-    addToCanvas (*fileName, { 100, 68, 150, 26 });
+    addToCanvas (*fileName, { 90, 68, 110, 26 });
 
     bpm = std::make_unique<juce::Label>();
     bpm->setEditable (true);
@@ -313,33 +313,35 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
         proc.setBpm (v > 0.0 ? v : -1.0);
         updateToolbar();
     };
-    addToCanvas (*bpm, { 256, 68, 84, 26 });
+    addToCanvas (*bpm, { 206, 68, 80, 26 });
     half = std::make_unique<Pill> (juce::String ("/2"), [this] { proc.halveBpm(); updateToolbar(); });
     twice = std::make_unique<Pill> (juce::String ("x2"), [this] { proc.doubleBpm(); updateToolbar(); });
     tapButton = std::make_unique<Pill> ("TAP", [this] { proc.tap (juce::Time::getMillisecondCounterHiRes() * 0.001); updateToolbar(); });
     tapButton->setTooltip ("Tape le tempo (3 coups au moins)");
-    addToCanvas (*half, { 344, 68, 28, 26 });
-    addToCanvas (*twice, { 376, 68, 28, 26 });
-    addToCanvas (*tapButton, { 408, 68, 40, 26 });
+    addToCanvas (*half, { 292, 68, 26, 26 });
+    addToCanvas (*twice, { 324, 68, 26, 26 });
+    addToCanvas (*tapButton, { 356, 68, 36, 26 });
     keyLabel = std::make_unique<InfoLabel>();
     keyLabel->setTooltip (juce::String::fromUTF8 ("La tonalit\xc3\xa9 (indicative) : les tranches pitch\xc3\xa9""es la suivront"));
-    addToCanvas (*keyLabel, { 454, 68, 66, 26 });
+    addToCanvas (*keyLabel, { 398, 68, 58, 26 });
+    sync = std::make_unique<Pill> ("TEMPO", [this] { showSyncMenu(); }, 12.0f);
+    addToCanvas (*sync, { 462, 68, 90, 26 });
 
     mode = std::make_unique<Pill> ("TRANSITOIRES", [this] { showModeMenu(); }, 12.0f);
     mode->setTooltip (juce::String::fromUTF8 ("D\xc3\xa9""coupe : TRANSITOIRES (\xc3\xa0 chaque attaque), GRILLE (1/4, 1/8, 1/16 depuis le temps 1), MIXTE (la grille, cal\xc3\xa9""e sur l'attaque la plus proche \xc3\xa0 \xc2\xb1""20 ms)"));
-    addToCanvas (*mode, { 526, 68, 118, 26 });
+    addToCanvas (*mode, { 558, 68, 100, 26 });
     const int divs[] { 4, 8, 16 };
     for (int i = 0; i < 3; ++i)
     {
         const int d = divs[i];
         divisions[(size_t) i] = std::make_unique<Pill> ("1/" + juce::String (d), [this, d] { proc.setDivision (d); updateToolbar(); }, 11.5f);
         divisions[(size_t) i]->setTooltip ("La grille (GRILLE et MIXTE)");
-        addToCanvas (*divisions[(size_t) i], { 650 + 36 * i, 68, 34, 26 });
+        addToCanvas (*divisions[(size_t) i], { 664 + 34 * i, 68, 30, 26 });
     }
     sensitivity = std::make_unique<MiniSlider>();
     sensitivity->setTooltip (juce::String::fromUTF8 ("Sensibilit\xc3\xa9 aux transitoires : \xc3\xa0 gauche seulement les coups francs, \xc3\xa0 droite le moindre petit"));
     sensitivity->onChange = [this] (float v) { proc.setSensitivity (v); };
-    addToCanvas (*sensitivity, { 762, 68, 84, 26 });
+    addToCanvas (*sensitivity, { 768, 68, 78, 26 });
 
     // the generator (step 3), with the idea slots on the right
     dice = std::make_unique<Pill> (juce::String::fromUTF8 ("D\xc3\x89"), [] {}, 15.0f);
@@ -454,6 +456,16 @@ void DaftChunkEditor::updateToolbar()
         b->setEnabled (has);
     bpm->setEnabled (has);
 
+    {
+        const int sy = proc.getSync();
+        const double host = proc.getHostBpm();
+        sync->setText (sy == DaftChunkEngine::tempo && proc.isStretching() ? juce::String::fromUTF8 ("CALAGE\xe2\x80\xa6")
+                       : sy == DaftChunkEngine::free ? juce::String ("LIBRE") : sy == DaftChunkEngine::tempo ? juce::String ("TEMPO") : juce::String ("VINYLE"));
+        sync->setSelected (sy != DaftChunkEngine::free && host > 0.0);
+        sync->setTooltip (juce::String::fromUTF8 ("SYNC. TEMPO : les tranches au tempo d'Ableton, sans changer la hauteur (\xc3\xa9tir\xc3\xa9""es en t\xc3\xa2""che de fond). "
+                                                  "VINYLE : au tempo par la vitesse, la hauteur suit. LIBRE : la vitesse du sample. ")
+                          + (host > 0.0 ? "Ableton : " + juce::String (host, 2) + " BPM" : juce::String::fromUTF8 ("Pas de tempo d'h\xc3\xb4te (application autonome) : LIBRE")));
+    }
     const auto& st = proc.getSettings();
     mode->setText (st.mode == SliceMode::transients ? "TRANSITOIRES" : st.mode == SliceMode::grid ? "GRILLE" : "MIXTE");
     mode->setSelected (true);
@@ -475,6 +487,16 @@ void DaftChunkEditor::editorTick (double)
     if (keys != nullptr)
         keys->refresh();
     const bool busy = proc.isAnalysing();
+    const double host = proc.getHostBpm();
+    const bool stretching = proc.isStretching();
+    if (std::abs (host - shownHost) > 0.005 || stretching != wasStretching || proc.getSync() != shownSync)
+    {
+        shownHost = host;
+        wasStretching = stretching;
+        shownSync = proc.getSync();
+        if (load != nullptr)
+            updateToolbar();
+    }
     if (proc.getKitVersion() != shownVersion || busy != wasBusy || busy)
     {
         shownVersion = proc.getKitVersion();
@@ -546,6 +568,24 @@ void DaftChunkEditor::chooseFile()
                                   proc.loadFile (f);
                               updateToolbar();
                           });
+}
+
+void DaftChunkEditor::showSyncMenu()
+{
+    juce::PopupMenu m;
+    const int cur = proc.getSync();
+    const double host = proc.getHostBpm();
+    m.addSectionHeader (host > 0.0 ? "Ableton : " + juce::String (host, 2) + " BPM" : juce::String::fromUTF8 ("Pas de tempo d'h\xc3\xb4te"));
+    m.addItem (2, juce::String::fromUTF8 ("TEMPO (m\xc3\xaame hauteur)"), true, cur == DaftChunkEngine::tempo);
+    m.addItem (3, juce::String::fromUTF8 ("VINYLE (la hauteur suit)"), true, cur == DaftChunkEngine::vinyl);
+    m.addItem (1, "LIBRE (la vitesse du sample)", true, cur == DaftChunkEngine::free);
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (sync.get()),
+                     [this] (int r)
+                     {
+                         if (r >= 1)
+                             proc.setSync (r - 1);
+                         updateToolbar();
+                     });
 }
 
 void DaftChunkEditor::showModeMenu()

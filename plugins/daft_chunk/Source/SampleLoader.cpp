@@ -61,6 +61,7 @@ std::unique_ptr<LoadedSample> decodeFile (const juce::File& file, juce::String& 
 
 SampleLoader::SampleLoader() : juce::Thread ("Daft Chunk analysis")
 {
+    done.signal(); // idle
     startThread (juce::Thread::Priority::low);
 }
 

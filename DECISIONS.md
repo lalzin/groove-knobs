@@ -894,3 +894,17 @@ Une ligne par décision : **contexte** — choix — raison.
   - **La page TRANCHE** règle la tranche choisie d'un clic (sur la forme d'onde ou le clavier) : PITCH, GAIN, FILTER (en octaves sous le global), DÉBUT et FIN fins (rognage), INVERSER, RÉINIT. et À TOUTES. Ces réglages sont gardés dans la session et suivent les tranches par leur numéro.
   - Changer un réglage publie un nouveau kit avec les mêmes tranches : ce qui joue continue. Seuls un autre sample ou d'autres coupes coupent le son.
   - La fenêtre passe à 860 × 580 pour ces deux pages ; DÉ, ENCORE et le style rejoignent le panneau des idées.
+
+## DAFT CHUNK — étape 2 : le calage au tempo (2026-11-12)
+
+- **SYNC** (paramètre d'hôte) a trois positions. TEMPO est le défaut.
+  - **TEMPO** joue les tranches au tempo d'Ableton, sans changer la hauteur.
+  - **VINYLE** les met au tempo par la vitesse : la hauteur suit.
+  - **LIBRE** garde la vitesse du sample.
+- **Comment TEMPO marche.** Le sample entier est étiré (Signalsmith Stretch 1.4.0, MIT, avec Signalsmith Linear) d'un facteur tempo du sample / tempo de l'hôte. Cela se fait hors du fil audio (`StretchWorker`), en une passe `exact()` sur tout le fichier : c'est plus continu que des tranches étirées une à une, et les bornes des tranches sont simplement multipliées par le facteur. Le kit porte l'audio joué, ce facteur (`timeScale`) et son tempo (`playBpm`).
+- **La vitesse résiduelle.** Le moteur lit le kit à la vitesse tempo de l'hôte / `playBpm`. En TEMPO, elle vaut 1 une fois l'étirement fini. Pendant le calcul (moins d'une seconde), le son est juste et la hauteur suit, comme en VINYLE ; rien ne se coupe.
+- **Quand on ré-étire.** Le tempo de l'hôte doit rester stable 250 ms, pour ne pas relancer le calcul à chaque bloc d'une rampe de tempo. Le calcul repart aussi quand le tempo du sample change (÷2, ×2, TAP, saisie).
+- **Pas de tempo d'hôte** (application autonome, ou pas de transport) : rien n'est étiré, la lecture se fait à la vitesse du sample. Le processeur le détecte avant chaque bloc (`getPlayHead()->getPosition()->getBpm()`), car `HostSync` donne 120 par défaut.
+- **L'interface.** Un sélecteur SYNC dans la barre d'outils, qui affiche « CALAGE… » pendant le calcul et donne le tempo d'Ableton dans son menu.
+- **Les tests.** Avec un hôte à 126 BPM et un sample à 120 : en TEMPO, la tranche d'un temps dure un temps à 126 et reste à 220 Hz ; en VINYLE, elle est plus courte et plus aiguë de 5 % ; en LIBRE, rien ne change ; sans hôte, rien ne change ; un changement de tempo ou de BPM du sample relance l'étirement.
+- **Un bug corrigé en passant.** Un `WaitableEvent (true)` n'est pas signalé au départ : attendre un worker qui n'avait rien reçu bloquait.

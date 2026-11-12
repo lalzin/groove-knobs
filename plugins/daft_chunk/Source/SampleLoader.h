@@ -42,7 +42,14 @@ struct Kit
     std::shared_ptr<const LoadedSample> sample;
     std::vector<Slice> slices;
     std::vector<SliceParams> params; // one per slice
+    /** The audio played: the sample's, or the sample stretched to the host's
+        tempo (TEMPO). Slice positions x timeScale = positions in it. */
+    std::shared_ptr<const juce::AudioBuffer<float>> stretched;
+    double timeScale = 1.0;
+    double playBpm = 120.0; // the tempo of the audio played
     int version = 0;
+
+    const juce::AudioBuffer<float>& audio() const noexcept { return stretched != nullptr ? *stretched : sample->audio; }
 };
 
 /** Decodes WAV, AIFF, FLAC, MP3 (and what the system reads). Error: null and `error` set. */

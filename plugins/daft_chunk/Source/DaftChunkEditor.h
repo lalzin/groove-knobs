@@ -45,6 +45,7 @@ private:
 
     void chooseFile();
     void showModeMenu();
+    void showSyncMenu();
     void updateToolbar();
     void updateSlicePage();
 
@@ -66,6 +67,9 @@ private:
     std::array<std::unique_ptr<SliceKnob>, 5> sliceKnobs;
     int page = 0, shownSelected = -1, shownSliceVersion = -1;
     int shownVersion = -1;
-    bool wasBusy = false;
+    bool wasBusy = false, wasStretching = false;
+    double shownHost = -1.0;
+    int shownSync = -1;
+    std::unique_ptr<Pill> sync;
 };
 } // namespace daftchunk

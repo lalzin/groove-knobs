@@ -37,6 +37,8 @@ void DaftChunkEngine::setChoices (const int* indices, int n)
         mode = indices[modeChoice];
     if (n > playChoice)
         play = indices[playChoice];
+    if (n > syncChoice)
+        sync = indices[syncChoice];
 }
 
 void DaftChunkEngine::noteOn (int note, float velocity, int previewSamples)
@@ -67,14 +69,16 @@ void DaftChunkEngine::noteOn (int note, float velocity, int previewSamples)
     auto& v = *slot;
     const auto& s = current->slices[(size_t) index];
     const SliceParams p = index < (int) current->params.size() ? current->params[(size_t) index] : SliceParams {};
-    const double len = (double) (s.end - s.start);
+    // in the audio played (the stretched one: positions x timeScale)
+    const double scale = current->timeScale, audioLen = (double) current->audio().getNumSamples();
+    const double s0 = (double) s.start * scale, s1 = std::min (audioLen, (double) s.end * scale), len = s1 - s0;
     v = {};
     v.slice = index;
     v.note = previewSamples >= 0 ? -1 : note;
-    v.first = (double) s.start + juce::jlimit (0.0, 0.9, (double) p.start) * len;
-    v.last = (double) s.end - juce::jlimit (0.0, 0.9, (double) p.end) * len;
+    v.first = s0 + juce::jlimit (0.0, 0.9, (double) p.start) * len;
+    v.last = s1 - juce::jlimit (0.0, 0.9, (double) p.end) * len;
     if (v.last - v.first < 64.0)
-        v.last = std::min ((double) s.end, v.first + 64.0);
+        v.last = std::min (s1, v.first + 64.0);
     v.reverse = p.reverse;
     v.pos = v.reverse ? v.last - 2.0 : v.first;
     const float sens = juce::jlimit (0.0f, 1.0f, knobs[velocityKnob]);
@@ -107,10 +111,10 @@ void DaftChunkEngine::noteOff (int note)
 void DaftChunkEngine::render (Voice& v, float* const* out, int numChannels, int from, int to)
 {
     const auto& k = *current;
-    const auto& audio = k.sample->audio;
+    const auto& audio = k.audio();
     const int srcChans = audio.getNumChannels();
     const SliceParams p = v.slice < (int) k.params.size() ? k.params[(size_t) v.slice] : SliceParams {};
-    const double step = k.sample->sampleRate / sampleRate * std::exp2 ((knobs[pitchKnob] + p.pitch) / 12.0);
+    const double step = k.sample->sampleRate / sampleRate * rate * std::exp2 ((knobs[pitchKnob] + p.pitch) / 12.0);
     const double fade = 0.002 * k.sample->sampleRate; // the 2 ms fades, in source samples
     const double length = v.last - v.first;
     const float attackInc = (float) (1.0 / (std::max (0.0005, (double) knobs[attackKnob]) * sampleRate));
@@ -195,14 +199,16 @@ void DaftChunkEngine::render (Voice& v, float* const* out, int numChannels, int 
     }
 }
 
-void DaftChunkEngine::processWet (juce::AudioBuffer<float>& buffer, int numSamples, const float*, const gk::BlockTiming&)
+void DaftChunkEngine::processWet (juce::AudioBuffer<float>& buffer, int numSamples, const float*, const gk::BlockTiming& timing)
 {
     buffer.clear (0, numSamples);
+    telemetry.hostBpm.store (hostTempoKnown ? timing.bpm : 0.0, std::memory_order_relaxed);
     const auto* k = kit.load (std::memory_order_acquire);
     if (k != current)
     {
         // new settings for the same slices: what plays goes on; another sample or other cuts: it stops
-        const bool sameSlices = k != nullptr && current != nullptr && k->sample == current->sample && k->slices.size() == current->slices.size();
+        const bool sameSlices = k != nullptr && current != nullptr && k->sample == current->sample && k->slices.size() == current->slices.size()
+                                && k->stretched == current->stretched;
         if (! sameSlices)
         {
             for (auto& v : voices)
@@ -217,6 +223,9 @@ void DaftChunkEngine::processWet (juce::AudioBuffer<float>& buffer, int numSampl
         telemetry.slice.store (-1, std::memory_order_relaxed);
         return;
     }
+    // TEMPO / VINYLE: the speed that puts the kit's tempo on the host's (TEMPO: ~1 once stretched)
+    rate = hostTempoKnown && sync != free && timing.bpm > 0.0 && current->playBpm > 0.0 ? juce::jlimit (0.25, 4.0, timing.bpm / current->playBpm) : 1.0;
+
     // FILTER glides (log), over ~20 ms
     {
         const double target = juce::jlimit (20.0, 20000.0, (double) knobs[cutoffKnob]);
@@ -264,7 +273,7 @@ void DaftChunkEngine::processWet (juce::AudioBuffer<float>& buffer, int numSampl
         const double rel = v.reverse ? (v.last - 1.0 - v.pos) : (v.pos - v.first);
         // the playhead in the slice's own coordinates (fine start / end and reverse included)
         const auto& s = current->slices[(size_t) v.slice];
-        const double at = v.reverse ? v.last - rel : v.first + rel;
+        const double at = (v.reverse ? v.last - rel : v.first + rel) / current->timeScale;
         telemetry.position.store ((float) ((at - (double) s.start) / (double) std::max<int64_t> (1, s.end - s.start)), std::memory_order_relaxed);
     }
     else

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DaftChunkEngine.h"
+#include "Stretcher.h"
 
 namespace daftchunk
 {
@@ -21,9 +22,12 @@ public:
     ~DaftChunkProcessor() override;
 
     juce::AudioProcessorEditor* createEditor() override;
+    void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) override;
+    using OneKnobProcessor::processBlock;
     static gk::PresetManager loadBuiltInPresets();
 
     DaftChunkEngine& getDsp() noexcept { return static_cast<DaftChunkEngine&> (getEngine()); }
+    const DaftChunkEngine& getDsp() const noexcept { return static_cast<const DaftChunkEngine&> (const_cast<DaftChunkProcessor*> (this)->getEngine()); }
 
     //== loading ==================================================================
     void loadFile (const juce::File& file);
@@ -71,6 +75,16 @@ public:
     int getSelectedSlice() const noexcept { return selected; }
     void selectSlice (int index);
 
+    //== the host's tempo (SYNC) =================================================
+    /** The host's tempo (0: none known: the standalone app, or no playhead). */
+    double getHostBpm() const noexcept { return getDsp().getTelemetry().hostBpm.load (std::memory_order_relaxed); }
+    int getSync() const noexcept;
+    void setSync (int sync);
+    /** TEMPO: the slices are being stretched to the host's tempo. */
+    bool isStretching() const noexcept { return stretcher.isBusy() || stretchWanted; }
+    /** Tests: applies the host tempo now and waits for the stretch. */
+    void stretchNow();
+
     /** +1 at every new kit (the editor redraws). */
     int getKitVersion() const noexcept { return kitVersion; }
 
@@ -85,8 +99,14 @@ private:
     void publish (std::vector<Slice> slices);
     void freeRetired (bool force);
     void republish(); // the same slices, new settings
+    void updateStretch (bool now);
 
     SampleLoader loader;
+    StretchWorker stretcher;
+    std::shared_ptr<const juce::AudioBuffer<float>> stretched; // the sample at the host's tempo (null: none)
+    double stretchedFactor = 1.0, requestedFactor = 0.0, lastHostBpm = 0.0, hostStableSince = 0.0;
+    int stretchId = 0;
+    bool stretchWanted = false;
     std::shared_ptr<const LoadedSample> sample;
     std::shared_ptr<const Kit> kit;
     struct Retired { std::shared_ptr<const Kit> kit; double since; };

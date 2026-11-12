@@ -464,3 +464,127 @@ TEST_CASE ("DC S5 the session keeps the slices' own settings", "[dc][plugin][sta
     CHECK (q.getSliceParams (1).isDefault());
     f.deleteFile();
 }
+
+namespace
+{
+/** A host transport at a fixed tempo. */
+struct FixedPlayHead final : juce::AudioPlayHead
+{
+    double bpm = 120.0;
+    juce::Optional<PositionInfo> getPosition() const override
+    {
+        PositionInfo p;
+        p.setBpm (bpm);
+        p.setIsPlaying (true);
+        p.setPpqPosition (0.0);
+        return p;
+    }
+};
+
+/** Zero crossings per second of channel 0 in [from, from + len). */
+double crossingRate (const juce::AudioBuffer<float>& b, int from, int len)
+{
+    int n = 0;
+    for (int i = from + 1; i < from + len; ++i)
+        if ((b.getSample (0, i - 1) < 0.0f) != (b.getSample (0, i) < 0.0f))
+            ++n;
+    return n * sr / len;
+}
+
+int soundingLength (const juce::AudioBuffer<float>& b)
+{
+    int last = 0;
+    for (int i = 0; i < b.getNumSamples(); ++i)
+        if (std::abs (b.getSample (0, i)) > 1.0e-4f)
+            last = i;
+    return last;
+}
+
+/** A 220 Hz saw, 2 s, "at 120 BPM": 4 slices of a beat. */
+std::unique_ptr<DaftChunkProcessor> toneAt120 (FixedPlayHead& ph)
+{
+    std::vector<float> x ((size_t) (2.0 * sr));
+    for (size_t i = 0; i < x.size(); ++i)
+        x[i] = 0.4f * (float) (2.0 * std::fmod (220.0 * (double) i / sr, 1.0) - 1.0);
+    auto p = loaded (x);
+    p->setPlayHead (&ph);
+    p->setBpm (120.0);
+    p->setFirstBeat (0.0);
+    p->setMode (SliceMode::grid);
+    p->setDivision (4);
+    setParam (p->getChoiceParameter (E::playChoice), (float) E::oneShot);
+    juce::AudioBuffer<float> b (2, 256);
+    juce::MidiBuffer m;
+    p->processBlock (b, m); // (the engine sees the host's tempo)
+    return p;
+}
+} // namespace
+
+TEST_CASE ("DC T1 TEMPO: the slices at the host's tempo, the same pitch", "[dc][plugin][sync]")
+{
+    FixedPlayHead ph;
+    ph.bpm = 126.0;
+    auto p = toneAt120 (ph);
+    CHECK (p->getHostBpm() == Catch::Approx (126.0));
+    p->stretchNow();
+    const auto kit = p->getKit();
+    REQUIRE (kit->stretched != nullptr);
+    CHECK (kit->timeScale == Catch::Approx (120.0 / 126.0).epsilon (0.001));
+    CHECK (kit->playBpm == Catch::Approx (126.0).epsilon (0.001));
+    const int beat = (int) (sr * 60.0 / 126.0);
+    const auto out = playEvents (*p, { { 0, 37, true } }, beat + 4000);
+    CHECK (std::abs (soundingLength (out) - beat) < 300);                 // a beat at 126
+    CHECK (crossingRate (out, 2000, 12000) == Catch::Approx (440.0).epsilon (0.02)); // still 220 Hz (2 crossings a period)
+}
+
+TEST_CASE ("DC T2 VINYLE: faster and higher; LIBRE: as it is; no host tempo: as it is", "[dc][plugin][sync]")
+{
+    FixedPlayHead ph;
+    ph.bpm = 126.0;
+    auto p = toneAt120 (ph);
+    p->setSync (E::vinyl);
+    p->stretchNow();
+    CHECK (p->getKit()->stretched == nullptr);
+    const int beat120 = (int) (sr * 0.5);
+    auto out = playEvents (*p, { { 0, 37, true } }, beat120 + 4000);
+    CHECK (std::abs (soundingLength (out) - (int) (beat120 * 120.0 / 126.0)) < 300);
+    CHECK (crossingRate (out, 2000, 12000) == Catch::Approx (440.0 * 126.0 / 120.0).epsilon (0.02));
+
+    p->setSync (E::free);
+    p->stretchNow();
+    out = playEvents (*p, { { 0, 37, true } }, beat120 + 4000);
+    CHECK (std::abs (soundingLength (out) - beat120) < 300);
+    CHECK (crossingRate (out, 2000, 12000) == Catch::Approx (440.0).epsilon (0.02));
+
+    // TEMPO without a host tempo (the standalone app, no transport): as it is
+    p->setSync (E::tempo);
+    p->setPlayHead (nullptr);
+    {
+        juce::AudioBuffer<float> b (2, 256);
+        juce::MidiBuffer m;
+        p->processBlock (b, m);
+    }
+    p->stretchNow();
+    CHECK (p->getKit()->stretched == nullptr);
+    out = playEvents (*p, { { 0, 37, true } }, beat120 + 4000);
+    CHECK (std::abs (soundingLength (out) - beat120) < 300);
+}
+
+TEST_CASE ("DC T3 the host's tempo changes: stretched again", "[dc][plugin][sync]")
+{
+    FixedPlayHead ph;
+    ph.bpm = 100.0;
+    auto p = toneAt120 (ph);
+    p->stretchNow();
+    CHECK (p->getKit()->timeScale == Catch::Approx (1.2).epsilon (0.001));
+    ph.bpm = 130.0;
+    juce::AudioBuffer<float> b (2, 256);
+    juce::MidiBuffer m;
+    p->processBlock (b, m);
+    p->stretchNow();
+    CHECK (p->getKit()->timeScale == Catch::Approx (120.0 / 130.0).epsilon (0.001));
+    // the sample's tempo set by hand: stretched from it
+    p->setBpm (65.0);
+    p->stretchNow();
+    CHECK (p->getKit()->timeScale == Catch::Approx (65.0 / 130.0).epsilon (0.001));
+}

@@ -18,21 +18,37 @@ gk_add_art(DaftChunkArt
     NAMESPACE   DCArt
     SOURCES     ${DC_CHUNKY_FRAMES})
 
+# Signalsmith Stretch (MIT; with Signalsmith Linear, MIT): the slices' time-stretch
+# to the host's tempo, offline (THIRD_PARTY_NOTICES)
+include(FetchContent)
+FetchContent_Declare(signalsmith-stretch
+    GIT_REPOSITORY https://github.com/Signalsmith-Audio/signalsmith-stretch.git
+    GIT_TAG        1.4.0
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(signalsmith-stretch)
+
 add_library(DaftChunkCode INTERFACE)
 target_sources(DaftChunkCode INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/Analysis.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/SampleLoader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/Stretcher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/DaftChunkEngine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/DaftChunkProcessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/DaftChunkEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/WaveformView.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/ChunkyMascot.cpp)
 target_include_directories(DaftChunkCode INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
+# (system includes: their warnings are not ours)
+target_include_directories(DaftChunkCode SYSTEM INTERFACE ${signalsmith-stretch_SOURCE_DIR}/include ${signalsmith-linear_SOURCE_DIR}/include)
+if(MSVC)
+    target_compile_options(DaftChunkCode INTERFACE /bigobj) # (Signalsmith's templates)
+endif()
 target_link_libraries(DaftChunkCode INTERFACE
     groove::groove_core
     GrooveCoreAssets
     DaftChunkPresets
     DaftChunkArt
+    signalsmith-stretch
     juce::juce_audio_utils
     juce::juce_dsp)
 target_compile_definitions(DaftChunkCode INTERFACE

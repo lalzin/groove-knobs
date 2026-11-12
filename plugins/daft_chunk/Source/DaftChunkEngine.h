@@ -23,9 +23,15 @@ public:
 
     /** The host parameters (OneKnobConfig::knobs / choices, in this order). */
     enum Knob { attackKnob, decayKnob, sustainKnob, releaseKnob, pitchKnob, cutoffKnob, resoKnob, velocityKnob, volumeKnob, numKnobs };
-    enum Choice { modeChoice, playChoice, numChoices };
+    enum Choice { modeChoice, playChoice, syncChoice, numChoices };
     enum Mode { cut = 0, poly = 1 };
     enum Play { oneShot = 0, gate = 1 };
+    /** LIBRE: the sample's own speed; TEMPO: at the host's tempo, same pitch
+        (the slices stretched); VINYLE: at the host's tempo by speed (the pitch follows). */
+    enum Sync { free = 0, tempo = 1, vinyl = 2 };
+
+    /** The processor, before each block: whether the host gives a tempo (not the standalone app). */
+    void setHostTempoKnown (bool known) noexcept { hostTempoKnown = known; }
 
     void setPresets (const gk::PresetManager&) override {}
     void prepare (double sampleRate, int maxBlockSize, int numChannels) override;
@@ -50,6 +56,7 @@ public:
     {
         std::atomic<int> slice { -1 };
         std::atomic<float> position { 0.0f };
+        std::atomic<double> hostBpm { 0.0 }; // 0: the host gives none
     };
     const Telemetry& getTelemetry() const noexcept { return telemetry; }
 
@@ -85,7 +92,9 @@ private:
     double sampleRate = 44100.0;
     int cutFade = 132;              // 3 ms
     std::array<float, numKnobs> knobs { 0.0005f, 0.3f, 1.0f, 0.05f, 0.0f, 20000.0f, 0.0f, 0.7f, 0.0f };
-    int mode = cut, play = gate;
+    int mode = cut, play = gate, sync = tempo;
+    bool hostTempoKnown = false;
+    double rate = 1.0; // the host's tempo / the kit's (TEMPO, VINYLE), this block
     double cutoffSmoothed = 20000.0;
 };
 } // namespace daftchunk

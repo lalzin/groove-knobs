@@ -45,7 +45,8 @@ namespace
         cfg.knobs[E::volumeKnob].textFromValue = [] (float v) { return v <= -59.9f ? juce::String ("-inf") : juce::String (v, 1) + " dB"; };
         cfg.outputGainKnob = E::volumeKnob;
         cfg.choices = { { "mode", "Mode", "MODE", { "Coupe", "Poly" }, E::cut, true },
-                        { "play", "Play", "LECTURE", { "One shot", "Gate" }, E::gate, true } };
+                        { "play", "Play", "LECTURE", { "One shot", "Gate" }, E::gate, true },
+                        { "sync", "Sync", "SYNC", { "Libre", "Tempo", "Vinyle" }, E::tempo, true } };
         cfg.tailSeconds = 0.1;
         cfg.featuresFromOutput = true; // (an instrument: Chunky hears what it plays)
         return cfg;
@@ -119,10 +120,98 @@ void DaftChunkProcessor::waitForAnalysis()
     takeAnalysis();
 }
 
+void DaftChunkProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+{
+    bool known = false;
+    if (wrapperType != wrapperType_Standalone)
+        if (auto* ph = getPlayHead())
+            if (const auto pos = ph->getPosition())
+                known = pos->getBpm().hasValue() && *pos->getBpm() > 0.0;
+    getDsp().setHostTempoKnown (known);
+    OneKnobProcessor::processBlock (buffer, midi);
+}
+
 void DaftChunkProcessor::timerCallback()
 {
     takeAnalysis();
+    updateStretch (false);
     freeRetired (false);
+}
+
+int DaftChunkProcessor::getSync() const noexcept
+{
+    return const_cast<DaftChunkProcessor*> (this)->getChoiceParameter (DaftChunkEngine::syncChoice).getIndex();
+}
+
+void DaftChunkProcessor::setSync (int sync)
+{
+    auto& c = getChoiceParameter (DaftChunkEngine::syncChoice);
+    c.beginChangeGesture();
+    c.setValueNotifyingHost (c.convertTo0to1 ((float) juce::jlimit (0, 2, sync)));
+    c.endChangeGesture();
+    updateStretch (false);
+}
+
+void DaftChunkProcessor::stretchNow()
+{
+    updateStretch (true);
+    stretcher.waitUntilDone();
+    updateStretch (true);
+}
+
+void DaftChunkProcessor::updateStretch (bool now)
+{
+    // a finished stretch: played from the next block (if it is still the one wanted)
+    if (auto r = stretcher.takeResult(); r.audio != nullptr && r.id == stretchId && sample != nullptr)
+    {
+        stretched = std::move (r.audio);
+        stretchedFactor = r.factor;
+        stretchWanted = false;
+        republish();
+    }
+    if (sample == nullptr)
+        return;
+    const double host = getHostBpm();
+    const double t = now ? 1.0e9 : juce::Time::getMillisecondCounterHiRes() * 0.001;
+    if (std::abs (host - lastHostBpm) > 1.0e-6)
+    {
+        lastHostBpm = host;
+        hostStableSince = t;
+    }
+    // what TEMPO wants: the sample stretched by its tempo / the host's (none: LIBRE, VINYLE, no host tempo, already right)
+    double want = 1.0;
+    if (getSync() == DaftChunkEngine::tempo && host > 0.0)
+        want = juce::jlimit (0.25, 4.0, getBpm() / host);
+    if (std::abs (want - 1.0) < 0.001)
+    {
+        stretchWanted = false;
+        requestedFactor = 0.0;
+        if (stretched != nullptr)
+        {
+            ++stretchId; // (a stretch still running is no longer wanted)
+            stretched = nullptr;
+            stretchedFactor = 1.0;
+            republish();
+        }
+        return;
+    }
+    if (stretched != nullptr && std::abs (want / stretchedFactor - 1.0) < 0.0005)
+    {
+        stretchWanted = false;
+        return; // already there
+    }
+    stretchWanted = true;
+    // the host's tempo must hold 250 ms first (a tempo ramp would restart it at every block)
+    if (std::abs (want / std::max (requestedFactor, 1.0e-9) - 1.0) >= 0.0005 && (now || t - hostStableSince > 0.25))
+    {
+        requestedFactor = want;
+        StretchWorker::Job job;
+        job.source = std::shared_ptr<const juce::AudioBuffer<float>> (sample, &sample->audio);
+        job.sampleRate = sample->sampleRate;
+        job.factor = want;
+        job.id = ++stretchId;
+        stretcher.request (std::move (job));
+    }
 }
 
 void DaftChunkProcessor::takeAnalysis()
@@ -141,6 +230,10 @@ void DaftChunkProcessor::takeAnalysis()
     status = result->truncated ? juce::String (juce::String::fromUTF8 ("Coup\xc3\xa9 \xc3\xa0 60 s")) : juce::String();
     sample = std::shared_ptr<const LoadedSample> (std::move (result));
     taps.clear();
+    stretched = nullptr; // (the new sample is stretched once its tempo is known: the timer)
+    stretchedFactor = 1.0;
+    requestedFactor = 0.0;
+    ++stretchId;
     const bool sameFile = pendingLength < 0 || pendingLength == sample->analysis.numSamples;
     if (! sameFile)
         sliceParams.clear(); // the file changed since the session: its cuts and slice settings no longer fit
@@ -176,6 +269,12 @@ void DaftChunkProcessor::publish (std::vector<Slice> slices)
     k->slices = std::move (slices);
     sliceParams.resize (k->slices.size()); // (kept by index when the cuts move)
     k->params = sliceParams;
+    if (stretched != nullptr && getSync() == DaftChunkEngine::tempo)
+    {
+        k->stretched = stretched;
+        k->timeScale = stretchedFactor;
+    }
+    k->playBpm = getBpm() / k->timeScale;
     selected = juce::jlimit (0, std::max (0, (int) k->slices.size() - 1), selected);
     k->version = ++kitVersion;
     boundaries.clear();
