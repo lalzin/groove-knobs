@@ -120,6 +120,10 @@ public:
     int getIdeasVersion() const noexcept { return ideasVersion; }
     /** +1 at every DÉ / ENCORE (Chunky shakes his dice). */
     int getDiceVersion() const noexcept { return diceVersion; }
+    /** CHOP moved: the idea playing (else the one selected) made again from its own seed and
+        style at the new CHOP (the timer does it once the knob rests 120 ms; tests call it). */
+    void applyChop();
+
     /** The generator's view of the current slices. */
     SourceInfo sourceInfo() const;
 
@@ -150,6 +154,8 @@ private:
     double stretchedFactor = 1.0, requestedFactor = 0.0, lastHostBpm = 0.0, hostStableSince = 0.0;
     int stretchId = 0;
     bool stretchWanted = false;
+    float lastChop = -1.0f;
+    double chopMoved = -1.0, chopRemembered = -10.0;
     std::shared_ptr<const LoadedSample> sample;
     std::shared_ptr<const Kit> kit;
     struct Retired { std::shared_ptr<const Kit> kit; double since; };

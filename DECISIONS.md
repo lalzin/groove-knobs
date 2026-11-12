@@ -982,3 +982,7 @@ Une ligne par décision : **contexte** — choix — raison.
   - La molette ou le pincement zooment autour de la souris, jusqu'à environ 200 échantillons sur toute la largeur. Un balayage latéral ou maj + molette avance dans le sample.
   - Une barre d'aperçu sous la courbe montre où l'on est : on la glisse, et un double-clic revient au sample entier. Les boutons - et + zooment, et le troisième indique le zoom (x12) ou TOUT pour revenir.
   - Le dessin est fait par colonne : avec les crêtes de l'analyse de loin, avec les échantillons eux-mêmes de près, et la courbe point par point (avec la ligne du zéro) tout près, pour voir les passages par zéro. Un nouveau sample remet la vue entière.
+- **CHOP en direct** (Alan : « ORDER / WILD ne fait absolument rien »). CHOP n'était lu qu'au DÉ ; tourner le bouton ne changeait rien à ce qu'on entendait.
+  - Maintenant, quand CHOP se pose (120 ms sans bouger), l'idée qui joue (sinon l'idée choisie) est refaite avec sa propre graine, son style et son nombre de mesures, à la nouvelle valeur. La boucle se transforme d'ORDER vers WILD en restant la même idée, et revenir à la valeur de départ redonne la même boucle.
+  - Cela vaut aussi pour l'automation d'Ableton. Un tour de bouton compte pour un seul ANNULER (les mouvements à moins de 1,5 s l'un de l'autre). Les retouches faites à la main dans SÉQUENCE sur cette idée sont alors remplacées, mais ANNULER les rend.
+  - À la réouverture d'une session, la valeur restaurée ne compte pas comme un mouvement.

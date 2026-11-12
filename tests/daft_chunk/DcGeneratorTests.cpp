@@ -367,6 +367,32 @@ TEST_CASE ("DC G9 variety: 20 seeds, at least 16 different loops in every style"
         }
 }
 
+TEST_CASE ("DC G10 CHOP live: the idea follows the knob (same seed and style), ANNULER", "[dc][generator]")
+{
+    auto p = loopKit();
+    setParam (p->getAmountParameter(), 0.1f);
+    REQUIRE (p->rollDice() == 0);
+    const auto before = p->getIdea (0).pattern;
+    setParam (p->getAmountParameter(), 0.9f);
+    p->applyChop();
+    const auto after = p->getIdea (0).pattern;
+    CHECK (after.seed == before.seed);
+    CHECK (after.style == before.style);
+    CHECK (after.bars == before.bars);
+    CHECK (after.chop == Catch::Approx (0.9f));
+    CHECK (after == generate (p->sourceInfo(), before.style, 0.9f, before.seed, before.bars));
+    CHECK_FALSE (after.steps == before.steps);
+    // back to where it was: the same loop again
+    setParam (p->getAmountParameter(), 0.1f);
+    p->applyChop();
+    CHECK (p->getIdea (0).pattern.steps == before.steps);
+    // ANNULER: one for the whole turn of the knob (both moves came within 1.5 s): back to before it
+    p->undo();
+    CHECK (p->getIdea (0).pattern == before);
+    p->redo();
+    CHECK (p->getIdea (0).pattern.chop == Catch::Approx (0.1f));
+}
+
 // A dump of the generated patterns for a real file (not run by default):
 //   DC_DUMP_FILE=/path/sample.mp3 dc_tests "[.dump]"
 TEST_CASE ("DC dump patterns", "[.dump]")

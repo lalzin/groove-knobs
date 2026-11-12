@@ -151,6 +151,41 @@ void DaftChunkProcessor::timerCallback()
     takeAnalysis();
     updateStretch (false);
     freeRetired (false);
+    // CHOP live: once the knob rests, the idea follows it
+    const float chop = getAmountParameter().convertFrom0to1 (getAmountParameter().getValue());
+    if (lastChop < 0.0f)
+        lastChop = chop;
+    if (std::abs (chop - lastChop) > 0.002f)
+    {
+        lastChop = chop;
+        chopMoved = now();
+    }
+    if (chopMoved > 0.0 && now() - chopMoved > 0.12)
+    {
+        chopMoved = -1.0;
+        applyChop();
+    }
+}
+
+void DaftChunkProcessor::applyChop()
+{
+    const int i = playingIdea >= 0 ? playingIdea : selectedIdea;
+    if (! juce::isPositiveAndBelow (i, numIdeas) || ! ideas[(size_t) i].used)
+        return;
+    const float chop = getAmountParameter().convertFrom0to1 (getAmountParameter().getValue());
+    auto& idea = ideas[(size_t) i];
+    if (std::abs (idea.pattern.chop - chop) < 0.005f)
+        return;
+    const auto src = sourceInfo();
+    if (src.types.empty())
+        return;
+    // one ANNULER for a whole turn of the knob
+    if (now() - chopRemembered > 1.5)
+        remember();
+    chopRemembered = now();
+    const auto old = idea.pattern;
+    idea.pattern = generate (src, old.style, chop, old.seed, old.bars);
+    ideasChanged();
 }
 
 int DaftChunkProcessor::getSync() const noexcept
@@ -752,6 +787,8 @@ void DaftChunkProcessor::loadExtraState (const juce::ValueTree& state)
         undoStack.clear();
         redoStack.clear();
         setPlaying (-1);
+        lastChop = -1.0f; // (the restored CHOP is not a move)
+        chopMoved = -1.0;
     }
     samplePath = state.getProperty ("samplePath").toString();
     status = {};
