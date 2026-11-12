@@ -36,7 +36,8 @@ namespace colours
 //==============================================================================
 WaveformView::WaveformView (DaftChunkProcessor& p) : proc (p)
 {
-    setTooltip (juce::String::fromUTF8 ("Les tranches du sample. Glisse une coupe pour la d\xc3\xa9placer, glisse le drapeau 1 pour placer le premier temps. ")
+    setTooltip (juce::String::fromUTF8 ("Les tranches du sample. Molette (ou pincement) : zoom ; maj + molette : avancer ; la barre du bas : o\xc3\xb9 tu es (double-clic : tout). "
+                                        "Glisse une coupe pour la d\xc3\xa9placer, glisse le drapeau 1 pour placer le premier temps. ")
                 + juce::String::fromUTF8 ("Double-clic : une coupe en plus. Clic droit (ou alt-clic) sur une coupe : l'enlever. Clic sur une tranche : l'\xc3\xa9""couter."));
 }
 
@@ -59,6 +60,11 @@ void WaveformView::refresh()
     bool dirty = false;
     if (proc.getKitVersion() != shownVersion || proc.getSelectedSlice() != shownSelected)
     {
+        if (kit == nullptr || proc.getKit() == nullptr || proc.getKit()->sample != kit->sample)
+        {
+            viewStart = 0.0; // another sample: all of it
+            viewLength = -1.0;
+        }
         kit = proc.getKit();
         shownVersion = proc.getKitVersion();
         shownSelected = proc.getSelectedSlice();
@@ -78,21 +84,65 @@ void WaveformView::refresh()
 
 juce::Rectangle<float> WaveformView::waveArea() const
 {
-    return getLocalBounds().toFloat().reduced (2.0f).withTrimmedTop (16.0f);
+    return getLocalBounds().toFloat().reduced (2.0f).withTrimmedTop (16.0f).withTrimmedBottom (14.0f);
+}
+
+juce::Rectangle<float> WaveformView::overviewArea() const
+{
+    const auto b = getLocalBounds().toFloat().reduced (2.0f);
+    return { b.getX(), b.getBottom() - 11.0f, b.getWidth() - 3.0f * 34.0f - 4.0f, 10.0f };
+}
+
+juce::Rectangle<float> WaveformView::zoomButton (int i) const
+{
+    const auto o = overviewArea();
+    return { o.getRight() + 4.0f + (float) i * 34.0f, o.getY() - 1.0f, 32.0f, 12.0f };
+}
+
+double WaveformView::total() const noexcept
+{
+    return kit != nullptr && kit->sample != nullptr ? std::max (1.0, (double) kit->sample->analysis.numSamples) : 1.0;
+}
+
+void WaveformView::clampView()
+{
+    const double n = total();
+    if (viewLength > 0.0)
+    {
+        viewLength = juce::jlimit (std::min (n, 200.0), n, viewLength); // down to ~200 samples across
+        if (viewLength >= n * 0.999)
+            viewLength = -1.0;
+    }
+    viewStart = viewLength > 0.0 ? juce::jlimit (0.0, n - viewLength, viewStart) : 0.0;
+}
+
+void WaveformView::zoomAround (float x, double factor)
+{
+    const double anchor = sampleFor (x), frac = (x - waveArea().getX()) / std::max (1.0f, waveArea().getWidth());
+    viewLength = visible() / std::max (1.0e-3, factor);
+    clampView();
+    viewStart = anchor - juce::jlimit (0.0, 1.0, frac) * visible();
+    clampView();
+    repaint();
+}
+
+void WaveformView::resetZoom()
+{
+    viewLength = -1.0;
+    viewStart = 0.0;
+    repaint();
 }
 
 float WaveformView::xFor (double sample) const
 {
     const auto r = waveArea();
-    const auto n = kit != nullptr && kit->sample != nullptr ? (double) kit->sample->analysis.numSamples : 1.0;
-    return r.getX() + (float) (sample / std::max (1.0, n)) * r.getWidth();
+    return r.getX() + (float) ((sample - viewStart) / visible()) * r.getWidth();
 }
 
 double WaveformView::sampleFor (float x) const
 {
     const auto r = waveArea();
-    const auto n = kit != nullptr && kit->sample != nullptr ? (double) kit->sample->analysis.numSamples : 1.0;
-    return juce::jlimit (0.0, n, (double) ((x - r.getX()) / r.getWidth()) * n);
+    return juce::jlimit (0.0, total(), viewStart + (double) ((x - r.getX()) / r.getWidth()) * visible());
 }
 
 int WaveformView::cutNear (float x) const
@@ -164,6 +214,29 @@ void WaveformView::paint (juce::Graphics& g)
     }
 
     const auto& a = s->analysis;
+    // the overview under it: where the view is in the whole sample, and the zoom buttons
+    {
+        const auto o = overviewArea();
+        g.setColour (colours::surface);
+        g.fillRoundedRectangle (o, 3.0f);
+        const float x0 = o.getX() + (float) (viewStart / total()) * o.getWidth();
+        const float w0 = std::max (6.0f, (float) (visible() / total()) * o.getWidth());
+        g.setColour (isZoomed() ? colours::coral : colours::cream.withAlpha (0.25f));
+        g.fillRoundedRectangle (juce::Rectangle<float> (x0, o.getY(), w0, o.getHeight()), 3.0f);
+        const char* labels[] { "-", "+", "TOUT" };
+        for (int i = 0; i < 3; ++i)
+        {
+            const auto zb = zoomButton (i);
+            const bool on = i == 1 || isZoomed();
+            g.setColour (on ? colours::surface.brighter (0.2f) : colours::surface);
+            g.fillRoundedRectangle (zb, 3.0f);
+            g.setColour (colours::cream.withAlpha (on ? 0.9f : 0.3f));
+            g.setFont (gk::GrooveFonts::font (i == 2 ? 9.0f : 12.0f));
+            g.drawText (i == 2 && isZoomed() ? "x" + juce::String (juce::roundToInt (total() / visible())) : juce::String (labels[i]), zb, juce::Justification::centred);
+        }
+    }
+    juce::Graphics::ScopedSaveState clip (g);
+    g.reduceClipRegion (juce::Rectangle<float> (r.getX(), bounds.getY(), r.getWidth(), r.getBottom() - bounds.getY()).getSmallestIntegerContainer());
     // the slices: a tint and a coloured tab with the number and the type
     for (int i = 0; i < (int) kit->slices.size(); ++i)
     {
@@ -208,10 +281,10 @@ void WaveformView::paint (juce::Graphics& g)
     // the beat grid from beat 1 (bars brighter)
     {
         const double beat = a.beatSamples (proc.getBpm()), fb = proc.getFirstBeat();
-        if (beat > 1.0 && (double) a.numSamples / beat < 2000.0)
+        if (beat > 1.0 && visible() / beat < 2000.0)
         {
-            const double first = fb - std::floor (fb / beat) * beat;
-            for (double p = first; p < (double) a.numSamples; p += beat)
+            const double first = fb + std::ceil ((viewStart - fb) / beat) * beat;
+            for (double p = first; p < viewStart + visible(); p += beat)
             {
                 const long k = std::lround ((p - fb) / beat);
                 const bool bar = ((k % 4) + 4) % 4 == 0;
@@ -221,25 +294,69 @@ void WaveformView::paint (juce::Graphics& g)
         }
     }
 
-    // the waveform (min / max per pixel column)
+    // the waveform: min / max per pixel column (the analysis's peaks far out, the samples themselves close in)
     {
         const int w = juce::roundToInt (r.getWidth());
         const float mid = r.getCentreY(), half = r.getHeight() * 0.46f;
-        juce::Path p;
+        const auto& audio = s->audio;
+        const int chans = audio.getNumChannels();
+        const double perPixel = visible() / std::max (1, w), n = total();
         const int np = (int) a.peakMax.size();
-        for (int x = 0; x < w; ++x)
+        const bool fromPeaks = perPixel >= n / np;
+        if (perPixel < 2.0)
         {
-            const int b0 = x * np / w, b1 = std::max (b0 + 1, (x + 1) * np / w);
-            float lo = 0.0f, hi = 0.0f;
-            for (int b = b0; b < std::min (b1, np); ++b)
+            // very close: the curve through the samples, and the samples as dots
+            juce::Path line;
+            const auto i0 = (int64_t) std::floor (viewStart), i1 = std::min ((int64_t) n - 1, (int64_t) std::ceil (viewStart + visible()) + 1);
+            for (auto i = i0; i <= i1; ++i)
             {
-                lo = std::min (lo, a.peakMin[(size_t) b]);
-                hi = std::max (hi, a.peakMax[(size_t) b]);
+                float v = 0.0f;
+                for (int c = 0; c < chans; ++c)
+                    v += audio.getSample (c, (int) i) / (float) chans;
+                const juce::Point<float> pt (xFor ((double) i), mid - juce::jlimit (-1.0f, 1.0f, v) * half);
+                if (i == i0)
+                    line.startNewSubPath (pt);
+                else
+                    line.lineTo (pt);
+                if (perPixel < 0.25)
+                {
+                    g.setColour (colours::cream);
+                    g.fillEllipse (juce::Rectangle<float> (4.0f, 4.0f).withCentre (pt));
+                }
             }
-            p.addRectangle (r.getX() + (float) x, mid - juce::jmin (1.0f, hi) * half, 1.0f, std::max (1.0f, (juce::jmin (1.0f, hi) - juce::jmax (-1.0f, lo)) * half));
+            g.setColour (colours::cream.withAlpha (0.9f));
+            g.strokePath (line, juce::PathStrokeType (1.5f));
+            g.setColour (colours::cream.withAlpha (0.18f));
+            g.fillRect (juce::Rectangle<float> (r.getX(), mid - 0.5f, r.getWidth(), 1.0f)); // the zero line
         }
-        g.setColour (colours::cream.withAlpha (0.88f));
-        g.fillPath (p);
+        else
+        {
+            juce::Path p;
+            for (int x = 0; x < w; ++x)
+            {
+                const double s0 = viewStart + x * perPixel, s1 = s0 + perPixel;
+                float lo = 0.0f, hi = 0.0f;
+                if (fromPeaks)
+                {
+                    const int b0 = (int) (s0 / n * np), b1 = std::max (b0 + 1, (int) (s1 / n * np));
+                    for (int b = b0; b < std::min (b1, np); ++b)
+                    {
+                        lo = std::min (lo, a.peakMin[(size_t) b]);
+                        hi = std::max (hi, a.peakMax[(size_t) b]);
+                    }
+                }
+                else
+                    for (auto i = (int64_t) s0; i < std::min ((int64_t) n, (int64_t) std::ceil (s1)); ++i)
+                        for (int c = 0; c < chans; ++c)
+                        {
+                            lo = std::min (lo, audio.getSample (c, (int) i));
+                            hi = std::max (hi, audio.getSample (c, (int) i));
+                        }
+                p.addRectangle (r.getX() + (float) x, mid - juce::jmin (1.0f, hi) * half, 1.0f, std::max (1.0f, (juce::jmin (1.0f, hi) - juce::jmax (-1.0f, lo)) * half));
+            }
+            g.setColour (colours::cream.withAlpha (0.88f));
+            g.fillPath (p);
+        }
     }
 
     // beyond the 64th slice: not sliced, dimmed
@@ -318,6 +435,22 @@ void WaveformView::mouseDown (const juce::MouseEvent& e)
 {
     if (kit == nullptr || kit->sample == nullptr || proc.isAnalysing())
         return;
+    // the zoom buttons and the overview
+    for (int i = 0; i < 3; ++i)
+        if (zoomButton (i).contains (e.position))
+        {
+            if (i == 2)
+                resetZoom();
+            else
+                zoomAround (waveArea().getCentreX(), i == 1 ? 2.0 : 0.5);
+            return;
+        }
+    if (overviewArea().expanded (0.0f, 3.0f).contains (e.position))
+    {
+        draggingOverview = true;
+        mouseDrag (e);
+        return;
+    }
     if (onBeatFlag (e.position))
     {
         dragFlag = true;
@@ -344,6 +477,15 @@ void WaveformView::mouseDown (const juce::MouseEvent& e)
 
 void WaveformView::mouseDrag (const juce::MouseEvent& e)
 {
+    if (draggingOverview)
+    {
+        // the view centred where the overview is dragged
+        const auto o = overviewArea();
+        viewStart = (double) ((e.position.x - o.getX()) / o.getWidth()) * total() - visible() * 0.5;
+        clampView();
+        repaint();
+        return;
+    }
     if (dragFlag)
         proc.setFirstBeat (sampleFor (e.position.x));
     else if (dragCut >= 0)
@@ -352,6 +494,7 @@ void WaveformView::mouseDrag (const juce::MouseEvent& e)
 
 void WaveformView::mouseUp (const juce::MouseEvent&)
 {
+    draggingOverview = false;
     dragFlag = false;
     dragCut = -1;
     repaint();
@@ -359,9 +502,39 @@ void WaveformView::mouseUp (const juce::MouseEvent&)
 
 void WaveformView::mouseDoubleClick (const juce::MouseEvent& e)
 {
+    if (overviewArea().expanded (0.0f, 3.0f).contains (e.position))
+    {
+        resetZoom();
+        return;
+    }
+    if (! waveArea().expanded (0.0f, 16.0f).contains (e.position))
+        return;
     if (kit == nullptr || kit->sample == nullptr || cutNear (e.position.x) >= 0 || onBeatFlag (e.position))
         return;
     proc.addCut ((int64_t) sampleFor (e.position.x));
+}
+
+void WaveformView::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
+{
+    if (kit == nullptr || kit->sample == nullptr)
+        return;
+    const bool sideways = std::abs (w.deltaX) > std::abs (w.deltaY) || e.mods.isShiftDown();
+    if (sideways)
+    {
+        // move along (a sideways swipe, or shift + wheel)
+        const float d = std::abs (w.deltaX) > std::abs (w.deltaY) ? w.deltaX : w.deltaY;
+        viewStart -= (double) d * visible() * 0.6;
+        clampView();
+        repaint();
+        return;
+    }
+    zoomAround (e.position.x, std::pow (2.0, (double) w.deltaY * (w.isSmooth ? 2.0 : 1.0)));
+}
+
+void WaveformView::mouseMagnify (const juce::MouseEvent& e, float scaleFactor)
+{
+    if (kit != nullptr && kit->sample != nullptr)
+        zoomAround (e.position.x, (double) scaleFactor);
 }
 
 //==============================================================================

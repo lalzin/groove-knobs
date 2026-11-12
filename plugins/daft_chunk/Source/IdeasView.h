@@ -14,10 +14,18 @@ public:
     void refresh();
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
     std::function<void()> onSelect;
 
 private:
+    enum Handle { wavHandle, midiHandle, kitHandle };
     juce::Rectangle<float> slot (int i) const;
+    juce::Rectangle<float> handle (int i, int h) const;
+    /** Writes the file(s) and hands them to the OS's drag and drop (into Ableton). */
+    void dragOut (int i, int h);
+    int pressedIdea = -1, pressedHandle = -1;
+    bool dragging = false;
     juce::Rectangle<float> playButton (int i) const;
     juce::Rectangle<float> starButton (int i) const;
     juce::Rectangle<float> crossButton (int i) const;

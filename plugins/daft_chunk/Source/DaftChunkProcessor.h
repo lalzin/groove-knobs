@@ -24,6 +24,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) override;
     using OneKnobProcessor::processBlock;
+    bool producesMidi() const override { return true; } // MIDI CAPTURE
     static gk::PresetManager loadBuiltInPresets();
 
     DaftChunkEngine& getDsp() noexcept { return static_cast<DaftChunkEngine&> (getEngine()); }

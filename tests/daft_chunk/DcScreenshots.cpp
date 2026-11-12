@@ -15,13 +15,15 @@ void writePng (const juce::Image& img, const juce::File& f)
     juce::PNGImageFormat().writeImageToStream (img, out);
 }
 
-juce::Image shoot (daftchunk::DaftChunkProcessor& proc, float scale, int page = 0)
+juce::Image shoot (daftchunk::DaftChunkProcessor& proc, float scale, int page = 0, double zoom = 1.0)
 {
     proc.editorScale.store (scale);
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     auto* editor = dynamic_cast<daftchunk::DaftChunkEditor*> (ed.get());
     editor->showPage (page);
     editor->snapView();
+    if (zoom > 1.0)
+        editor->zoomWaveform (zoom, 0.27f);
     return editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
 }
 
@@ -108,6 +110,8 @@ int main (int argc, char* argv[])
         playSlice (*p, 3);
         writePng (shoot (*p, 1.0f, 2), out.getChildFile ("dc_ideas.png"));
         writePng (shoot (*p, 2.0f, 2), out.getChildFile ("dc_ideas@2x.png"));
+        writePng (shoot (*p, 1.0f, 2, 12.0), out.getChildFile ("dc_zoom12.png"));
+        writePng (shoot (*p, 1.0f, 2, 600.0), out.getChildFile ("dc_zoom600.png"));
     }
     std::cout << "screenshots in " << out.getFullPathName() << std::endl;
     return 0;

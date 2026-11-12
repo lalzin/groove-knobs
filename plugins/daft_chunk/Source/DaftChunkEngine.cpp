@@ -39,6 +39,8 @@ void DaftChunkEngine::setChoices (const int* indices, int n)
         play = indices[playChoice];
     if (n > syncChoice)
         sync = indices[syncChoice];
+    if (n > captureChoice)
+        captureOn = indices[captureChoice] == 1;
 }
 
 void DaftChunkEngine::noteOn (int note, float velocity, int previewSamples)
@@ -150,6 +152,48 @@ void DaftChunkEngine::collectSequence (int numSamples, const gk::BlockTiming& ti
     // (k, then j: already in time order, but swing can put an odd step after the next even one's start: sort)
     std::sort (seqEvents.begin(), seqEvents.begin() + numSeqEvents, [] (const SeqEvent& x, const SeqEvent& y) { return x.at < y.at; });
     telemetry.step.store ((int) ((((long long) std::floor (b1 * 4.0)) % n + n) % n), std::memory_order_relaxed);
+}
+
+void DaftChunkEngine::emit (int sample, int note, float velocity, bool on) noexcept
+{
+    if (numOut < (int) outEvents.size())
+        outEvents[(size_t) numOut++] = { sample, note, velocity, on };
+}
+
+void DaftChunkEngine::captureNote (int at, int slice, float velocity, int gate) noexcept
+{
+    const int note = juce::jlimit (0, 127, baseNote + slice);
+    // the same key still held: off first
+    for (auto& o : pendingOffs)
+        if (o.note == note)
+        {
+            emit (midiStart + at, note, 0.0f, false);
+            o.note = -1;
+        }
+    emit (midiStart + at, note, velocity, true);
+    for (auto& o : pendingOffs)
+        if (o.note < 0)
+        {
+            o.note = note;
+            o.left = at + std::max (1, gate - 1); // from the chunk's start
+            return;
+        }
+    emit (midiStart + at, note, 0.0f, false); // (no room: a very short note)
+}
+
+void DaftChunkEngine::advanceCapture (int numSamples) noexcept
+{
+    for (auto& o : pendingOffs)
+        if (o.note >= 0)
+        {
+            if (o.left < numSamples)
+            {
+                emit (midiStart + o.left, o.note, 0.0f, false);
+                o.note = -1;
+            }
+            else
+                o.left -= numSamples;
+        }
 }
 
 void DaftChunkEngine::releaseVoice (Voice& v) noexcept
@@ -320,7 +364,11 @@ void DaftChunkEngine::processWet (juce::AudioBuffer<float>& buffer, int numSampl
             if (ev.step->cut)
                 cutAll();
             else
+            {
                 startSlice (ev.step->slice, ev.step->velocity, -1, ev.gate, (float) ev.step->pitch, ev.step->reverse);
+                if (captureOn)
+                    captureNote (ev.at, ev.step->slice, ev.step->velocity, ev.gate);
+            }
         }
     };
     if (midi != nullptr)
@@ -341,6 +389,12 @@ void DaftChunkEngine::processWet (juce::AudioBuffer<float>& buffer, int numSampl
         }
     playSteps (numSamples);
     renderTo (numSamples);
+    // MIDI CAPTURE: the notes held end in time; capture off or the idea stopped: all off now
+    if (! captureOn || sequence.load (std::memory_order_relaxed) == nullptr)
+        for (auto& o : pendingOffs)
+            if (o.note >= 0)
+                o.left = 0;
+    advanceCapture (numSamples);
 
     if (lead >= 0 && voices[(size_t) lead].active())
     {

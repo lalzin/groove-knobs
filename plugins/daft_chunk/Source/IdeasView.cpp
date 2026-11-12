@@ -1,5 +1,6 @@
 #include "IdeasView.h"
 #include "WaveformView.h"
+#include "Exporter.h"
 
 namespace daftchunk
 {
@@ -57,7 +58,8 @@ namespace
 IdeaStrip::IdeaStrip (DaftChunkProcessor& p) : proc (p)
 {
     setTooltip (juce::String::fromUTF8 ("Les id\xc3\xa9""es : chaque D\xc3\x89 en remplit une. Lecture (cal\xc3\xa9""e sur Ableton), \xc3\xa9toile pour la garder, "
-                                        "croix pour la jeter. Clic sur une id\xc3\xa9""e : la page S\xc3\x89QUENCE la montre."));
+                                        "croix pour la jeter. Glisse WAV (la boucle au tempo), MIDI (les notes) ou KIT (les tranches, sur un Drum Rack) dans Ableton. "
+                                        "Clic sur une id\xc3\xa9""e : la page S\xc3\x89QUENCE la montre. Les fichiers vont dans Musique/Daft Chunk."));
 }
 
 void IdeaStrip::refresh()
@@ -78,6 +80,13 @@ juce::Rectangle<float> IdeaStrip::slot (int i) const
     const auto b = getLocalBounds().toFloat().reduced (6.0f, 5.0f);
     const float w = (b.getWidth() - 7 * 6.0f) / 8.0f;
     return { b.getX() + (float) i * (w + 6.0f), b.getY(), w, b.getHeight() };
+}
+
+juce::Rectangle<float> IdeaStrip::handle (int i, int h) const
+{
+    const auto s = slot (i);
+    const float w = (s.getWidth() - 8.0f - 4.0f) / 3.0f;
+    return { s.getX() + 4.0f + (float) h * (w + 2.0f), s.getY() + 31.0f, w, 14.0f };
 }
 
 juce::Rectangle<float> IdeaStrip::playButton (int i) const { const auto s = slot (i); return { s.getX() + 4.0f, s.getBottom() - 22.0f, 26.0f, 18.0f }; }
@@ -110,7 +119,7 @@ void IdeaStrip::paint (juce::Graphics& g)
         g.drawText (juce::String (pt.bars) + (pt.bars > 1 ? " MES." : " MESURE"), juce::Rectangle<float> (r.getX() + 22.0f, r.getY() + 3.0f, r.getWidth() - 26.0f, 14.0f),
                     juce::Justification::centredRight);
         // the steps in miniature
-        const auto map = juce::Rectangle<float> (r.getX() + 5.0f, r.getY() + 20.0f, r.getWidth() - 10.0f, 16.0f);
+        const auto map = juce::Rectangle<float> (r.getX() + 5.0f, r.getY() + 18.0f, r.getWidth() - 10.0f, 10.0f);
         const int n = pt.numSteps();
         const float w = map.getWidth() / (float) std::max (1, n);
         for (int k = 0; k < n; ++k)
@@ -120,13 +129,25 @@ void IdeaStrip::paint (juce::Graphics& g)
             if (s.slice >= 0 || s.cut)
             {
                 g.setColour (stepColour (kit.get(), s));
-                g.fillRect (cell.withTrimmedTop (s.repeat > 1 ? 0.0f : 4.0f));
+                g.fillRect (cell.withTrimmedTop (s.repeat > 1 ? 0.0f : 3.0f));
             }
             if (playing && k == shownStep)
             {
                 g.setColour (cream);
                 g.fillRect (cell.withHeight (2.0f).translated (0.0f, map.getHeight() + 1.0f));
             }
+        }
+        // the drag handles: WAV, MIDI, KIT
+        const char* names[] { "WAV", "MIDI", "KIT" };
+        for (int h = 0; h < 3; ++h)
+        {
+            const auto hr = handle (i, h);
+            const bool hot = pressedIdea == i && pressedHandle == h;
+            g.setColour (hot ? coral : cream.withAlpha (0.14f));
+            g.fillRoundedRectangle (hr, 4.0f);
+            g.setColour (hot ? black : cream.withAlpha (0.85f));
+            g.setFont (gk::GrooveFonts::font (9.0f));
+            g.drawText (names[h], hr, juce::Justification::centred);
         }
         g.setColour (playing ? coral : cream.withAlpha (0.85f));
         drawPlay (g, playButton (i), playing);
@@ -145,6 +166,16 @@ void IdeaStrip::mouseDown (const juce::MouseEvent& e)
             continue;
         if (! proc.getIdea (i).used)
             return;
+        for (int h = 0; h < 3; ++h)
+            if (handle (i, h).contains (e.position))
+            {
+                // a drag starts from here (see mouseDrag)
+                pressedIdea = i;
+                pressedHandle = h;
+                dragging = false;
+                repaint();
+                return;
+            }
         if (playButton (i).expanded (3.0f).contains (e.position))
             proc.togglePlay (i);
         else if (starButton (i).expanded (2.0f).contains (e.position))
@@ -159,6 +190,42 @@ void IdeaStrip::mouseDown (const juce::MouseEvent& e)
         }
         return;
     }
+}
+
+void IdeaStrip::mouseDrag (const juce::MouseEvent& e)
+{
+    if (pressedIdea < 0 || dragging || e.getDistanceFromDragStart() < 4)
+        return;
+    dragging = true;
+    dragOut (pressedIdea, pressedHandle);
+}
+
+void IdeaStrip::mouseUp (const juce::MouseEvent&)
+{
+    pressedIdea = pressedHandle = -1;
+    dragging = false;
+    repaint();
+}
+
+void IdeaStrip::dragOut (int i, int h)
+{
+    juce::StringArray files;
+    if (h == wavHandle)
+    {
+        if (const auto f = exporter::writeWav (proc, i); f.existsAsFile())
+            files.add (f.getFullPathName());
+    }
+    else if (h == midiHandle)
+    {
+        if (const auto f = exporter::writeMidi (proc, i); f.existsAsFile())
+            files.add (f.getFullPathName());
+    }
+    else
+        for (const auto& f : exporter::writeKit (proc, i))
+            files.add (f.getFullPathName());
+    if (files.isEmpty())
+        return;
+    juce::DragAndDropContainer::performExternalDragDropOfFiles (files, false, this, [this] { pressedIdea = pressedHandle = -1; repaint(); });
 }
 
 //==============================================================================

@@ -24,7 +24,7 @@ public:
 
     /** The host parameters (OneKnobConfig::knobs / choices, in this order). */
     enum Knob { attackKnob, decayKnob, sustainKnob, releaseKnob, pitchKnob, cutoffKnob, resoKnob, velocityKnob, volumeKnob, swingKnob, numKnobs };
-    enum Choice { modeChoice, playChoice, syncChoice, styleChoice, numChoices };
+    enum Choice { modeChoice, playChoice, syncChoice, styleChoice, captureChoice, numChoices };
     enum Mode { cut = 0, poly = 1 };
     enum Play { oneShot = 0, gate = 1 };
     /** LIBRE: the sample's own speed; TEMPO: at the host's tempo, same pitch
@@ -52,6 +52,12 @@ public:
     /** Message thread: the idea to play, locked to the host's bars (null: none). */
     void setSequence (const Pattern* p) noexcept { sequence.store (p, std::memory_order_release); }
     const Pattern* sequenceInUse() const noexcept { return seqInUse.load (std::memory_order_acquire); }
+
+    /** MIDI CAPTURE: the idea's notes of the last processBlock (positions in the host's block). */
+    struct OutEvent { int sample; int note; float velocity; bool on; };
+    int numOutEvents() const noexcept { return numOut; }
+    const OutEvent& outEvent (int i) const noexcept { return outEvents[(size_t) i]; }
+    void clearOutEvents() noexcept { numOut = 0; }
 
     /** The UI: play slice `index` now (a click on it), as a short note. */
     void preview (int index) noexcept { previewRequest.store (index, std::memory_order_relaxed); }
@@ -91,6 +97,15 @@ private:
     struct SeqEvent { int at; const Step* step; int gate; };
     std::array<SeqEvent, 256> seqEvents {};
     int numSeqEvents = 0;
+    // MIDI CAPTURE
+    void emit (int sample, int note, float velocity, bool on) noexcept;
+    void captureNote (int at, int slice, float velocity, int gate) noexcept;
+    void advanceCapture (int numSamples) noexcept;
+    std::array<OutEvent, 512> outEvents {};
+    int numOut = 0;
+    struct PendingOff { int note = -1; int left = 0; };
+    std::array<PendingOff, 64> pendingOffs {};
+    bool captureOn = false;
     void noteOff (int note);
     void releaseVoice (Voice& v) noexcept;
     void render (Voice& v, float* const* out, int numChannels, int from, int to);

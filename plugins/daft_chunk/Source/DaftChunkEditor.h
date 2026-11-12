@@ -31,6 +31,9 @@ public:
     /** 0: the SON page, 1: TRANCHE (the selected slice). */
     void showPage (int index);
 
+    /** Screenshots: the waveform zoomed by `factor` around x (0..1 of its width). */
+    void zoomWaveform (double factor, float at);
+
     /** Screenshots: everything up to date, no motion. */
     void snapView();
 
@@ -64,7 +67,7 @@ private:
     std::unique_ptr<IdeaStrip> ideaStrip;
     std::unique_ptr<StepGrid> stepGrid;
     std::unique_ptr<MiniSlider> swing;
-    std::unique_ptr<Pill> undoButton, redoButton, tabSequence, lockButton;
+    std::unique_ptr<Pill> undoButton, redoButton, tabSequence, lockButton, capture;
     std::unique_ptr<InfoLabel> ideaInfo;
     int shownIdeas = -1, shownGenKit = -1;
     juce::String shownStatus;

@@ -964,3 +964,21 @@ Une ligne par décision : **contexte** — choix — raison.
     - **STUTTER HOUSE** : le stutter tombe à différents endroits (fin, milieu, dernier contretemps) ;
     - **REVERSE PARTY** : les tranches inversées changent de place selon la graine, et avec CHOP un demi-temps entier se joue à l'envers.
   - **Les tests.** 20 graines donnent au moins 16 boucles différentes, dans chaque style et pour CHOP 0,3, 0,6 et 0,9. Les règles et les verrous restent vrais.
+
+## DAFT CHUNK — étape 4 : l'export et le glisser-déposer, MIDI CAPTURE ; le zoom (2026-11-12)
+
+- **Le constat d'Alan** : « le drag and drop des idées ne marche pas vers Ableton ». Il n'existait pas encore : c'était l'étape 4.
+- **Trois poignées par idée** (WAV, MIDI, KIT). Glisser à partir de l'une d'elles écrit le ou les fichiers, puis les confie au glisser-déposer du système (`performExternalDragDropOfFiles`, depuis le `mouseDrag`).
+- **L'emplacement.** Les fichiers vont dans `~/Music/Daft Chunk`, pas dans un dossier temporaire : Ableton garde le chemin du fichier déposé, et un dossier temporaire peut être vidé.
+- **Le nom** : `DaftChunk_<sample>_<bpm>bpm_idee<n>`.
+- **WAV** : l'idée rendue hors ligne par un `DaftChunkEngine` à part, avec le kit tel qu'il joue (étiré en TEMPO), les réglages SON, VOLUME et SWING.
+  - La durée fait exactement N mesures au tempo d'Ableton, à l'échantillon près (sans tempo d'hôte : celui du sample), en 24 bits, à la fréquence de l'hôte.
+  - La boucle est rendue deux fois et on garde le second passage : ce qui déborde de la fin revient au début, et la boucle se reboucle sans trou.
+- **MIDI** : un fichier de type 1 à 960 ticks par noire, avec le tempo et la mesure 4/4. Ce sont les notes de l'idée (Do1 = tranche 1, la vélocité du pas), avec le swing et les répétitions ; chaque note tient jusqu'à l'événement suivant, comme dans le moteur (`ideaNotes`). La hauteur et l'inversion par pas ne passent pas en MIDI : la note désigne la tranche.
+- **KIT** : chaque tranche telle qu'elle joue (étirée, rognée, inversée, avec son gain) en WAV numérotée (`01_KICK.wav`…), plus le MIDI de la boucle, dans un dossier `…_KIT`. On glisse les WAV : sur un Drum Rack vide, Ableton les range sur des pads qui partent aussi de Do1, donc le MIDI de la boucle les rejoue.
+- **MIDI CAPTURE** (paramètre, et une pastille sous les idées). Le plugin déclare une sortie MIDI. Quand une idée joue, le moteur émet ses note-on, et les note-off au bout de la durée de chaque pas, même d'un bloc à l'autre. Arrêter l'idée ou couper la capture éteint ce qui tenait. La sortie ne contient que ces notes : ce qui entre au clavier n'est pas renvoyé.
+- **Les tests** (`DcExportTests`) : la longueur exacte à 126, 97 et 133,3 BPM ; 24 bits ; le nom ; deux rendus identiques ; le tempo et les notes du MIDI ; une WAV par tranche et le MIDI dans le KIT ; la capture (les notes au bon échantillon, aucun écho de l'entrée, les note-off à l'arrêt).
+- **Le zoom de la forme d'onde** (Alan : « pour bien caler si modification »).
+  - La molette ou le pincement zooment autour de la souris, jusqu'à environ 200 échantillons sur toute la largeur. Un balayage latéral ou maj + molette avance dans le sample.
+  - Une barre d'aperçu sous la courbe montre où l'on est : on la glisse, et un double-clic revient au sample entier. Les boutons - et + zooment, et le troisième indique le zoom (x12) ou TOUT pour revenir.
+  - Le dessin est fait par colonne : avec les crêtes de l'analyse de loin, avec les échantillons eux-mêmes de près, et la courbe point par point (avec la ligne du zéro) tout près, pour voir les passages par zéro. Un nouveau sample remet la vue entière.

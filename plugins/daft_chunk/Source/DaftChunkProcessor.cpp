@@ -48,7 +48,8 @@ namespace
         cfg.choices = { { "mode", "Mode", "MODE", { "Coupe", "Poly" }, E::cut, true },
                         { "play", "Play", "LECTURE", { "One shot", "Gate" }, E::gate, true },
                         { "sync", "Sync", "SYNC", { "Libre", "Tempo", "Vinyle" }, E::tempo, true },
-                        { "style", "Style", "STYLE", { "Filter Touch", "Disco Loop", "Vocal Chop", "Stutter House", "Reverse Party", "Pitch Party" }, 0, true } };
+                        { "style", "Style", "STYLE", { "Filter Touch", "Disco Loop", "Vocal Chop", "Stutter House", "Reverse Party", "Pitch Party" }, 0, true },
+                        { "capture", "MIDI Capture", "MIDI CAPTURE", { "Off", "On" }, 0, true } };
         cfg.tailSeconds = 0.1;
         cfg.featuresFromOutput = true; // (an instrument: Chunky hears what it plays)
         return cfg;
@@ -132,7 +133,17 @@ void DaftChunkProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
             if (const auto pos = ph->getPosition())
                 known = pos->getBpm().hasValue() && *pos->getBpm() > 0.0;
     getDsp().setHostTempoKnown (known);
+    getDsp().clearOutEvents();
     OneKnobProcessor::processBlock (buffer, midi);
+    // the MIDI out: only MIDI CAPTURE's notes (the keys played in are not echoed back)
+    midi.clear();
+    auto& e = getDsp();
+    for (int i = 0; i < e.numOutEvents(); ++i)
+    {
+        const auto& ev = e.outEvent (i);
+        const int at = juce::jlimit (0, std::max (0, buffer.getNumSamples() - 1), ev.sample);
+        midi.addEvent (ev.on ? juce::MidiMessage::noteOn (1, ev.note, juce::jlimit (0.01f, 1.0f, ev.velocity)) : juce::MidiMessage::noteOff (1, ev.note), at);
+    }
 }
 
 void DaftChunkProcessor::timerCallback()

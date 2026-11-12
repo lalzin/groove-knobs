@@ -33,6 +33,7 @@ target_sources(DaftChunkCode INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/SampleLoader.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/Stretcher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/Generator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/Exporter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/DaftChunkEngine.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/DaftChunkProcessor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/DaftChunkEditor.cpp
@@ -81,7 +82,7 @@ juce_add_plugin(DaftChunk
     ICON_BIG                    ${CMAKE_CURRENT_SOURCE_DIR}/Assets/app_icon.png  # Chunky
     IS_SYNTH                    TRUE
     NEEDS_MIDI_INPUT            TRUE
-    NEEDS_MIDI_OUTPUT           FALSE  # step 3: TRUE with MIDI CAPTURE
+    NEEDS_MIDI_OUTPUT           TRUE   # MIDI CAPTURE: an idea's notes out, to record on a MIDI track
     IS_MIDI_EFFECT              FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     HARDENED_RUNTIME_ENABLED    TRUE

@@ -353,7 +353,17 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
     addToCanvas (*swing, { 682, 390, 164, 26 });
     addToCanvas (*undoButton, { 682, 422, 80, 26 });
     addToCanvas (*redoButton, { 766, 422, 80, 26 });
-    addToCanvas (*ideaInfo, { 682, 456, 164, 48 });
+    addToCanvas (*ideaInfo, { 682, 454, 164, 22 });
+    capture = std::make_unique<Pill> ("MIDI CAPTURE", [this]
+    {
+        auto& c = proc.getChoiceParameter (DaftChunkEngine::captureChoice);
+        c.beginChangeGesture();
+        c.setValueNotifyingHost (c.getIndex() == 1 ? 0.0f : 1.0f);
+        c.endChangeGesture();
+    }, 11.5f);
+    capture->setTooltip (juce::String::fromUTF8 ("MIDI CAPTURE : l'id\xc3\xa9""e qui joue envoie aussi ses notes en sortie MIDI. Dans Ableton, une piste MIDI dont l'entr\xc3\xa9""e est "
+                                             "Daft Chunk les enregistre."));
+    addToCanvas (*capture, { 682, 480, 164, 24 });
     ideaStrip = std::make_unique<IdeaStrip> (p);
     ideaStrip->onSelect = [this] { showPage (2); };
     addToCanvas (*ideaStrip, { 6, 518, 848, 78 });
@@ -527,6 +537,7 @@ void DaftChunkEditor::editorTick (double)
         }
         const float sw = proc.getKnobParameter (DaftChunkEngine::swingKnob).convertFrom0to1 (proc.getKnobParameter (DaftChunkEngine::swingKnob).getValue());
         swing->setValue (sw / 0.75f);
+        capture->setSelected (proc.getChoiceParameter (DaftChunkEngine::captureChoice).getIndex() == 1);
         style->setText (styleName ((Style) proc.getChoiceParameter (DaftChunkEngine::styleChoice).getIndex()));
     }
     if (proc.getSelectedSlice() != shownSelected || proc.getKitVersion() != shownSliceVersion)
@@ -578,6 +589,12 @@ void DaftChunkEditor::updateSlicePage()
     lockButton->setSelected (proc.isLocked (sel));
     for (auto* b : { reverse.get(), resetSlice.get(), applyAll.get(), lockButton.get() })
         b->setEnabled (has);
+}
+
+void DaftChunkEditor::zoomWaveform (double factor, float at)
+{
+    wave->refresh();
+    wave->zoomAround ((float) wave->getWidth() * at, factor);
 }
 
 void DaftChunkEditor::snapView()
