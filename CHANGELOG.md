@@ -1,5 +1,8 @@
 # Changelog
 
+## Daft Chunk 0.1.0-test2 — 2026-11-12 (version de test, hors suite)
+- Étape 1 de **Daft Chunk**, l'instrument qui découpe un sample. Glisse un WAV, AIFF, FLAC ou MP3 (60 s au plus) : il trouve le tempo (÷2, ×2, TAP, ou tapé au clavier), le temps 1 (que tu peux déplacer), la tonalité et les attaques. Il découpe en TRANSITOIRES, GRILLE (1/4, 1/8, 1/16) ou MIXTE, chaque tranche colorée selon son type (KICK, SNARE, HAT, VOIX, TONAL, BRUIT). Tu peux déplacer, ajouter ou retirer les coupes à la souris ; un clic sur une tranche la fait entendre, et les tranches se jouent en MIDI à partir de Do1. Le son se règle sur deux pages. **SON** (automatisable) : ATTACK, DECAY, SUSTAIN, RELEASE, PITCH, FILTER, RESO, VEL, VOLUME, COUPE ou POLY (16 voix), ONE SHOT ou GATE. **TRANCHE**, pour la tranche cliquée : pitch, gain, filtre, début et fin fins, INVERSER, et l'application à toutes les tranches. Le générateur (CHOP, DÉ, ENCORE) arrive à l'étape 3.
+
 ## 0.1.9 — 2026-11-05 (toute la suite, dix plugins)
 - **Ballroom** entre dans la suite : la réverbe qui fait de la place à ta musique. SPACE va du sec (0 % : aucune réverbe) au mouillé (100 % : la réverbe seule, au niveau du son d'origine). Sept salles (Studio, Club, Ballroom, Plate, Mirror, Space, Gate) ; early et late réglables séparément ; FREEZE. **CLEAR** : la queue s'efface bande par bande là où la musique joue et revient dans les silences. CUSTOM d'un clic pour retrouver la salle du preset. 22 presets. Mira la boule disco en mascotte.
 - La 0.1.8 (Head Spin) n'a pas été publiée : la 0.1.9 l'inclut. L'installateur de la suite (macOS et Windows) contient les dix plugins. Les autres plugins passent en 0.1.9 sans changement de son.

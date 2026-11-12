@@ -863,3 +863,34 @@ Une ligne par décision : **contexte** — choix — raison.
   - Windows ne change pas : l'art reste dans le binaire, car il n'y a qu'une architecture.
 - **Le résultat.** La suite fait 232 Mo, Ballroom 36 → 25 Mo, Kick Lock 75 → 48 Mo. Tous les paquets sont renotarisés. Le binaire Ballroom passe de 18,6 à 10,9 Mo, et les 193 tests passent.
 - **La version.** Elle reste 0.1.9 : les paquets macOS n'avaient pas encore été mis en ligne, et le tag v0.1.9 (Windows) ne change pas.
+
+## DAFT CHUNK — étape 1 : chargement, analyse, découpe (2026-11-12)
+
+- **Le plugin.** Un instrument (VST3, AU `aumu` DfCk/Lalz, Standalone) bâti sur `gk::OneKnobProcessor` en mode instrument. CHOP est le grand bouton (paramètre `chop`, ORDER → WILD) ; il ne fait rien avant l'étape 3 (le générateur). Fenêtre 860 × 520, palette du cahier des charges (corail tomate, crème, noir), hors de la suite pour l'instant (0.1.0, pas de vérification de mise à jour).
+- **L'analyse** (`Analysis.cpp`, sans JUCE sauf la FFT) se fait en deux passes :
+  - une passe lente sur un thread de fond (`SampleLoader`), avec progression et annulation : STFT 2048/512, flux spectral (tout, grave < 150 Hz, aigu > 1,5 kHz), candidats d'attaque avec leur proéminence, tempo, temps 1, tonalité ;
+  - une passe rapide (quelques ms) à chaque réglage : les coupes, puis les étiquettes.
+- **Le tempo.** Autocorrélation du flux (80–160 BPM, léger a priori autour de 120), puis un peigne fin (période et phase). Si le fichier fait un nombre entier de mesures à 2 % près et commence sur un temps, le tempo devient exact (« boucle ») et la grille part du début. Testé sur 20 boucles de 90 à 130 BPM : toutes justes (18 au moins à 0,05 BPM près). Sur de vrais morceaux : 128,04 (démo tech house), 123,98 (boogy flavor).
+- **Le temps 1.** La classe de temps (sur 4) qui a le plus d'attaque grave et le moins d'aiguë (le kick sans la snare : en house, le kick est sur tous les temps et la snare sur 2 et 4). Un temps au tout début gagne, sauf s'il est nettement derrière. La première trame compte contre le silence, sinon le coup du début d'une boucle se perd.
+- **La tonalité.** Chromagramme sur de longues fenêtres (16384), 80 Hz à 5 kHz, corrélé aux profils de Krumhansl. Elle est indicative.
+- **Les coupes.**
+  - TRANSITOIRES : les attaques au-dessus du seuil de sensibilité, à 50 ms l'une de l'autre au moins. Avec plus de 63 attaques, on garde les plus fortes.
+  - GRILLE : 1/4, 1/8 ou 1/16 depuis le temps 1, dans les deux sens. Ce sont les 64 premières tranches ; la suite du fichier est assombrie (« 64 tranches au plus »).
+  - MIXTE : la grille, chaque point tiré vers l'attaque la plus proche à ±20 ms.
+  - Chaque coupe est déplacée au passage par zéro le plus proche (5 ms ; une coupe avant gagne jusqu'à deux fois plus loin, pour ne pas couper l'attaque). Les tranches de moins de 20 ms sont fusionnées. Le fondu de 2 ms se fait à la lecture, pas dans le fichier.
+- **Les étiquettes** (KICK, SNARE, HAT, VOIX, TONAL, BRUIT) : centroïde, part du grave, part du médium, planéité spectrale, décroissance après le pic, et hauteur YIN à 3 endroits (son écart sépare une voix d'un son tenu). Dans un morceau complet, tout est tenu : l'attaque mesurée par l'analyse au début de la tranche (grave, aigu) compte alors comme un coup. Les couleurs évitent ce que le cahier des charges interdit : brique, corail, crème, pêche, tomate brûlée, gris chaud, avec la lettre sur chaque tranche.
+- **Le fil audio.** Il ne voit qu'un `Kit` immuable (le sample et ses tranches) par un pointeur atomique. L'ancien kit est libéré au plus tôt 1 s après son remplacement, et seulement s'il n'est plus utilisé. Il n'y a aucune allocation dans processBlock (testé).
+- **La lecture provisoire.** Une voix, une note coupe la précédente (fondu de 3 ms), la tranche 1 sur Do1 (36), ré-échantillonnage linéaire. Elle sert à entendre les coupes ; l'étape 2 apporte 16 voix, le calage au tempo (Signalsmith Stretch) et les réglages par tranche.
+- **La session** enregistre le chemin du fichier, le mode, la division, la sensibilité, le tempo et le temps 1 donnés à la main, et les coupes déplacées (rendues seulement si la longueur du fichier n'a pas changé). L'audio n'est pas embarqué : si le fichier a disparu, l'interface le dit. On pourra l'embarquer plus tard si besoin.
+- **Chunky.** Les deux planches d'Alan sont détourées par `scripts/make_chunky_frames.sh` (flood key, sans trou) en 32 poses :
+  - B 0–15 : l'attente, le dé, le glitch, tendre un bloc ;
+  - A 16–31 : la danse, assis.
+  Il secoue le dé pendant l'analyse, tend un bloc quand le sample est prêt, danse une pose par tranche jouée et glitche (bandes décalées) quand CHOP dépasse 75 %.
+- **Les chaînes accentuées** sont écrites en `\x..` dans `fromUTF8`, comme dans Backwash, pour MSVC.
+- **Les validations.** auval OK, pluginval niveau 8 OK (VST3 et AU), 22 tests (`dc_tests`).
+- **Plus de réglages (Alan : « release, decay, etc., plus de contrôle »)**, avancés depuis l'étape 2 ; le calage au tempo (Signalsmith Stretch) reste à faire.
+  - Le moteur a 16 voix. Chacune a son enveloppe (attaque linéaire, decay et release exponentiels, sustain), un passe-bas TPT résonant (contourné quand il est grand ouvert) et le pitch par ré-échantillonnage.
+  - **La page SON** contient les paramètres d'hôte, automatisables : ATTACK, DECAY, SUSTAIN, RELEASE, PITCH (±24 demi-tons), FILTER, RESO, VEL (la part de la vélocité), VOLUME, MODE (COUPE / POLY) et LECTURE (ONE SHOT / GATE, GATE par défaut pour que le RELEASE s'entende).
+  - **La page TRANCHE** règle la tranche choisie d'un clic (sur la forme d'onde ou le clavier) : PITCH, GAIN, FILTER (en octaves sous le global), DÉBUT et FIN fins (rognage), INVERSER, RÉINIT. et À TOUTES. Ces réglages sont gardés dans la session et suivent les tranches par leur numéro.
+  - Changer un réglage publie un nouveau kit avec les mêmes tranches : ce qui joue continue. Seuls un autre sample ou d'autres coupes coupent le son.
+  - La fenêtre passe à 860 × 580 pour ces deux pages ; DÉ, ENCORE et le style rejoignent le panneau des idées.

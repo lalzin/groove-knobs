@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds dist/<Plugin>-<version>-macOS.pkg (universal VST3 + AU + app).
 #
-#   [TEST_SUFFIX=test1] scripts/make_installer_mac.sh [--skip-build] [FF|BT|BW|PP|SIB|KL|SL|CR|HS|BL]
+#   [TEST_SUFFIX=test1] scripts/make_installer_mac.sh [--skip-build] [FF|BT|BW|PP|SIB|KL|SL|CR|HS|BL|DC]
 #   FF = French Filter (default), BT = Boogie Trio, BW = Backwash, PP = Pew Pew,
 #   SIB = Sing It Back, KL = Kick Lock, SL = Slapper, CR = Crackle, HS = Head Spin, BL = Ballroom
 #
@@ -38,7 +38,7 @@ SKIP_BUILD=0; P=FF
 for a in "$@"; do
   case "$a" in
     --skip-build) SKIP_BUILD=1 ;;
-    FF|BT|BW|PP|SIB|KL|SL|CR|HS|BL) P="$a" ;;
+    FF|BT|BW|PP|SIB|KL|SL|CR|HS|BL|DC) P="$a" ;;
     *) echo "unknown argument: $a"; exit 2 ;;
   esac
 done
@@ -57,6 +57,7 @@ case "$P" in
   CR) DIR=crackle;       TARGET=Crackle;      RES="$ROOT/installer/mac/crackle" ;;
   HS) DIR=headspin;      TARGET=HeadSpin;     RES="$ROOT/installer/mac/headspin" ;;
   BL) DIR=ballroom;      TARGET=Ballroom;     RES="$ROOT/installer/mac/ballroom" ;;
+  DC) DIR=daft_chunk;    TARGET=DaftChunk;    RES="$ROOT/installer/mac/daft_chunk" ;;
 esac
 FILE_NAME="${PRODUCT// /}"   # "French Filter" -> FrenchFilter
 

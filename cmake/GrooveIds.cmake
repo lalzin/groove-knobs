@@ -87,3 +87,10 @@ set(BL_PLUGIN_CODE         "Blrm")
 set(BL_AU_TYPE             "aufx")          # kAudioUnitType_Effect
 set(BL_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.ballroom")
 set(BL_VERSION             "0.1.9")
+
+# DAFT CHUNK (an instrument: slices a sample on its transients, plays it in MIDI, makes loops; in test, not in the suite yet)
+set(DC_PRODUCT_NAME        "Daft Chunk")
+set(DC_PLUGIN_CODE         "DfCk")
+set(DC_AU_TYPE             "aumu")          # kAudioUnitType_MusicDevice
+set(DC_BUNDLE_ID           "${GK_BUNDLE_ID_PREFIX}.daftchunk")
+set(DC_VERSION             "0.1.0")
