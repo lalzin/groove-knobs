@@ -5,7 +5,8 @@ target_sources(dc_tests PRIVATE
     DcAnalysisTests.cpp
     DcTests.cpp
     DcGeneratorTests.cpp
-    DcExportTests.cpp)
+    DcExportTests.cpp
+    DcFxTests.cpp)
 target_include_directories(dc_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../common)
 target_link_libraries(dc_tests PRIVATE
     DaftChunkCode

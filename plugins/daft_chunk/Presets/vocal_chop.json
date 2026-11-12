@@ -1,0 +1,14 @@
+{
+  "name": "Vocal Chop",
+  "params": {
+    "chop": 0.5,
+    "style": "Vocal Chop",
+    "sweep": "Off",
+    "pump": 0.2,
+    "crush": 0.0,
+    "mix": 1.0,
+    "swing": 0.1,
+    "length": "Auto",
+    "mode": "Choke"
+  }
+}

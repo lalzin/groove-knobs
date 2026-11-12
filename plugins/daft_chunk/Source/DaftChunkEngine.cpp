@@ -2,9 +2,10 @@
 
 namespace daftchunk
 {
-void DaftChunkEngine::prepare (double sr, int, int)
+void DaftChunkEngine::prepare (double sr, int maxBlockSize, int)
 {
     sampleRate = sr;
+    dryCopy.setSize (2, std::max (1, maxBlockSize));
     cutFade = std::max (1, (int) std::lround (0.003 * sr));
     reset();
 }
@@ -15,6 +16,13 @@ void DaftChunkEngine::reset()
         v = {};
     lead = -1;
     filterSmoothed = knobs[filterKnob];
+    for (auto& f : sweepFilter)
+        f.reset();
+    crushHold[0] = crushHold[1] = 0.0f;
+    crushCount = 0;
+    pumpSmoothed = knobs[pumpKnob];
+    crushSmoothed = knobs[crushKnob];
+    mixSmoothed = knobs[mixKnob];
     telemetry.slice.store (-1, std::memory_order_relaxed);
 }
 
@@ -41,6 +49,8 @@ void DaftChunkEngine::setChoices (const int* indices, int n)
         sync = indices[syncChoice];
     if (n > captureChoice)
         captureOn = indices[captureChoice] == 1;
+    if (n > sweepChoice)
+        sweepMode = indices[sweepChoice];
 }
 
 void DaftChunkEngine::noteOn (int note, float velocity, int previewSamples)
@@ -107,6 +117,7 @@ void DaftChunkEngine::startSlice (int index, float velocity, int note, int gateS
     v.extraPitch = extraPitch;
     v.age = ++ageCounter;
     lead = (int) (slot - voices.data());
+    telemetry.triggers.fetch_add (1, std::memory_order_relaxed);
 }
 
 void DaftChunkEngine::collectSequence (int numSamples, const gk::BlockTiming& timing)
@@ -194,6 +205,78 @@ void DaftChunkEngine::advanceCapture (int numSamples) noexcept
             else
                 o.left -= numSamples;
         }
+}
+
+void DaftChunkEngine::processEffects (juce::AudioBuffer<float>& buffer, int numSamples, const gk::BlockTiming& timing)
+{
+    const int chans = std::min (buffer.getNumChannels(), 2);
+    const double a = std::min (1.0, numSamples / (0.03 * sampleRate));
+    pumpSmoothed += a * (juce::jlimit (0.0, 1.0, (double) knobs[pumpKnob]) - pumpSmoothed);
+    crushSmoothed += a * (juce::jlimit (0.0, 1.0, (double) knobs[crushKnob]) - crushSmoothed);
+    mixSmoothed += a * (juce::jlimit (0.0, 1.0, (double) knobs[mixKnob]) - mixSmoothed);
+
+    // SWEEP: how many bars (IDEA: the playing loop's own, its style's)
+    int sweepBars = 0;
+    if (sweepMode == sweepIdea)
+    {
+        const auto* seq = sequence.load (std::memory_order_relaxed);
+        sweepBars = seq != nullptr ? seq->filterBars : 0;
+    }
+    else if (sweepMode == sweep4 || sweepMode == sweep8 || sweepMode == sweep16)
+        sweepBars = sweepMode == sweep4 ? 4 : sweepMode == sweep8 ? 8 : 16;
+    const bool sweeping = sweepBars > 0 && timing.beatsPerSample > 0.0;
+    const bool pumping = pumpSmoothed > 0.002 && timing.beatsPerSample > 0.0;
+    const bool crushing = crushSmoothed > 0.005;
+    telemetry.sweep.store (sweeping ? (float) std::fmod (timing.beatsAt (numSamples) / (sweepBars * timing.beatsPerBar), 1.0) : -1.0f, std::memory_order_relaxed);
+    if (! sweeping && ! pumping && ! crushing)
+    {
+        telemetry.pump.store (1.0f, std::memory_order_relaxed);
+        return;
+    }
+    const bool mixing = mixSmoothed < 0.999 && numSamples <= dryCopy.getNumSamples();
+    if (mixing)
+        for (int c = 0; c < chans; ++c)
+            dryCopy.copyFrom (c, 0, buffer, c, 0, std::min (numSamples, dryCopy.getNumSamples()));
+
+    auto* const* x = buffer.getArrayOfWritePointers();
+    gk::TptSvf::Coeffs sc;
+    const double bitsScale = std::exp2 (16.0 - 10.0 * crushSmoothed); // 16 bits -> 6 bits
+    const int hold = 1 + (int) (crushSmoothed * 7.0);                   // up to 8x lower rate
+    float pumpGain = 1.0f;
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const double beats = timing.beatsAt (i);
+        if (sweeping && (i & 31) == 0)
+        {
+            // closed (300 Hz) at the start of the N bars, open (18 kHz) at their end: the French touch filter
+            const double phase = std::fmod (beats / (sweepBars * timing.beatsPerBar), 1.0);
+            sc = gk::TptSvf::Coeffs::make (std::min (0.45 * sampleRate, 300.0 * std::pow (60.0, std::pow (phase, 1.3))), sampleRate, 0.9);
+        }
+        if (pumping)
+        {
+            // ducked on every beat, back by the next one (a sidechain to an imaginary kick)
+            const double ph = beats - std::floor (beats);
+            pumpGain = (float) (1.0 - 0.85 * pumpSmoothed * std::pow (1.0 - std::min (1.0, ph / 0.75), 2.2) * std::min (1.0, ph / 0.01));
+        }
+        const bool takeCrush = crushing && ++crushCount >= hold;
+        if (takeCrush)
+            crushCount = 0;
+        for (int c = 0; c < chans; ++c)
+        {
+            float y = x[c][i];
+            if (sweeping)
+                y = (float) sweepFilter[c].processLowpass (y, sc);
+            if (crushing)
+            {
+                if (takeCrush)
+                    crushHold[c] = (float) (std::round (y * bitsScale) / bitsScale);
+                y = crushHold[c];
+            }
+            y *= pumpGain;
+            x[c][i] = mixing ? (float) (mixSmoothed * y + (1.0 - mixSmoothed) * dryCopy.getSample (c, i)) : y;
+        }
+    }
+    telemetry.pump.store (pumpGain, std::memory_order_relaxed);
 }
 
 void DaftChunkEngine::releaseVoice (Voice& v) noexcept
@@ -402,6 +485,7 @@ void DaftChunkEngine::processWet (juce::AudioBuffer<float>& buffer, int numSampl
             if (o.note >= 0)
                 o.left = 0;
     advanceCapture (numSamples);
+    processEffects (buffer, numSamples, timing);
 
     if (lead >= 0 && voices[(size_t) lead].active())
     {

@@ -23,8 +23,10 @@ public:
     static constexpr int numVoices = 16;
 
     /** The host parameters (OneKnobConfig::knobs / choices, in this order). */
-    enum Knob { attackKnob, decayKnob, sustainKnob, releaseKnob, pitchKnob, filterKnob, resoKnob, velocityKnob, volumeKnob, swingKnob, numKnobs };
-    enum Choice { modeChoice, playChoice, syncChoice, styleChoice, captureChoice, lengthChoice, numChoices };
+    enum Knob { attackKnob, decayKnob, sustainKnob, releaseKnob, pitchKnob, filterKnob, resoKnob, velocityKnob, volumeKnob, swingKnob, pumpKnob, crushKnob, mixKnob, numKnobs };
+    enum Choice { modeChoice, playChoice, syncChoice, styleChoice, captureChoice, lengthChoice, sweepChoice, numChoices };
+    /** SWEEP: the low-pass opening over N bars (the FILTER TOUCH gesture). IDEA: the playing loop's own (its style's). */
+    enum Sweep { sweepIdea = 0, sweepOff, sweep4, sweep8, sweep16 };
     enum Mode { cut = 0, poly = 1 };
     enum Play { oneShot = 0, gate = 1 };
     /** LIBRE: the sample's own speed; TEMPO: at the host's tempo, same pitch
@@ -78,6 +80,9 @@ public:
         std::atomic<double> hostBpm { 0.0 }; // 0: the host gives none
         std::atomic<int> step { -1 };         // the idea's step playing (-1: none)
         std::atomic<bool> hostPlaying { false };
+        std::atomic<int> triggers { 0 };      // +1 at every slice started (Chunky's blocks light up)
+        std::atomic<float> sweep { -1.0f };   // SWEEP's position (0..1), -1: none
+        std::atomic<float> pump { 1.0f };     // PUMP's gain now
     };
     const Telemetry& getTelemetry() const noexcept { return telemetry; }
 
@@ -131,7 +136,15 @@ private:
     int midiStart = 0, midiCount = 0;
     double sampleRate = 44100.0;
     int cutFade = 132;              // 3 ms
-    std::array<float, numKnobs> knobs { 0.0005f, 0.3f, 1.0f, 0.05f, 0.0f, 0.0f, 0.0f, 0.7f, 0.0f, 0.0f };
+    std::array<float, numKnobs> knobs { 0.0005f, 0.3f, 1.0f, 0.05f, 0.0f, 0.0f, 0.0f, 0.7f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f };
+    // the output effects (step 5): SWEEP, PUMP, CRUSH, then MIX with the dry slices
+    void processEffects (juce::AudioBuffer<float>& buffer, int numSamples, const gk::BlockTiming& timing);
+    juce::AudioBuffer<float> dryCopy;
+    gk::TptSvf sweepFilter[2];
+    int sweepMode = sweepIdea;
+    float crushHold[2] {};
+    int crushCount = 0;
+    double pumpSmoothed = 0.0, crushSmoothed = 0.0, mixSmoothed = 1.0;
     int mode = cut, play = gate, sync = tempo;
     bool hostTempoKnown = false;
     double rate = 1.0; // the host's tempo / the kit's (TEMPO, VINYLE), this block

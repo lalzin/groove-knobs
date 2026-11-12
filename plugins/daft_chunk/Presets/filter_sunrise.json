@@ -1,0 +1,14 @@
+{
+  "name": "Filter Sunrise",
+  "params": {
+    "chop": 0.2,
+    "style": "Filter Touch",
+    "sweep": "16 bars",
+    "pump": 0.35,
+    "crush": 0.0,
+    "mix": 1.0,
+    "swing": 0.0,
+    "length": "Auto",
+    "mode": "Choke"
+  }
+}

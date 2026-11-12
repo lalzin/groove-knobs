@@ -21,7 +21,7 @@ namespace
         cfg.defaultAmount = 0.2f;
         cfg.knobLowLabel = "ORDER";
         cfg.knobHighLabel = "WILD";
-        cfg.hasPresetParameter = false; // the presets come with step 5
+        cfg.presetSetsParameters = true; // a preset sets CHOP, the style, the effects...
         cfg.editorBuildsControls = false;
         cfg.editorWidth = 860;
         cfg.editorHeight = 660;
@@ -36,7 +36,11 @@ namespace
                       { "reso", "Resonance", "RESO", 0.0f },
                       { "velocity", "Velocity", "VEL", 0.7f },
                       { "volume", "Volume", "VOLUME", 0.0f, -60.0f, 6.0f, 3.02f, "dB" },
-                      { "swing", "Swing", "SWING", 0.0f, 0.0f, 0.75f, 1.0f, "%" } };
+                      { "swing", "Swing", "SWING", 0.0f, 0.0f, 0.75f, 1.0f, "%" },
+                      // the output effects (step 5)
+                      { "pump", "Pump", "PUMP", 0.0f },
+                      { "crush", "Crush", "CRUSH", 0.0f },
+                      { "mix", "Mix", "MIX", 1.0f } };
         const auto time = [] (float v) { return v < 1.0f ? juce::String (v * 1000.0f, v < 0.01f ? 1 : 0) + " ms" : juce::String (v, 2) + " s"; };
         cfg.knobs[E::attackKnob].textFromValue = time;
         cfg.knobs[E::decayKnob].textFromValue = time;
@@ -57,7 +61,8 @@ namespace
                         { "sync", "Sync", "SYNC", { "Free", "Tempo", "Vinyl" }, E::tempo, true },
                         { "style", "Style", "STYLE", { "Filter Touch", "Disco Loop", "Vocal Chop", "Stutter House", "Reverse Party", "Pitch Party" }, 0, true },
                         { "capture", "MIDI Capture", "MIDI CAPTURE", { "Off", "On" }, 0, true },
-                        { "length", "Loop length", "LENGTH", { "Auto", "1 bar", "2 bars", "4 bars" }, 0, true } };
+                        { "length", "Loop length", "LENGTH", { "Auto", "1 bar", "2 bars", "4 bars" }, 0, true },
+                        { "sweep", "Sweep", "SWEEP", { "Idea", "Off", "4 bars", "8 bars", "16 bars" }, 0, true } };
         cfg.tailSeconds = 0.1;
         cfg.featuresFromOutput = true; // (an instrument: Chunky hears what it plays)
         return cfg;
@@ -76,20 +81,104 @@ namespace
 
 gk::PresetManager DaftChunkProcessor::loadBuiltInPresets()
 {
+    struct Entry { const char* data; int size; };
+    const Entry entries[] = {
+        { DCPresets::one_more_chop_json, DCPresets::one_more_chop_jsonSize }, // the default
+        { DCPresets::disco_loop_json, DCPresets::disco_loop_jsonSize },
+        { DCPresets::vocal_chop_json, DCPresets::vocal_chop_jsonSize },
+        { DCPresets::stutter_house_json, DCPresets::stutter_house_jsonSize },
+        { DCPresets::reverse_party_json, DCPresets::reverse_party_jsonSize },
+        { DCPresets::pitch_party_json, DCPresets::pitch_party_jsonSize },
+        { DCPresets::mpc_mode_json, DCPresets::mpc_mode_jsonSize },
+        { DCPresets::chunky_funk_json, DCPresets::chunky_funk_jsonSize },
+        { DCPresets::robot_glitch_json, DCPresets::robot_glitch_jsonSize },
+        { DCPresets::filter_sunrise_json, DCPresets::filter_sunrise_jsonSize },
+    };
     gk::PresetManager pm;
-    const auto r = pm.add (juce::String::fromUTF8 (DCPresets::default_json, DCPresets::default_jsonSize));
-    jassertquiet (r.wasOk());
+    for (const auto& e : entries)
+    {
+        const auto r = pm.add (juce::String::fromUTF8 (e.data, e.size));
+        jassertquiet (r.wasOk());
+    }
     return pm;
+}
+
+/** Applies a preset when the preset changes (the parameter may move on the audio thread: deferred). */
+class DaftChunkProcessor::PresetWatcher final : private juce::AudioProcessorValueTreeState::Listener, private juce::AsyncUpdater
+{
+public:
+    explicit PresetWatcher (DaftChunkProcessor& p) : proc (p) { proc.getValueTreeState().addParameterListener ("preset", this); }
+    ~PresetWatcher() override
+    {
+        proc.getValueTreeState().removeParameterListener ("preset", this);
+        cancelPendingUpdate();
+    }
+
+private:
+    void parameterChanged (const juce::String&, float) override
+    {
+        if (juce::MessageManager::existsAndIsCurrentThread())
+            handleAsyncUpdate();
+        else
+            triggerAsyncUpdate();
+    }
+    void handleAsyncUpdate() override { proc.applyPreset (proc.getPresetParameter().getIndex()); }
+    DaftChunkProcessor& proc;
+};
+
+void DaftChunkProcessor::applyPreset (int index)
+{
+    if (loadingState || index == appliedPreset || ! juce::isPositiveAndBelow (index, getPresets().size()))
+        return;
+    appliedPreset = index;
+    const auto params = getPresets()[index].json.getProperty ("params", {});
+    auto set = [] (juce::RangedAudioParameter& p, float plain)
+    {
+        p.beginChangeGesture();
+        p.setValueNotifyingHost (p.convertTo0to1 (plain));
+        p.endChangeGesture();
+    };
+    if (params.hasProperty ("chop"))
+        set (getAmountParameter(), (float) params["chop"]);
+    // the knobs and choices it names (by id; choices by their option's name)
+    const auto& knobs = getConfig().knobs;
+    for (int k = 0; k < (int) knobs.size(); ++k)
+        if (params.hasProperty (knobs[(size_t) k].id))
+            set (getKnobParameter (k), (float) params[juce::Identifier (knobs[(size_t) k].id)]);
+    const auto& choices = getConfig().choices;
+    for (int c = 0; c < (int) choices.size(); ++c)
+        if (const auto& spec = choices[(size_t) c]; params.hasProperty (spec.id))
+            if (const int i = spec.options.indexOf (params[juce::Identifier (spec.id)].toString(), true); i >= 0)
+                set (getChoiceParameter (c), (float) i);
+    // the slicing (MPC MODE: the 1/16 grid)
+    if (params.hasProperty ("slicing"))
+    {
+        const auto m = params["slicing"].toString();
+        settings.mode = m == "Grid" ? SliceMode::grid : m == "Mixed" ? SliceMode::mixed : SliceMode::transients;
+        if (params.hasProperty ("division"))
+            settings.division = (int) params["division"];
+        if (sample != nullptr)
+            reslice();
+    }
+    lastChop = -1.0f; // (the preset's CHOP and LENGTH are not moves of the knob)
+    lastLength = -1;
+    // heard at once: a new loop in the preset's style
+    if (sample != nullptr && kit != nullptr && ! kit->slices.empty())
+        rollDice();
+    sendChangeMessage();
 }
 
 DaftChunkProcessor::DaftChunkProcessor()
     : OneKnobProcessor (makeConfig (loadBuiltInPresets()), std::make_unique<DaftChunkEngine>())
 {
+    applyPreset (0);
+    watcher = std::make_unique<PresetWatcher> (*this);
     startTimerHz (30);
 }
 
 DaftChunkProcessor::~DaftChunkProcessor()
 {
+    watcher = nullptr;
     stopTimer();
     getDsp().setKit (nullptr);
     getDsp().setSequence (nullptr);
@@ -131,6 +220,15 @@ void DaftChunkProcessor::waitForAnalysis()
 {
     loader.waitUntilDone();
     takeAnalysis();
+}
+
+void DaftChunkProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    // the saved settings win over the preset's (no loop made): the restored preset is marked applied
+    loadingState = true;
+    OneKnobProcessor::setStateInformation (data, sizeInBytes);
+    loadingState = false;
+    appliedPreset = getPresetParameter().getIndex();
 }
 
 void DaftChunkProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)

@@ -1,0 +1,16 @@
+{
+  "name": "MPC Mode",
+  "params": {
+    "chop": 0.0,
+    "style": "Disco Loop",
+    "sweep": "Off",
+    "pump": 0.0,
+    "crush": 0.0,
+    "mix": 1.0,
+    "swing": 0.0,
+    "length": "Auto",
+    "mode": "Choke",
+    "slicing": "Grid",
+    "division": 16
+  }
+}

@@ -11,7 +11,8 @@ namespace daftchunk
       - the dice (DÉ, ENCORE): he shakes it (4..7), then hands the idea over;
       - CHOP high (> 75 %): he glitches (8..11) and his blocks slip sideways;
       - slices playing: he dances, one pose per slice played (16..29);
-      - bypass: sitting (31).
+      - bypass: sitting (31);
+      - every slice played lights one of his body's blocks.
     A pose holds at least 0.12 s (no flicker on fast slices). */
 class ChunkyMascot final : public gk::MascotComponent
 {
@@ -29,6 +30,7 @@ public:
 protected:
     int chooseFrame (float macro, float bypass, bool musicOn) override;
     void paintCharacter (juce::Graphics& g, juce::Rectangle<float> figure, const juce::AffineTransform& animation) override;
+    void paintOverlay (juce::Graphics& g, const State& st, juce::Rectangle<float> figure) override;
 
 private:
     DaftChunkProcessor& proc;
@@ -37,5 +39,7 @@ private:
     int seenDice = 0;
     bool wasAnalysing = false;
     float glitch = 0.0f;
+    int seenTriggers = 0, litBlock = -1;
+    double litAt = -1.0;
 };
 } // namespace daftchunk

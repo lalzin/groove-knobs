@@ -52,6 +52,10 @@ std::unique_ptr<DaftChunkProcessor> loaded (const std::vector<float>& x, double 
     auto p = std::make_unique<DaftChunkProcessor>();
     p->setNonRealtime (true);
     p->prepareToPlay (hostRate, 512);
+    // the slices as they are: no output effect (the default preset pumps)
+    setParam (p->getKnobParameter (DaftChunkEngine::pumpKnob), 0.0f);
+    setParam (p->getKnobParameter (DaftChunkEngine::crushKnob), 0.0f);
+    setParam (p->getChoiceParameter (DaftChunkEngine::sweepChoice), (float) DaftChunkEngine::sweepOff);
     p->loadAudio (toBuffer (x), sr, "loop");
     p->waitForAnalysis();
     return p;

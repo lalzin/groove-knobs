@@ -1,0 +1,14 @@
+{
+  "name": "Chunky Funk",
+  "params": {
+    "chop": 0.4,
+    "style": "Disco Loop",
+    "sweep": "Off",
+    "pump": 0.1,
+    "crush": 0.0,
+    "mix": 1.0,
+    "swing": 0.55,
+    "length": "2 bars",
+    "mode": "Choke"
+  }
+}

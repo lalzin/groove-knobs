@@ -172,6 +172,42 @@ private:
     bool dim = false;
 };
 
+/** The FX page's picture: SWEEP's position over its bars (the low-pass opening) and PUMP's gain now. */
+class DaftChunkEditor::FxMeter final : public juce::Component
+{
+public:
+    explicit FxMeter (DaftChunkProcessor& p) : proc (p) { setInterceptsMouseClicks (false, false); }
+    void paint (juce::Graphics& g) override
+    {
+        const auto& t = proc.getDsp().getTelemetry();
+        const float sweep = t.sweep.load (std::memory_order_relaxed), pump = t.pump.load (std::memory_order_relaxed);
+        auto b = getLocalBounds().toFloat();
+        g.setFont (gk::GrooveFonts::font (9.5f).withExtraKerningFactor (0.12f));
+        auto row = [&] (juce::Rectangle<float> r, const char* label, float v, bool active, const juce::String& text)
+        {
+            g.setColour (cream.withAlpha (0.55f));
+            g.drawText (label, r.removeFromLeft (52.0f), juce::Justification::centredLeft);
+            const auto bar = r.withSizeKeepingCentre (r.getWidth(), 12.0f);
+            g.setColour (surface);
+            g.fillRoundedRectangle (bar, 5.0f);
+            if (active)
+            {
+                g.setColour (coral);
+                g.fillRoundedRectangle (bar.withWidth (std::max (6.0f, bar.getWidth() * juce::jlimit (0.0f, 1.0f, v))), 5.0f);
+            }
+            g.setColour (cream.withAlpha (active ? 0.9f : 0.35f));
+            g.drawText (text, bar, juce::Justification::centred);
+        };
+        row (b.removeFromTop (26.0f), "SWEEP", sweep, sweep >= 0.0f, sweep >= 0.0f ? juce::String (juce::roundToInt (sweep * 100.0f)) + " % open" : juce::String ("off"));
+        b.removeFromTop (6.0f);
+        const float pumpDb = juce::Decibels::gainToDecibels (std::max (1.0e-3f, pump));
+        row (b.removeFromTop (26.0f), "PUMP", pump, true, pump < 0.999f ? juce::String (pumpDb, 1) + " dB" : juce::String ("0 dB"));
+    }
+
+private:
+    DaftChunkProcessor& proc;
+};
+
 /** A knob for a slice's own setting (not a host parameter): drag up / down
     (shift: finer), the wheel, double-click for the default. */
 class DaftChunkEditor::SliceKnob final : public juce::Component, public juce::SettableTooltipClient
@@ -264,6 +300,7 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
 
     // Chunky left, CHOP in the middle panel (left of the SON / TRANCHE pages)
     placeMascotAndKnob ({ 14, 316, 160, 190 }, juce::Rectangle<int> (124, 124).withCentre ({ 260, 404 }));
+    getPresetBar().setBounds (534, 8, 284, 46); // the presets: top right, by the title
 
     wave = std::make_unique<WaveformView> (p);
     addToCanvas (*wave, { 14, 100, 832, 192 });
@@ -376,11 +413,33 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
     tabSlice->setTooltip ("The selected slice's own settings (click a slice or a key)");
     tabSequence = std::make_unique<Pill> ("SEQUENCE", [this] { showPage (2); }, 12.0f);
     tabSequence->setTooltip ("The selected loop's steps, to correct by hand");
-    addToCanvas (*tabSound, { 340, 314, 56, 22 });
-    addToCanvas (*tabSlice, { 400, 314, 76, 22 });
-    addToCanvas (*tabSequence, { 480, 314, 90, 22 });
+    tabFx = std::make_unique<Pill> ("FX", [this] { showPage (3); }, 12.0f);
+    tabFx->setTooltip ("The output effects: PUMP (ducked on every beat), CRUSH, MIX, and SWEEP (the low-pass opening over the bars)");
+    addToCanvas (*tabSound, { 340, 314, 54, 22 });
+    addToCanvas (*tabSlice, { 397, 314, 50, 22 });
+    addToCanvas (*tabSequence, { 450, 314, 78, 22 });
+    addToCanvas (*tabFx, { 531, 314, 38, 22 });
     sliceTitle = std::make_unique<InfoLabel>();
-    addToCanvas (*sliceTitle, { 574, 314, 88, 22 });
+    addToCanvas (*sliceTitle, { 572, 314, 90, 22 });
+    {
+        using E = DaftChunkEngine;
+        struct K { int knob; juce::Rectangle<int> at; juce::Colour colour; const char* tip; };
+        const K fx[] { { E::pumpKnob, { 340, 342, 66, 70 }, coral, "PUMP: the sound ducks on every beat and comes back, like a sidechain to the kick (locked to the host's tempo)" },
+                       { E::crushKnob, { 410, 342, 66, 70 }, cream, "CRUSH: fewer bits, a lower rate: grit" },
+                       { E::mixKnob, { 480, 342, 66, 70 }, cream, "MIX: the effects against the dry slices" } };
+        for (const auto& k : fx)
+        {
+            fxKnobs.push_back (std::make_unique<gk::SmallKnob> (p.getKnobParameter (k.knob), getPalette(), p.getConfig().knobs[(size_t) k.knob].caption, k.colour));
+            juce::ignoreUnused (k.tip); // (SmallKnob has no tooltip: the FX tab's says it all)
+            addToCanvas (*fxKnobs.back(), k.at);
+        }
+        sweepSelector = std::make_unique<gk::ChoiceSelector> (p.getChoiceParameter (E::sweepChoice), "SWEEP", coral, getPalette());
+        sweepSelector->setTooltip ("SWEEP: a low-pass that opens over 4, 8 or 16 bars, locked to the host's bars (the French touch gesture). "
+                                   "IDEA: the playing loop's own (FILTER TOUCH loops open over 8 bars)");
+        addToCanvas (*sweepSelector, { 562, 350, 96, 38 });
+        fxMeter = std::make_unique<FxMeter> (p);
+        addToCanvas (*fxMeter, { 340, 424, 320, 78 });
+    }
     stepGrid = std::make_unique<StepGrid> (p);
     addToCanvas (*stepGrid, { 336, 342, 328, 162 });
 
@@ -529,6 +588,8 @@ void DaftChunkEditor::editorTick (double)
         if (load != nullptr)
             updateToolbar();
     }
+    if (fxMeter != nullptr && page == 3)
+        fxMeter->repaint();
     if (ideaStrip != nullptr)
     {
         ideaStrip->refresh();
@@ -566,6 +627,11 @@ void DaftChunkEditor::showPage (int index)
     tabSound->setSelected (page == 0);
     tabSlice->setSelected (page == 1);
     tabSequence->setSelected (page == 2);
+    tabFx->setSelected (page == 3);
+    for (auto& k : fxKnobs)
+        k->setVisible (page == 3);
+    sweepSelector->setVisible (page == 3);
+    fxMeter->setVisible (page == 3);
     stepGrid->setVisible (page == 2);
     lockButton->setVisible (page == 1);
     for (auto& k : soundKnobs)

@@ -1,0 +1,14 @@
+{
+  "name": "One More Chop",
+  "params": {
+    "chop": 0.2,
+    "style": "Filter Touch",
+    "sweep": "Idea",
+    "pump": 0.45,
+    "crush": 0.0,
+    "mix": 1.0,
+    "swing": 0.0,
+    "length": "Auto",
+    "mode": "Choke"
+  }
+}

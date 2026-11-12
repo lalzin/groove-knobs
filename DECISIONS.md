@@ -1003,3 +1003,22 @@ Une ligne par décision : **contexte** — choix — raison.
   - les messages : « File not found », « Trimmed to 60 s ».
   - Les fichiers exportés se nomment `…_<bpm>bpm_loop<n>`.
   - Les pages de l'installateur restent en français, comme celles des autres plugins.
+
+## DAFT CHUNK — étape 5 : les effets, les presets, les finitions (2026-11-12)
+
+- **Les effets de sortie**, après les voix (`DaftChunkEngine::processEffects`). Ils passent aussi dans les exports WAV.
+  - **SWEEP** (choix) : un passe-bas qui s'ouvre de 300 Hz à 18 kHz sur 4, 8 ou 16 mesures, calé sur les mesures de l'hôte. C'est le geste FILTER TOUCH ; la courbe en puissance 1,3 s'ouvre surtout à la fin. IDEA (par défaut) suit la boucle qui joue : `filterBars` de son style, soit 8 pour FILTER TOUCH ; sans boucle, rien.
+  - **PUMP** : le son baisse sur chaque temps de l'hôte, en 1 % de temps, puis revient sur 75 % du temps (courbe en puissance 2,2), jusqu'à -16 dB environ. C'est un sidechain vers un kick imaginaire.
+  - **CRUSH** : de 16 à 6 bits, et une fréquence jusqu'à 8 fois plus basse (échantillon maintenu).
+  - **MIX** : les effets contre les tranches sèches. À 0, on retrouve exactement le son sec (testé).
+  - Tout est lissé sur 30 ms, sans allocation (testé).
+- **Les 10 presets du cahier des charges** (`Presets/*.json`) : CHOP, STYLE, SWEEP, PUMP, CRUSH, MIX, SWING, LENGTH, MODE et, pour MPC Mode, la découpe en grille 1/16.
+  - One More Chop (FILTER TOUCH, CHOP 0,2, PUMP 0,45) et Filter Sunrise (SWEEP 16 mesures) ;
+  - Chunky Funk (SWING 55 %) et Robot Glitch (CHOP 1, CRUSH 0,55).
+  - Appliquer un preset, avec un sample chargé, crée tout de suite une boucle dans son style : on l'entend.
+  - Une session rouvre son preset et ses réglages tels quels, sans créer de boucle (`loadingState`, comme HEAD SPIN).
+  - La barre des presets est en haut à droite, à côté du titre : sous Chunky, il n'y avait pas la place pour le nom.
+- **Les noms de presets du cahier des charges** (« One More Chop » ; et le nom DAFT CHUNK lui-même) évoquent Daft Punk et « One More Time ». C'est à revoir avant une publication publique : risque de marque.
+- **Une page FX** : PUMP, CRUSH, MIX, SWEEP, et un indicateur qui montre l'ouverture du filtre et le gain de la pompe en dB.
+- **Chunky** : à chaque tranche jouée, un des 6 blocs de son corps s'allume pendant 0,25 s (le compteur `triggers` du moteur).
+- **52 tests** passent, ainsi qu'auval et pluginval niveau 8.

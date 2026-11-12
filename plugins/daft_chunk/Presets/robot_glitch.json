@@ -1,0 +1,14 @@
+{
+  "name": "Robot Glitch",
+  "params": {
+    "chop": 1.0,
+    "style": "Stutter House",
+    "sweep": "Off",
+    "pump": 0.2,
+    "crush": 0.55,
+    "mix": 1.0,
+    "swing": 0.0,
+    "length": "Auto",
+    "mode": "Choke"
+  }
+}

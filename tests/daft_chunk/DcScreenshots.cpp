@@ -111,6 +111,7 @@ int main (int argc, char* argv[])
         writePng (shoot (*p, 1.0f, 2), out.getChildFile ("dc_ideas.png"));
         writePng (shoot (*p, 2.0f, 2), out.getChildFile ("dc_ideas@2x.png"));
         writePng (shoot (*p, 1.0f, 2, 12.0), out.getChildFile ("dc_zoom12.png"));
+        writePng (shoot (*p, 1.0f, 3), out.getChildFile ("dc_fx.png"));
         writePng (shoot (*p, 1.0f, 2, 600.0), out.getChildFile ("dc_zoom600.png"));
     }
     std::cout << "screenshots in " << out.getFullPathName() << std::endl;

@@ -1,0 +1,14 @@
+{
+  "name": "Pitch Party",
+  "params": {
+    "chop": 0.75,
+    "style": "Pitch Party",
+    "sweep": "Off",
+    "pump": 0.0,
+    "crush": 0.0,
+    "mix": 1.0,
+    "swing": 0.15,
+    "length": "Auto",
+    "mode": "Choke"
+  }
+}

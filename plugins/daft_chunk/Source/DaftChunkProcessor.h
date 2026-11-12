@@ -22,6 +22,9 @@ public:
     ~DaftChunkProcessor() override;
 
     juce::AudioProcessorEditor* createEditor() override;
+    void setStateInformation (const void* data, int sizeInBytes) override;
+    /** Sets preset `index`'s settings (CHOP, style, effects, slicing...) and, with a sample, makes a loop. */
+    void applyPreset (int index);
     void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi) override;
     using OneKnobProcessor::processBlock;
     bool producesMidi() const override { return true; } // MIDI CAPTURE
@@ -146,6 +149,10 @@ private:
     void freeRetired (bool force);
     void republish(); // the same slices, new settings
     void updateStretch (bool now);
+    class PresetWatcher;
+    std::unique_ptr<PresetWatcher> watcher;
+    int appliedPreset = -1;
+    bool loadingState = false;
     struct Snapshot { std::array<Idea, 8> ideas; std::vector<bool> locked; };
     void remember();   // before an action: for ANNULER
     void ideasChanged();

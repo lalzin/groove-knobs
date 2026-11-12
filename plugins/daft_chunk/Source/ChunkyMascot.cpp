@@ -1,5 +1,6 @@
 #include "ChunkyMascot.h"
 #include <DaftChunkArt.h>
+#include "WaveformView.h"
 
 namespace daftchunk
 {
@@ -116,5 +117,32 @@ void ChunkyMascot::paintCharacter (juce::Graphics& g, juce::Rectangle<float> fig
         g.reduceClipRegion (band.expanded (figure.getWidth(), 0.0f).getSmallestIntegerContainer());
         drawFrame (g, getState().frame, figure, animation.translated (shift, 0.0f), 1.0f);
     }
+}
+} // namespace daftchunk
+
+namespace daftchunk
+{
+void ChunkyMascot::paintOverlay (juce::Graphics& g, const State& st, juce::Rectangle<float> figure)
+{
+    // every slice played lights one of his blocks (the red ones of his body), fading over 0.25 s
+    const int trig = proc.getDsp().getTelemetry().triggers.load (std::memory_order_relaxed);
+    if (trig != seenTriggers)
+    {
+        seenTriggers = trig;
+        litBlock = trig % 6;
+        litAt = st.time;
+    }
+    const double age = st.time - litAt;
+    if (litBlock < 0 || age > 0.25 || st.frame >= sitting0)
+        return;
+    const float a = (float) (1.0 - age / 0.25);
+    // the body's blocks, 3 x 2, in the figure (the frames are centred, the body under the screen)
+    const float bw = figure.getWidth() * 0.13f, bh = figure.getHeight() * 0.075f;
+    const float x0 = figure.getCentreX() - 1.5f * bw, y0 = figure.getY() + figure.getHeight() * 0.47f;
+    const auto block = juce::Rectangle<float> (x0 + (float) (litBlock % 3) * bw, y0 + (float) (litBlock / 3) * bh, bw, bh).reduced (1.5f);
+    g.setColour (colours::cream.withAlpha (0.55f * a));
+    g.fillRoundedRectangle (block, 3.0f);
+    g.setColour (colours::coral.brighter (0.4f).withAlpha (0.35f * a));
+    g.fillRoundedRectangle (block.expanded (3.0f), 5.0f);
 }
 } // namespace daftchunk

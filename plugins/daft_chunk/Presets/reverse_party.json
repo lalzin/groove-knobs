@@ -1,0 +1,14 @@
+{
+  "name": "Reverse Party",
+  "params": {
+    "chop": 0.5,
+    "style": "Reverse Party",
+    "sweep": "Off",
+    "pump": 0.15,
+    "crush": 0.0,
+    "mix": 1.0,
+    "swing": 0.0,
+    "length": "Auto",
+    "mode": "Choke"
+  }
+}

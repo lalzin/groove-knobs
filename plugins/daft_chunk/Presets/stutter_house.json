@@ -1,0 +1,14 @@
+{
+  "name": "Stutter House",
+  "params": {
+    "chop": 0.6,
+    "style": "Stutter House",
+    "sweep": "Off",
+    "pump": 0.3,
+    "crush": 0.0,
+    "mix": 1.0,
+    "swing": 0.0,
+    "length": "Auto",
+    "mode": "Choke"
+  }
+}
