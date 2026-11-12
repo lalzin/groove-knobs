@@ -93,6 +93,10 @@ private:
 /** DÉ: a new loop (bars 0: chosen from the style and CHOP). */
 Pattern generate (const SourceInfo& src, Style style, float chop, uint32_t seed, int bars = 0);
 
+/** How alike two loops sound, 0..1: the share of 16ths (over the longer one, the shorter
+    one repeated) that play the same slice the same way. 1: the same loop. */
+float similarity (const Pattern& a, const Pattern& b);
+
 /** ENCORE: a close variant of `p`, 10 to 25 % of its steps mutated. */
 Pattern mutate (const Pattern& p, const SourceInfo& src, uint32_t seed);
 } // namespace daftchunk

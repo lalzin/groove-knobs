@@ -1022,3 +1022,14 @@ Une ligne par décision : **contexte** — choix — raison.
 - **Une page FX** : PUMP, CRUSH, MIX, SWEEP, et un indicateur qui montre l'ouverture du filtre et le gain de la pompe en dB.
 - **Chunky** : à chaque tranche jouée, un des 6 blocs de son corps s'allume pendant 0,25 s (le compteur `triggers` du moteur).
 - **52 tests** passent, ainsi qu'auval et pluginval niveau 8.
+
+### Daft Chunk : LOOP CREATOR ne se répète plus (test10)
+- **Le problème** : après l'étape 5, chaque clic donnait presque la même boucle. Les presets mettaient CHOP à 0,1 ou 0,2, et MPC Mode à 0. À ce niveau, le générateur rejouait le sample presque tel quel. DISCO LOOP ne variait que sa dernière mesure, soit 3 mesures sur 4 identiques à chaque clic. FILTER TOUCH répétait souvent une seule tranche sur chaque temps.
+- **Anti-répétition** : `rollDice` tire jusqu'à 24 graines. Il garde la première dont la ressemblance (`similarity`, la part des doubles croches jouées pareil) reste sous 0,6 avec les boucles présentes et les 16 dernières créées ; sinon, la moins ressemblante. La graine gardée est enregistrée, donc CHOP et LENGTH en direct fonctionnent comme avant.
+- **Plus de variété même avec un CHOP bas** :
+  - le jonglage des temps part de 25 % au lieu de 12 % ;
+  - DISCO LOOP jongle et mute un peu chaque mesure (la dernière davantage) ;
+  - FILTER TOUCH fait sa forme A A A B dès CHOP 0,08, et une phrase qui ne contient qu'un coup passe à deux temps.
+- **Presets** : One More Chop et Filter Sunrise passent à 0,35, Disco Loop à 0,3, MPC Mode à 0,25 ; CHOP vaut 0,35 par défaut.
+- **Bug corrigé au passage** : la répétition « le temps 3 reprend le temps 1 » pouvait recopier une tranche verrouillée ailleurs.
+- **Test G13** : après chacun des 10 presets, 12 clics sur LOOP CREATOR ne donnent jamais deux boucles semblables à plus de 80 %. 53 tests passent.

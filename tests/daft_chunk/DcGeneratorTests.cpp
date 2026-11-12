@@ -465,9 +465,20 @@ TEST_CASE ("DC dump patterns", "[.dump]")
     for (size_t i = 0; i < src.types.size(); ++i)
         types += std::to_string (i + 1) + typeName (src.types[i])[0] + " ";
     std::printf ("%s  %d slices, %d bars, key %s\n%s\n", path, (int) src.types.size(), src.bars, src.key.name().toRawUTF8(), types.c_str());
+    // DC_DUMP_CHOP=0.2 DC_DUMP_SEEDS=12: that CHOP only, with that many seeds
+    std::vector<float> chops { 0.2f, 0.5f, 0.8f };
+    std::vector<uint32_t> seeds { 11u, 12u };
+    if (const char* c = std::getenv ("DC_DUMP_CHOP"); c != nullptr)
+        chops = { (float) std::atof (c) };
+    if (const char* n = std::getenv ("DC_DUMP_SEEDS"); n != nullptr)
+    {
+        seeds.clear();
+        for (int i = 0; i < std::atoi (n); ++i)
+            seeds.push_back (1000u + 7919u * (uint32_t) i);
+    }
     for (int st = 0; st < numStyles; ++st)
-        for (float chop : { 0.2f, 0.5f, 0.8f })
-            for (uint32_t seed : { 11u, 12u })
+        for (float chop : chops)
+            for (uint32_t seed : seeds)
             {
                 const auto pt = generate (src, (Style) st, chop, seed);
                 std::string line;
@@ -487,4 +498,27 @@ TEST_CASE ("DC dump patterns", "[.dump]")
                 }
                 std::printf ("%-14s %.1f #%u: %s\n", styleName ((Style) st), chop, seed, line.c_str());
             }
+}
+
+TEST_CASE ("DC G13 LOOP CREATOR after every preset: never the same loop again", "[dc][generator]")
+{
+    auto p = loopKit();
+    const int numPresets = p->getPresets().size();
+    for (int preset = numPresets - 1; preset >= 0; --preset)
+    {
+        p->applyPreset (preset);
+        std::vector<Pattern> made;
+        for (int i = 0; i < 12; ++i)
+        {
+            const int slot = p->rollDice();
+            REQUIRE (slot >= 0);
+            made.push_back (p->getIdea (slot).pattern);
+        }
+        float worst = 0.0f;
+        for (size_t a = 0; a < made.size(); ++a)
+            for (size_t b = a + 1; b < made.size(); ++b)
+                worst = std::max (worst, similarity (made[a], made[b]));
+        INFO (p->getPresets()[preset].name << ": the closest two loops " << worst);
+        CHECK (worst < 0.8f);
+    }
 }

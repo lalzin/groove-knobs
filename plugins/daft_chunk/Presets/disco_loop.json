@@ -1,7 +1,7 @@
 {
   "name": "Disco Loop",
   "params": {
-    "chop": 0.1,
+    "chop": 0.3,
     "style": "Disco Loop",
     "sweep": "Off",
     "pump": 0.0,

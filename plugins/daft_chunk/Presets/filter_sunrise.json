@@ -1,7 +1,7 @@
 {
   "name": "Filter Sunrise",
   "params": {
-    "chop": 0.2,
+    "chop": 0.35,
     "style": "Filter Touch",
     "sweep": "16 bars",
     "pump": 0.35,

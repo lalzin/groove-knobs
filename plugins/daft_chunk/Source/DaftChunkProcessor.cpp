@@ -18,7 +18,7 @@ namespace
         cfg.isInstrument = true;
         cfg.amountParamId = "chop";
         cfg.amountParamName = "Chop";
-        cfg.defaultAmount = 0.2f;
+        cfg.defaultAmount = 0.35f;
         cfg.knobLowLabel = "ORDER";
         cfg.knobHighLabel = "WILD";
         cfg.presetSetsParameters = true; // a preset sets CHOP, the style, the effects...
@@ -565,10 +565,35 @@ int DaftChunkProcessor::rollDice()
     remember();
     const auto style = (Style) getChoiceParameter (DaftChunkEngine::styleChoice).getIndex();
     const float chop = getAmountParameter().convertFrom0to1 (getAmountParameter().getValue());
-    const auto seed = (uint32_t) juce::Random::getSystemRandom().nextInt (0x7fffffff);
-    auto& idea = ideas[(size_t) slot];
     const int lengths[] { 0, 1, 2, 4 };
-    idea.pattern = generate (src, style, chop, seed, lengths[juce::jlimit (0, 3, getChoiceParameter (DaftChunkEngine::lengthChoice).getIndex())]);
+    const int bars = lengths[juce::jlimit (0, 3, getChoiceParameter (DaftChunkEngine::lengthChoice).getIndex())];
+    // never the same loop twice: a few seeds tried, the one least like the loops already
+    // there (and the last ones made) kept
+    std::vector<const Pattern*> others;
+    for (const auto& i : ideas)
+        if (i.used)
+            others.push_back (&i.pattern);
+    for (const auto& r : recentLoops)
+        others.push_back (&r);
+    Pattern best;
+    float bestSim = 2.0f;
+    for (int attempt = 0; attempt < 24 && bestSim > 0.6f; ++attempt)
+    {
+        auto candidate = generate (src, style, chop, (uint32_t) juce::Random::getSystemRandom().nextInt (0x7fffffff), bars);
+        float sim = 0.0f;
+        for (const auto* o : others)
+            sim = std::max (sim, similarity (candidate, *o));
+        if (sim < bestSim)
+        {
+            bestSim = sim;
+            best = std::move (candidate);
+        }
+    }
+    recentLoops.push_back (best);
+    if (recentLoops.size() > 16)
+        recentLoops.erase (recentLoops.begin());
+    auto& idea = ideas[(size_t) slot];
+    idea.pattern = std::move (best);
     idea.used = true;
     idea.starred = false;
     idea.age = ++ideaAge;

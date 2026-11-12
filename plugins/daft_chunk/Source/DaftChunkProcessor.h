@@ -180,6 +180,7 @@ private:
     std::vector<bool> locked;
     int playingIdea = -1, selectedIdea = -1, ideasVersion = 0, diceVersion = 0;
     unsigned ideaAge = 0;
+    std::vector<Pattern> recentLoops; // the last loops the LOOP CREATOR made (not made again)
     std::vector<Snapshot> undoStack, redoStack;
     std::shared_ptr<const Pattern> sequence; // the pattern the engine plays
     struct RetiredSeq { std::shared_ptr<const Pattern> pattern; double since; };

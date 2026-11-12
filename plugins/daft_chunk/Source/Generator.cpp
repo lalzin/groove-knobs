@@ -365,6 +365,12 @@ Pattern generate (const SourceInfo& src, Style style, float chopIn, uint32_t see
                     starts.push_back (k);
             auto startAt = [&] { return c < 0.05 || starts.empty() ? 0 : starts[(size_t) r.below ((int) starts.size())]; };
             const int start = startAt();
+            // a phrase of one hit is only a pulse: two beats then (it says something)
+            int hits = 0;
+            for (int k = 0; k < phraseLen; ++k)
+                hits += originalAt (src, start + k) >= 0 ? 1 : 0;
+            if (hits < 2 && phraseLen < 8 && start + 8 <= total)
+                phraseLen = 8;
             for (int k = 0; k < phraseLen; ++k)
                 base[(size_t) k] = originalAt (src, start + k);
             if (base[0] < 0)
@@ -372,7 +378,7 @@ Pattern generate (const SourceInfo& src, Style style, float chopIn, uint32_t see
             for (int k = phraseLen; k < n; ++k)
                 base[(size_t) k] = base[(size_t) (k % phraseLen)];
             // A A A B: the bar's last phrase from elsewhere (with CHOP)
-            if (c > 0.3 && phraseLen < Pattern::stepsPerBar && r.chance (0.6))
+            if (c > 0.08 && phraseLen < Pattern::stepsPerBar && r.chance (0.35 + 0.35 * smooth (0.08, 0.5, c)))
             {
                 const int other = startAt(), from2 = Pattern::stepsPerBar - phraseLen;
                 for (int k = 0; k < phraseLen; ++k)
@@ -517,10 +523,16 @@ Pattern generate (const SourceInfo& src, Style style, float chopIn, uint32_t see
                     base[(size_t) (k0 + q)] = originalAt (src, from0 + q);
             }
         };
-        const double pj = 0.12 + 0.6 * smooth (0.1, 0.75, c);
+        const double pj = 0.25 + 0.5 * smooth (0.1, 0.75, c);
         const bool faithful = style == Style::discoLoop && c <= 0.5;
         if (faithful)
-            juggle (n - Pattern::stepsPerBar, pj, 1); // DISCO LOOP: its own bars in order, the last one varied
+        {
+            // DISCO LOOP: its own bars in order, a touch of juggling in each, the last one varied more
+            for (int b = 1; b < bars; ++b)
+                juggle (b * Pattern::stepsPerBar, b == bars - 1 ? pj : 0.5 * pj, 1);
+            if (c > 0.3)
+                juggle (0, 0.3 * pj, 2);
+        }
         else
         {
             // bar A, and a form over the bars (A B, A A A B, A B A B, A A B A, A B A C)
@@ -557,8 +569,8 @@ Pattern generate (const SourceInfo& src, Style style, float chopIn, uint32_t see
 
     // how much the dice change (DISCO LOOP: only its last bar)
     const bool faithful = style == Style::discoLoop;
-    auto mutable_ = [&] (int k) { return k < phraseLen && ! frozen[(size_t) k] && (! faithful || k >= n - Pattern::stepsPerBar); };
-    const double amount = faithful ? 0.25 + 0.3 * c : 1.0;
+    auto mutable_ = [&] (int k) { return k < phraseLen && ! frozen[(size_t) k]; };
+    const double faithfulAmount = 0.25 + 0.3 * c;
 
     if (c > 0.02 && ! melodic)
     {
@@ -568,12 +580,14 @@ Pattern generate (const SourceInfo& src, Style style, float chopIn, uint32_t see
                 continue;
             auto& s = p.steps[(size_t) k];
             const int inBar = k % Pattern::stepsPerBar;
+            // (DISCO LOOP: lightly, and its last bar the most)
+            const double amount = ! faithful ? 1.0 : k >= n - Pattern::stepsPerBar ? faithfulAmount : 0.4 * faithfulAmount;
             // a few swaps for one of the same kind
             if (s.slice >= 0 && r.chance (amount * (0.1 + 0.45 * smooth (0.05, 0.6, c))))
                 if (const int other = pick (pools.byRole[roleAt (src, s.slice)], r); other >= 0)
                     s.slice = other;
             // repeats on the strong beats (beat 3 takes beat 1's slice)
-            if (inBar == 8 && r.chance (amount * 0.35 * smooth (0.15, 0.4, c)))
+            if (inBar == 8 && ! isLocked (src, p.steps[(size_t) (k - 8)].slice) && r.chance (amount * 0.35 * smooth (0.15, 0.4, c)))
                 s.slice = p.steps[(size_t) (k - 8)].slice;
             // stutters: 1/32 (or 1/64 when wild), or the 16th repeated
             if (s.slice >= 0 && r.chance (amount * 0.25 * smooth (0.3, 0.8, c)))
@@ -669,6 +683,24 @@ Pattern generate (const SourceInfo& src, Style style, float chopIn, uint32_t see
         }
     }
     return p;
+}
+
+float similarity (const Pattern& a, const Pattern& b)
+{
+    const int na = a.numSteps(), nb = b.numSteps(), n = std::max (na, nb);
+    if (na == 0 || nb == 0)
+        return 0.0f;
+    int same = 0, counted = 0;
+    for (int k = 0; k < n; ++k)
+    {
+        const auto& x = a.steps[(size_t) (k % na)];
+        const auto& y = b.steps[(size_t) (k % nb)];
+        if (x.slice < 0 && y.slice < 0 && ! x.cut && ! y.cut)
+            continue; // two rests say nothing
+        ++counted;
+        same += x.slice == y.slice && x.cut == y.cut && x.pitch == y.pitch && x.reverse == y.reverse && x.repeat == y.repeat ? 1 : 0;
+    }
+    return counted == 0 ? 1.0f : (float) same / (float) counted;
 }
 
 Pattern mutate (const Pattern& in, const SourceInfo& src, uint32_t seed)

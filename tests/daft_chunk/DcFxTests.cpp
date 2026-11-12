@@ -105,8 +105,8 @@ TEST_CASE ("DC F1 the 10 presets: names, settings, a loop in their style at once
     auto knob = [&] (int k) { return q->getKnobParameter (k).convertFrom0to1 (q->getKnobParameter (k).getValue()); };
     auto choice = [&] (int ch) { return q->getChoiceParameter (ch).getIndex(); };
     struct Expect { int preset; float chop; Style style; };
-    const Expect ex[] { { 1, 0.1f, Style::discoLoop }, { 2, 0.5f, Style::vocalChop }, { 3, 0.6f, Style::stutterHouse },
-                        { 4, 0.5f, Style::reverseParty }, { 5, 0.75f, Style::pitchParty }, { 9, 0.2f, Style::filterTouch } };
+    const Expect ex[] { { 1, 0.3f, Style::discoLoop }, { 2, 0.5f, Style::vocalChop }, { 3, 0.6f, Style::stutterHouse },
+                        { 4, 0.5f, Style::reverseParty }, { 5, 0.75f, Style::pitchParty }, { 9, 0.35f, Style::filterTouch } };
     for (const auto& e : ex)
     {
         q->applyPreset (e.preset);
@@ -117,7 +117,7 @@ TEST_CASE ("DC F1 the 10 presets: names, settings, a loop in their style at once
     }
     CHECK (choice (E::sweepChoice) == E::sweep16);                       // Filter Sunrise: 16 bars
     q->applyPreset (6);                                                  // MPC Mode
-    CHECK (chop() == Catch::Approx (0.0f).margin (0.001));
+    CHECK (chop() == Catch::Approx (0.25f).margin (0.001));
     CHECK (choice (E::modeChoice) == E::cut);
     CHECK (q->getSettings().mode == SliceMode::grid);
     CHECK (q->getSettings().division == 16);
