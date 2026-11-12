@@ -52,12 +52,12 @@ namespace
         };
         cfg.knobs[E::volumeKnob].textFromValue = [] (float v) { return v <= -59.9f ? juce::String ("-inf") : juce::String (v, 1) + " dB"; };
         cfg.outputGainKnob = E::volumeKnob;
-        cfg.choices = { { "mode", "Mode", "MODE", { "Coupe", "Poly" }, E::cut, true },
-                        { "play", "Play", "LECTURE", { "One shot", "Gate" }, E::gate, true },
-                        { "sync", "Sync", "SYNC", { "Libre", "Tempo", "Vinyle" }, E::tempo, true },
+        cfg.choices = { { "mode", "Mode", "MODE", { "Choke", "Poly" }, E::cut, true },
+                        { "play", "Play", "PLAY", { "One shot", "Gate" }, E::gate, true },
+                        { "sync", "Sync", "SYNC", { "Free", "Tempo", "Vinyl" }, E::tempo, true },
                         { "style", "Style", "STYLE", { "Filter Touch", "Disco Loop", "Vocal Chop", "Stutter House", "Reverse Party", "Pitch Party" }, 0, true },
                         { "capture", "MIDI Capture", "MIDI CAPTURE", { "Off", "On" }, 0, true },
-                        { "length", "Loop length", "LONGUEUR", { "Auto", "1 bar", "2 bars", "4 bars" }, 0, true } };
+                        { "length", "Loop length", "LENGTH", { "Auto", "1 bar", "2 bars", "4 bars" }, 0, true } };
         cfg.tailSeconds = 0.1;
         cfg.featuresFromOutput = true; // (an instrument: Chunky hears what it plays)
         return cfg;
@@ -314,14 +314,14 @@ void DaftChunkProcessor::takeAnalysis()
     auto result = loader.takeResult (error);
     if (result == nullptr)
     {
-        if (error.isNotEmpty() && error != juce::String::fromUTF8 ("Annul\xc3\xa9"))
+        if (error.isNotEmpty() && error != "Cancelled")
         {
             status = error;
             sendChangeMessage();
         }
         return;
     }
-    status = result->truncated ? juce::String (juce::String::fromUTF8 ("Coup\xc3\xa9 \xc3\xa0 60 s")) : juce::String();
+    status = result->truncated ? juce::String ("Trimmed to 60 s") : juce::String();
     sample = std::shared_ptr<const LoadedSample> (std::move (result));
     taps.clear();
     stretched = nullptr; // (the new sample is stretched once its tempo is known: the timer)
@@ -460,7 +460,7 @@ int DaftChunkProcessor::rollDice()
     const int slot = freeSlot();
     if (slot < 0)
     {
-        status = juce::String::fromUTF8 ("Les 8 boucles ont une \xc3\xa9toile : enl\xc3\xa8ve-en une");
+        status = "All 8 loops are starred: unstar one";
         sendChangeMessage();
         return -1;
     }
@@ -844,7 +844,7 @@ void DaftChunkProcessor::loadExtraState (const juce::ValueTree& state)
         if (f.existsAsFile())
             loader.load (f);
         else
-            status = "Fichier introuvable : " + f.getFileName();
+            status = "File not found: " + f.getFileName();
     }
     sendChangeMessage();
 }

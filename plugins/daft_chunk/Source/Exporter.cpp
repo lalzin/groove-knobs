@@ -107,7 +107,7 @@ namespace exporter
     {
         const bool whole = std::abs (bpm - std::round (bpm)) < 0.005;
         const auto tempoText = whole ? juce::String (juce::roundToInt (bpm)) : juce::String (bpm, 2).replaceCharacter ('.', '_');
-        return "DaftChunk_" + clean (sampleName) + "_" + tempoText + "bpm_idee" + juce::String (ideaIndex + 1);
+        return "DaftChunk_" + clean (sampleName) + "_" + tempoText + "bpm_loop" + juce::String (ideaIndex + 1);
     }
 
     double tempo (const DaftChunkProcessor& p)

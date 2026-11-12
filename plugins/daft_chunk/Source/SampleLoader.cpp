@@ -31,12 +31,12 @@ std::unique_ptr<LoadedSample> decodeFile (const juce::File& file, juce::String& 
     }
     if (reader == nullptr)
     {
-        error = file.existsAsFile() ? "Format non reconnu : " + file.getFileName() : "Fichier introuvable : " + file.getFileName();
+        error = file.existsAsFile() ? "Unknown format: " + file.getFileName() : "File not found: " + file.getFileName();
         return nullptr;
     }
     if (reader->sampleRate <= 0.0 || reader->lengthInSamples <= 0)
     {
-        error = "Fichier vide : " + file.getFileName();
+        error = "Empty file: " + file.getFileName();
         return nullptr;
     }
     auto s = std::make_unique<LoadedSample>();
@@ -160,7 +160,7 @@ void SampleLoader::run()
                 if (s->analysis.numSamples == 0)
                 {
                     if (! cancel.load())
-                        error = juce::String::fromUTF8 ("\xc3\x89""chantillon vide");
+                        error = "Empty sample";
                     s.reset();
                 }
             }
@@ -168,7 +168,7 @@ void SampleLoader::run()
             if (cancel.load() && pending != nullptr)
                 continue; // replaced by a newer request: drop this one
             result = std::move (s);
-            lastError = result == nullptr ? (error.isEmpty() ? juce::String (juce::String::fromUTF8 ("Annul\xc3\xa9")) : error) : juce::String();
+            lastError = result == nullptr ? (error.isEmpty() ? juce::String ("Cancelled") : error) : juce::String();
             hasResult = true;
         }
     }

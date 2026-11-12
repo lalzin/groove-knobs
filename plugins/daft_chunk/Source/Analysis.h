@@ -23,7 +23,7 @@ namespace daftchunk
 {
 enum class SliceType { kick, snare, hat, voice, tonal, noise };
 inline constexpr int numSliceTypes = 6;
-const char* typeName (SliceType t) noexcept; // "KICK", "SNARE", "HAT", "VOIX", "TONAL", "BRUIT"
+const char* typeName (SliceType t) noexcept; // "KICK", "SNARE", "HAT", "VOICE", "TONAL", "NOISE"
 
 enum class SliceMode { transients, grid, mixed };
 

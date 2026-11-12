@@ -75,7 +75,7 @@ TEST_CASE ("DC E1 WAV: exactly N bars at the host's tempo, 24 bits, its name", "
     auto p = withIdea (t);
     const auto f = exporter::writeWav (*p, 0);
     REQUIRE (f.existsAsFile());
-    CHECK (f.getFileName().startsWith ("DaftChunk_Test_Loop_126bpm_idee1"));
+    CHECK (f.getFileName().startsWith ("DaftChunk_Test_Loop_126bpm_loop1"));
     CHECK (f.getParentDirectory() == exporter::folder());
     int bits = 0;
     double rate = 0.0;

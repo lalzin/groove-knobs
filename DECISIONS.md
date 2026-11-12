@@ -991,3 +991,15 @@ Une ligne par décision : **contexte** — choix — raison.
   - **FILTER bipolaire, façon DJ** (paramètre `filter`, de -1 à 1, à la place de `cutoff` en Hz : le plugin n'est pas publié). La gauche est un passe-bas de 20 kHz jusqu'à 20 Hz, la droite un passe-haut de 20 Hz jusqu'à 20 kHz, le milieu est ouvert. Le filtre propre à la tranche fonctionne de même. Les deux sont en série par voix : le passe-bas le plus bas et le passe-haut le plus haut (deux SVF, contournés quand ils sont ouverts). RESO agit sur les deux.
   - **LONGUEUR** (paramètre : AUTO selon le style, 1, 2 ou 4 mesures). Elle s'applique à la création. Comme CHOP, la changer refait la boucle en cours, avec la même graine, le même style et le même CHOP.
   - **LOOP CREATOR** remplace DÉ : un grand bouton en haut du panneau, avec ENCORE et LONGUEUR dessous. Les textes parlent de « boucles ».
+- **L'interface en anglais** (Alan : « ça doit être en anglais »), comme le reste de la suite. Les boutons, menus, bulles d'aide et messages changent, ainsi que les noms des paramètres pour l'hôte :
+  - LOAD, TRANSIENTS / GRID / MIXED, SENS ;
+  - SYNC : TEMPO, VINYL, FREE, STRETCHING… ;
+  - SOUND / SLICE / SEQUENCE ;
+  - START, END, REVERSE, LOCK, RESET, TO ALL ;
+  - LOOP CREATOR, ENCORE, LENGTH (AUTO, 1, 2 ou 4 BARS), STYLE, SWING, UNDO / REDO, MIDI CAPTURE ;
+  - MODE : CHOKE ou POLY ; PLAY : ONE SHOT ou GATE ;
+  - les types VOICE et NOISE (lettre N) ;
+  - le zoom ALL ;
+  - les messages : « File not found », « Trimmed to 60 s ».
+  - Les fichiers exportés se nomment `…_<bpm>bpm_loop<n>`.
+  - Les pages de l'installateur restent en français, comme celles des autres plugins.

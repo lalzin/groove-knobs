@@ -172,11 +172,11 @@ const char* typeName (SliceType t) noexcept
         case SliceType::kick: return "KICK";
         case SliceType::snare: return "SNARE";
         case SliceType::hat: return "HAT";
-        case SliceType::voice: return "VOIX";
+        case SliceType::voice: return "VOICE";
         case SliceType::tonal: return "TONAL";
         case SliceType::noise: break;
     }
-    return "BRUIT";
+    return "NOISE";
 }
 
 juce::String Key::name() const

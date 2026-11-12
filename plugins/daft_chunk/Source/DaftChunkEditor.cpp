@@ -271,8 +271,8 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
     addToCanvas (*keys, { 6, 602, 848, 52 });
 
     // the toolbar
-    load = std::make_unique<Pill> ("CHARGER", [this] { chooseFile(); });
-    load->setTooltip ("Charger un sample (WAV, AIFF, FLAC, MP3, 60 s au plus). Tu peux aussi le glisser sur le plug-in.");
+    load = std::make_unique<Pill> ("LOAD", [this] { chooseFile(); });
+    load->setTooltip ("Load a sample (WAV, AIFF, FLAC, MP3, up to 60 s). You can also drop it on the plug-in.");
     addToCanvas (*load, { 14, 68, 70, 26 });
     fileName = std::make_unique<InfoLabel>();
     addToCanvas (*fileName, { 90, 68, 110, 26 });
@@ -288,7 +288,7 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
     bpm->setColour (juce::TextEditor::backgroundColourId, black);
     bpm->setColour (juce::TextEditor::textColourId, cream);
     bpm->setColour (juce::TextEditor::highlightColourId, coral.withAlpha (0.5f));
-    bpm->setTooltip (juce::String::fromUTF8 ("Le tempo du sample (estim\xc3\xa9). Clique pour le taper au clavier ; /2 ou x2 si l'analyse a pris la moiti\xc3\xa9 ou le double ; TAP pour le donner \xc3\xa0 la main."));
+    bpm->setTooltip ("The sample's tempo (estimated). Click to type it; /2 or x2 if the analysis found half or double; TAP to tap it in.");
     bpm->onTextChange = [this]
     {
         const double v = bpm->getText().retainCharacters ("0123456789.,").replaceCharacter (',', '.').getDoubleValue();
@@ -304,43 +304,40 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
     addToCanvas (*twice, { 324, 68, 26, 26 });
     addToCanvas (*tapButton, { 356, 68, 36, 26 });
     keyLabel = std::make_unique<InfoLabel>();
-    keyLabel->setTooltip (juce::String::fromUTF8 ("La tonalit\xc3\xa9 (indicative) : les tranches pitch\xc3\xa9""es la suivront"));
+    keyLabel->setTooltip ("The key (a guide): pitched slices follow it");
     addToCanvas (*keyLabel, { 398, 68, 58, 26 });
     sync = std::make_unique<Pill> ("TEMPO", [this] { showSyncMenu(); }, 12.0f);
     addToCanvas (*sync, { 462, 68, 90, 26 });
 
-    mode = std::make_unique<Pill> ("TRANSITOIRES", [this] { showModeMenu(); }, 12.0f);
-    mode->setTooltip (juce::String::fromUTF8 ("D\xc3\xa9""coupe : TRANSITOIRES (\xc3\xa0 chaque attaque), GRILLE (1/4, 1/8, 1/16 depuis le temps 1), MIXTE (la grille, cal\xc3\xa9""e sur l'attaque la plus proche \xc3\xa0 \xc2\xb1""20 ms)"));
+    mode = std::make_unique<Pill> ("TRANSIENTS", [this] { showModeMenu(); }, 12.0f);
+    mode->setTooltip (juce::String::fromUTF8 ("Slicing: TRANSIENTS (at every hit), GRID (1/4, 1/8, 1/16 from beat 1), MIXED (the grid, snapped to the nearest hit within \xc2\xb1""20 ms)"));
     addToCanvas (*mode, { 558, 68, 100, 26 });
     const int divs[] { 4, 8, 16 };
     for (int i = 0; i < 3; ++i)
     {
         const int d = divs[i];
         divisions[(size_t) i] = std::make_unique<Pill> ("1/" + juce::String (d), [this, d] { proc.setDivision (d); updateToolbar(); }, 11.5f);
-        divisions[(size_t) i]->setTooltip ("La grille (GRILLE et MIXTE)");
+        divisions[(size_t) i]->setTooltip ("The grid (GRID and MIXED)");
         addToCanvas (*divisions[(size_t) i], { 664 + 34 * i, 68, 30, 26 });
     }
     sensitivity = std::make_unique<MiniSlider>();
-    sensitivity->setTooltip (juce::String::fromUTF8 ("Sensibilit\xc3\xa9 aux transitoires : \xc3\xa0 gauche seulement les coups francs, \xc3\xa0 droite le moindre petit"));
+    sensitivity->setTooltip ("Transient sensitivity: left only the hard hits, right every little one");
     sensitivity->onChange = [this] (float v) { proc.setSensitivity (v); };
     addToCanvas (*sensitivity, { 768, 68, 78, 26 });
 
     // the generator (right panel) and the 8 ideas (the strip)
     dice = std::make_unique<Pill> ("LOOP CREATOR", [this] { proc.rollDice(); showPage (page); }, 15.0f);
-    dice->setTooltip (juce::String::fromUTF8 ("Cr\xc3\xa9""e une nouvelle boucle \xc3\xa0 partir des tranches : sa longueur (LONGUEUR), son style (STYLE), "
-                                          "et CHOP de l'ordre d'origine (ORDER) \xc3\xa0 la d\xc3\xa9""coupe sauvage (WILD). Elle part dans un emplacement libre en bas "
-                                          "et se joue, cal\xc3\xa9""e sur Ableton."));
+    dice->setTooltip ("Creates a new loop from the slices: its length (LENGTH), its style (STYLE), and CHOP from the original order (ORDER) to wild chopping (WILD). It goes into a free slot below and plays, in time with the host.");
     length = std::make_unique<Pill> ("AUTO", [this] { showLengthMenu(); }, 11.5f);
-    length->setTooltip (juce::String::fromUTF8 ("La longueur de la boucle : AUTO (selon le style), 1, 2 ou 4 mesures. Change aussi la boucle choisie."));
+    length->setTooltip ("The loop's length: AUTO (from the style), 1, 2 or 4 bars. Also changes the selected loop.");
     encore = std::make_unique<Pill> ("ENCORE", [this] { proc.encore(); }, 15.0f);
-    encore->setTooltip (juce::String::fromUTF8 ("ENCORE : 4 variantes proches de la boucle choisie (10 \xc3\xa0 25 % des pas changent), au lieu de tout recr\xc3\xa9""er"));
+    encore->setTooltip ("ENCORE: 4 close variations of the selected loop (10 to 25 % of its steps change), instead of starting over");
     style = std::make_unique<Pill> ("FILTER TOUCH", [this] { showStyleMenu(); }, 12.0f);
-    style->setTooltip (juce::String::fromUTF8 ("Le style du D\xc3\x89 : FILTER TOUCH (une phrase r\xc3\xa9p\xc3\xa9t\xc3\xa9""e), DISCO LOOP (fid\xc3\xa8le), VOCAL CHOP, STUTTER HOUSE, "
-                                           "REVERSE PARTY, PITCH PARTY (une m\xc3\xa9lodie d'une tranche)"));
+    style->setTooltip ("The loop style: FILTER TOUCH (a short phrase, repeated), DISCO LOOP (faithful), VOCAL CHOP, STUTTER HOUSE, REVERSE PARTY, PITCH PARTY (a melody from one slice)");
     swing = std::make_unique<MiniSlider>();
     swing->caption = "SWING";
     swing->maximum = 0.75f;
-    swing->setTooltip (juce::String::fromUTF8 ("Le swing des doubles croches des id\xc3\xa9""es (0 \xc3\xa0 75 %)"));
+    swing->setTooltip ("The swing of the loops' 16th notes (0 to 75 %)");
     swing->onChange = [this] (float v)
     {
         auto& sw = proc.getKnobParameter (DaftChunkEngine::swingKnob);
@@ -348,8 +345,8 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
         sw.setValueNotifyingHost (sw.convertTo0to1 (v * 0.75f));
         sw.endChangeGesture();
     };
-    undoButton = std::make_unique<Pill> ("ANNULER", [this] { proc.undo(); }, 11.5f);
-    redoButton = std::make_unique<Pill> (juce::String::fromUTF8 ("R\xc3\x89TABLIR"), [this] { proc.redo(); }, 11.5f);
+    undoButton = std::make_unique<Pill> ("UNDO", [this] { proc.undo(); }, 11.5f);
+    redoButton = std::make_unique<Pill> ("REDO", [this] { proc.redo(); }, 11.5f);
     ideaInfo = std::make_unique<InfoLabel>();
     addToCanvas (*dice, { 682, 313, 164, 36 });
     addToCanvas (*encore, { 682, 354, 80, 24 });
@@ -366,20 +363,19 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
         c.setValueNotifyingHost (c.getIndex() == 1 ? 0.0f : 1.0f);
         c.endChangeGesture();
     }, 11.5f);
-    capture->setTooltip (juce::String::fromUTF8 ("MIDI CAPTURE : l'id\xc3\xa9""e qui joue envoie aussi ses notes en sortie MIDI. Dans Ableton, une piste MIDI dont l'entr\xc3\xa9""e est "
-                                             "Daft Chunk les enregistre."));
+    capture->setTooltip ("MIDI CAPTURE: the loop playing also sends its notes to the MIDI output. In Ableton, a MIDI track with Daft Chunk as its input records them.");
     addToCanvas (*capture, { 682, 486, 164, 20 });
     ideaStrip = std::make_unique<IdeaStrip> (p);
     ideaStrip->onSelect = [this] { showPage (2); };
     addToCanvas (*ideaStrip, { 6, 518, 848, 78 });
 
     // the pages under the tabs: SON (the host parameters) and TRANCHE (the selected slice's own)
-    tabSound = std::make_unique<Pill> ("SON", [this] { showPage (0); }, 12.0f);
-    tabSlice = std::make_unique<Pill> ("TRANCHE", [this] { showPage (1); }, 12.0f);
-    tabSound->setTooltip (juce::String::fromUTF8 ("Le son de toutes les tranches : l'enveloppe, le pitch, le filtre, la v\xc3\xa9locit\xc3\xa9, le mode"));
-    tabSlice->setTooltip (juce::String::fromUTF8 ("Les r\xc3\xa9glages de la tranche s\xc3\xa9lectionn\xc3\xa9""e (clique une tranche ou une touche)"));
-    tabSequence = std::make_unique<Pill> (juce::String::fromUTF8 ("S\xc3\x89QUENCE"), [this] { showPage (2); }, 12.0f);
-    tabSequence->setTooltip (juce::String::fromUTF8 ("Les pas de l'id\xc3\xa9""e choisie, \xc3\xa0 corriger \xc3\xa0 la main"));
+    tabSound = std::make_unique<Pill> ("SOUND", [this] { showPage (0); }, 12.0f);
+    tabSlice = std::make_unique<Pill> ("SLICE", [this] { showPage (1); }, 12.0f);
+    tabSound->setTooltip ("The sound of every slice: the envelope, the pitch, the filter, the velocity, the mode");
+    tabSlice->setTooltip ("The selected slice's own settings (click a slice or a key)");
+    tabSequence = std::make_unique<Pill> ("SEQUENCE", [this] { showPage (2); }, 12.0f);
+    tabSequence->setTooltip ("The selected loop's steps, to correct by hand");
     addToCanvas (*tabSound, { 340, 314, 56, 22 });
     addToCanvas (*tabSlice, { 400, 314, 76, 22 });
     addToCanvas (*tabSequence, { 480, 314, 90, 22 });
@@ -402,10 +398,10 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
             addToCanvas (*soundKnobs.back(), k.at);
         }
         modeSelector = std::make_unique<gk::ChoiceSelector> (p.getChoiceParameter (E::modeChoice), "MODE", coral, getPalette());
-        modeSelector->setTooltip (juce::String::fromUTF8 ("COUPE : une note coupe la pr\xc3\xa9""c\xc3\xa9""dente (comme un pad de MPC). POLY : elles se superposent (16 voix)"));
+        modeSelector->setTooltip ("CHOKE: a new note cuts the last one (like an MPC pad). POLY: they overlap (16 voices)");
         addToCanvas (*modeSelector, { 602, 342, 62, 38 });
-        playSelector = std::make_unique<gk::ChoiceSelector> (p.getChoiceParameter (E::playChoice), "LECTURE", coral, getPalette());
-        playSelector->setTooltip (juce::String::fromUTF8 ("ONE SHOT : la tranche joue jusqu'au bout. GATE : rel\xc3\xa2""cher la touche lance le RELEASE"));
+        playSelector = std::make_unique<gk::ChoiceSelector> (p.getChoiceParameter (E::playChoice), "PLAY", coral, getPalette());
+        playSelector->setTooltip ("ONE SHOT: the slice plays to its end. GATE: releasing the key starts the RELEASE");
         addToCanvas (*playSelector, { 602, 386, 62, 38 });
     }
 
@@ -424,11 +420,11 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
         sliceKnobs[0] = std::make_unique<SliceKnob> ("PITCH", -24.0f, 24.0f, 0.0f, true, st);
         sliceKnobs[1] = std::make_unique<SliceKnob> ("GAIN", -24.0f, 12.0f, 0.0f, true, db);
         sliceKnobs[2] = std::make_unique<SliceKnob> ("FILTER", -1.0f, 1.0f, 0.0f, true, oct);
-        sliceKnobs[3] = std::make_unique<SliceKnob> (juce::String::fromUTF8 ("D\xc3\x89""BUT"), 0.0f, 0.9f, 0.0f, false, pct);
-        sliceKnobs[4] = std::make_unique<SliceKnob> ("FIN", 0.0f, 0.9f, 0.0f, false, pct);
-        const char* tips[] { "Le pitch de cette tranche (en plus du PITCH global)", "Le volume de cette tranche",
-                             "Le filtre de cette tranche : \xc3\xa0 gauche un passe-bas, \xc3\xa0 droite un passe-haut (en plus du FILTER global)", "Le d\xc3\xa9""but fin : rogne le d\xc3\xa9""but de la tranche",
-                             "La fin fine : rogne la fin de la tranche" };
+        sliceKnobs[3] = std::make_unique<SliceKnob> ("START", 0.0f, 0.9f, 0.0f, false, pct);
+        sliceKnobs[4] = std::make_unique<SliceKnob> ("END", 0.0f, 0.9f, 0.0f, false, pct);
+        const char* tips[] { "This slice's pitch (on top of the global PITCH)", "This slice's volume",
+                             "This slice's filter: left a low-pass, right a high-pass (on top of the global FILTER)", "Fine start: trims the slice's start",
+                             "Fine end: trims the slice's end" };
         const juce::Rectangle<int> at[] { { 336, 342, 66, 70 }, { 402, 342, 66, 70 }, { 468, 342, 66, 70 }, { 534, 342, 66, 70 }, { 600, 342, 66, 70 } };
         for (int i = 0; i < 5; ++i)
         {
@@ -441,19 +437,19 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
             };
             addToCanvas (*sliceKnobs[(size_t) i], at[i]);
         }
-        reverse = std::make_unique<Pill> ("INVERSER", [this]
+        reverse = std::make_unique<Pill> ("REVERSE", [this]
         {
             auto sp = proc.getSliceParams (proc.getSelectedSlice());
             sp.reverse = ! sp.reverse;
             proc.setSliceParams (proc.getSelectedSlice(), sp);
         }, 12.0f);
-        reverse->setTooltip (juce::String::fromUTF8 ("Joue la tranche \xc3\xa0 l'envers"));
-        resetSlice = std::make_unique<Pill> (juce::String::fromUTF8 ("R\xc3\x89INIT."), [this] { proc.resetSliceParams (proc.getSelectedSlice()); }, 12.0f);
-        resetSlice->setTooltip (juce::String::fromUTF8 ("Remet cette tranche \xc3\xa0 z\xc3\xa9ro"));
-        applyAll = std::make_unique<Pill> (juce::String::fromUTF8 ("\xc3\x80 TOUTES"), [this] { proc.applyToAllSlices (proc.getSelectedSlice()); }, 12.0f);
-        applyAll->setTooltip (juce::String::fromUTF8 ("Donne les r\xc3\xa9glages de cette tranche \xc3\xa0 toutes les tranches"));
-        lockButton = std::make_unique<Pill> ("VERROU", [this] { proc.toggleLock (proc.getSelectedSlice()); }, 12.0f);
-        lockButton->setTooltip (juce::String::fromUTF8 ("Verrouill\xc3\xa9""e, la tranche garde sa place : le D\xc3\x89 ne la d\xc3\xa9place jamais"));
+        reverse->setTooltip ("Plays the slice backwards");
+        resetSlice = std::make_unique<Pill> ("RESET", [this] { proc.resetSliceParams (proc.getSelectedSlice()); }, 12.0f);
+        resetSlice->setTooltip ("Puts this slice back to zero");
+        applyAll = std::make_unique<Pill> ("TO ALL", [this] { proc.applyToAllSlices (proc.getSelectedSlice()); }, 12.0f);
+        applyAll->setTooltip ("Gives this slice's settings to every slice");
+        lockButton = std::make_unique<Pill> ("LOCK", [this] { proc.toggleLock (proc.getSelectedSlice()); }, 12.0f);
+        lockButton->setTooltip ("Locked, the slice keeps its place: LOOP CREATOR never moves it");
         addToCanvas (*reverse, { 338, 440, 80, 30 });
         addToCanvas (*lockButton, { 422, 440, 74, 30 });
         addToCanvas (*resetSlice, { 500, 440, 70, 30 });
@@ -472,11 +468,11 @@ void DaftChunkEditor::updateToolbar()
     const auto* s = proc.getSample();
     const bool has = s != nullptr && ! proc.isAnalysing();
     if (proc.isAnalysing())
-        fileName->set (juce::String::fromUTF8 ("Analyse\xe2\x80\xa6"), true);
+        fileName->set (juce::String::fromUTF8 ("Analysing\xe2\x80\xa6"), true);
     else if (s != nullptr)
         fileName->set (s->name);
     else
-        fileName->set (proc.getStatus().isNotEmpty() ? proc.getStatus() : juce::String ("Pas de sample"), true);
+        fileName->set (proc.getStatus().isNotEmpty() ? proc.getStatus() : juce::String ("No sample"), true);
     fileName->setTooltip (s != nullptr ? (s->path.isNotEmpty() ? s->path : s->name) + (proc.getStatus().isNotEmpty() ? juce::String::fromUTF8 (" \xe2\x80\x94 ") + proc.getStatus() : juce::String()) : proc.getStatus());
 
     if (! bpm->isBeingEdited())
@@ -489,15 +485,14 @@ void DaftChunkEditor::updateToolbar()
     {
         const int sy = proc.getSync();
         const double host = proc.getHostBpm();
-        sync->setText (sy == DaftChunkEngine::tempo && proc.isStretching() ? juce::String::fromUTF8 ("CALAGE\xe2\x80\xa6")
-                       : sy == DaftChunkEngine::free ? juce::String ("LIBRE") : sy == DaftChunkEngine::tempo ? juce::String ("TEMPO") : juce::String ("VINYLE"));
+        sync->setText (sy == DaftChunkEngine::tempo && proc.isStretching() ? juce::String::fromUTF8 ("STRETCHING\xe2\x80\xa6")
+                       : sy == DaftChunkEngine::free ? juce::String ("FREE") : sy == DaftChunkEngine::tempo ? juce::String ("TEMPO") : juce::String ("VINYL"));
         sync->setSelected (sy != DaftChunkEngine::free && host > 0.0);
-        sync->setTooltip (juce::String::fromUTF8 ("SYNC. TEMPO : les tranches au tempo d'Ableton, sans changer la hauteur (\xc3\xa9tir\xc3\xa9""es en t\xc3\xa2""che de fond). "
-                                                  "VINYLE : au tempo par la vitesse, la hauteur suit. LIBRE : la vitesse du sample. ")
-                          + (host > 0.0 ? "Ableton : " + juce::String (host, 2) + " BPM" : juce::String::fromUTF8 ("Pas de tempo d'h\xc3\xb4te (application autonome) : LIBRE")));
+        sync->setTooltip ("SYNC. TEMPO: the slices at the host's tempo, same pitch (stretched in the background). VINYL: at the tempo by speed, the pitch follows. FREE: the sample's own speed. "
+                          + (host > 0.0 ? "Host: " + juce::String (host, 2) + " BPM" : juce::String ("No host tempo (standalone): FREE")));
     }
     const auto& st = proc.getSettings();
-    mode->setText (st.mode == SliceMode::transients ? "TRANSITOIRES" : st.mode == SliceMode::grid ? "GRILLE" : "MIXTE");
+    mode->setText (st.mode == SliceMode::transients ? "TRANSIENTS" : st.mode == SliceMode::grid ? "GRID" : "MIXED");
     mode->setSelected (true);
     const int divs[] { 4, 8, 16 };
     for (int i = 0; i < 3; ++i)
@@ -551,7 +546,7 @@ void DaftChunkEditor::editorTick (double)
         swing->setValue (sw / 0.75f);
         capture->setSelected (proc.getChoiceParameter (DaftChunkEngine::captureChoice).getIndex() == 1);
         {
-            const char* names[] { "AUTO", "1 MESURE", "2 MESURES", "4 MESURES" };
+            const char* names[] { "AUTO", "1 BAR", "2 BARS", "4 BARS" };
             length->setText (names[juce::jlimit (0, 3, proc.getChoiceParameter (DaftChunkEngine::lengthChoice).getIndex())]);
         }
         style->setText (styleName ((Style) proc.getChoiceParameter (DaftChunkEngine::styleChoice).getIndex()));
@@ -593,7 +588,7 @@ void DaftChunkEditor::updateSlicePage()
     const auto sp = proc.getSliceParams (sel);
     const auto dot = juce::String::fromUTF8 (" \xc2\xb7 ");
     sliceTitle->set (has ? juce::String (sel + 1) + dot + typeName (kit->slices[(size_t) sel].type) + dot + SliceKeys::noteName (DaftChunkEngine::baseNote + sel)
-                         : juce::String ("PAS DE TRANCHE"),
+                         : juce::String ("NO SLICE"),
                      ! has);
     const float v[] { sp.pitch, sp.gainDb, sp.filter, sp.start, sp.end };
     for (int i = 0; i < 5; ++i)
@@ -622,7 +617,7 @@ void DaftChunkEditor::snapView()
 
 void DaftChunkEditor::chooseFile()
 {
-    chooser = std::make_unique<juce::FileChooser> ("Charger un sample", juce::File(), acceptedExtensions());
+    chooser = std::make_unique<juce::FileChooser> ("Load a sample", juce::File(), acceptedExtensions());
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                           [this] (const juce::FileChooser& fc)
                           {
@@ -646,20 +641,19 @@ void DaftChunkEditor::updateGenerator()
     else if (sel >= 0)
     {
         const auto& pt = proc.getIdea (sel).pattern;
-        ideaInfo->set (juce::String::fromUTF8 ("ID\xc3\x89""E ") + juce::String (sel + 1) + juce::String::fromUTF8 (" \xc2\xb7 ") + juce::String (pt.bars) + " MES."
+        ideaInfo->set ("LOOP " + juce::String (sel + 1) + juce::String::fromUTF8 (" \xc2\xb7 ") + juce::String (pt.bars) + (pt.bars > 1 ? " BARS" : " BAR")
                        + juce::String::fromUTF8 (" \xc2\xb7 #") + juce::String ((juce::int64) pt.seed % 100000));
-        ideaInfo->setTooltip (juce::String::fromUTF8 ("La graine de l'id\xc3\xa9""e : la m\xc3\xaame graine redonne la m\xc3\xaame boucle. CHOP ") + juce::String (juce::roundToInt (pt.chop * 100.0f)) + " %, "
-                              + styleName (pt.style));
+        ideaInfo->setTooltip ("The loop's seed: the same seed gives the same loop. CHOP " + juce::String (juce::roundToInt (pt.chop * 100.0f)) + " %, " + styleName (pt.style));
     }
     else
-        ideaInfo->set (has ? juce::String ("Clique LOOP CREATOR !") : juce::String ("Charge un sample"), true);
+        ideaInfo->set (has ? juce::String ("Click LOOP CREATOR!") : juce::String ("Load a sample"), true);
 }
 
 void DaftChunkEditor::showLengthMenu()
 {
     juce::PopupMenu m;
     auto& c = proc.getChoiceParameter (DaftChunkEngine::lengthChoice);
-    const char* names[] { "AUTO (selon le style)", "1 MESURE", "2 MESURES", "4 MESURES" };
+    const char* names[] { "AUTO (from the style)", "1 BAR", "2 BARS", "4 BARS" };
     for (int i = 0; i < 4; ++i)
         m.addItem (i + 1, names[i], true, c.getIndex() == i);
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (length.get()),
@@ -698,10 +692,10 @@ void DaftChunkEditor::showSyncMenu()
     juce::PopupMenu m;
     const int cur = proc.getSync();
     const double host = proc.getHostBpm();
-    m.addSectionHeader (host > 0.0 ? "Ableton : " + juce::String (host, 2) + " BPM" : juce::String::fromUTF8 ("Pas de tempo d'h\xc3\xb4te"));
-    m.addItem (2, juce::String::fromUTF8 ("TEMPO (m\xc3\xaame hauteur)"), true, cur == DaftChunkEngine::tempo);
-    m.addItem (3, juce::String::fromUTF8 ("VINYLE (la hauteur suit)"), true, cur == DaftChunkEngine::vinyl);
-    m.addItem (1, "LIBRE (la vitesse du sample)", true, cur == DaftChunkEngine::free);
+    m.addSectionHeader (host > 0.0 ? "Host: " + juce::String (host, 2) + " BPM" : juce::String ("No host tempo"));
+    m.addItem (2, "TEMPO (same pitch)", true, cur == DaftChunkEngine::tempo);
+    m.addItem (3, "VINYL (the pitch follows)", true, cur == DaftChunkEngine::vinyl);
+    m.addItem (1, "FREE (the sample's own speed)", true, cur == DaftChunkEngine::free);
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (sync.get()),
                      [this] (int r)
                      {
@@ -715,11 +709,11 @@ void DaftChunkEditor::showModeMenu()
 {
     juce::PopupMenu m;
     const auto cur = proc.getSettings().mode;
-    m.addItem (1, "TRANSITOIRES", true, cur == SliceMode::transients);
-    m.addItem (2, "GRILLE", true, cur == SliceMode::grid);
-    m.addItem (3, "MIXTE", true, cur == SliceMode::mixed);
+    m.addItem (1, "TRANSIENTS", true, cur == SliceMode::transients);
+    m.addItem (2, "GRID", true, cur == SliceMode::grid);
+    m.addItem (3, "MIXED", true, cur == SliceMode::mixed);
     m.addSeparator();
-    m.addItem (4, "Revenir aux coupes automatiques", proc.hasUserCuts());
+    m.addItem (4, "Back to the automatic cuts", proc.hasUserCuts());
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (mode.get()),
                      [this] (int r)
                      {

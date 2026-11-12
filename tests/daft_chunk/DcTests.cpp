@@ -137,7 +137,7 @@ TEST_CASE ("DC P2 files: WAV and FLAC read, a missing file says so, longer than 
         p.waitForAnalysis();
         REQUIRE (p.getSample() != nullptr);
         CHECK (p.getSample()->audio.getNumSamples() == (int) (60.0 * sr));
-        CHECK (p.getStatus() == juce::String::fromUTF8 ("Coup\xc3\xa9 \xc3\xa0 60 s"));
+        CHECK (p.getStatus() == "Trimmed to 60 s");
         f.deleteFile();
     }
 }

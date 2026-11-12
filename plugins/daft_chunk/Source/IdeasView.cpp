@@ -57,9 +57,9 @@ namespace
 //==============================================================================
 IdeaStrip::IdeaStrip (DaftChunkProcessor& p) : proc (p)
 {
-    setTooltip (juce::String::fromUTF8 ("Les boucles : chaque LOOP CREATOR en remplit une. Lecture (cal\xc3\xa9""e sur Ableton), \xc3\xa9toile pour la garder, "
-                                        "croix pour la jeter. Glisse WAV (la boucle au tempo), MIDI (les notes) ou KIT (les tranches, sur un Drum Rack) dans Ableton. "
-                                        "Clic sur une id\xc3\xa9""e : la page S\xc3\x89QUENCE la montre. Les fichiers vont dans Musique/Daft Chunk."));
+    setTooltip ("The loops: each LOOP CREATOR fills one. Play (in time with the host), the star keeps it, the cross throws it away. "
+                "Drag WAV (the loop at tempo), MIDI (the notes) or KIT (the slices, onto a Drum Rack) into Ableton. "
+                "Click a loop: the SEQUENCE page shows it. The files go to Music/Daft Chunk.");
 }
 
 void IdeaStrip::refresh()
@@ -110,13 +110,13 @@ void IdeaStrip::paint (juce::Graphics& g)
         if (! idea.used)
         {
             g.setFont (gk::GrooveFonts::font (10.0f));
-            g.drawText ("VIDE", r, juce::Justification::centred);
+            g.drawText ("EMPTY", r, juce::Justification::centred);
             continue;
         }
         const auto& pt = idea.pattern;
         g.setFont (gk::GrooveFonts::font (9.5f));
         g.setColour (cream.withAlpha (0.6f));
-        g.drawText (juce::String (pt.bars) + (pt.bars > 1 ? " MES." : " MESURE"), juce::Rectangle<float> (r.getX() + 22.0f, r.getY() + 3.0f, r.getWidth() - 26.0f, 14.0f),
+        g.drawText (juce::String (pt.bars) + (pt.bars > 1 ? " BARS" : " BAR"), juce::Rectangle<float> (r.getX() + 22.0f, r.getY() + 3.0f, r.getWidth() - 26.0f, 14.0f),
                     juce::Justification::centredRight);
         // the steps in miniature
         const auto map = juce::Rectangle<float> (r.getX() + 5.0f, r.getY() + 18.0f, r.getWidth() - 10.0f, 10.0f);
@@ -231,8 +231,8 @@ void IdeaStrip::dragOut (int i, int h)
 //==============================================================================
 StepGrid::StepGrid (DaftChunkProcessor& p) : proc (p)
 {
-    setTooltip (juce::String::fromUTF8 ("Les pas de l'id\xc3\xa9""e choisie. Clic : la tranche s\xc3\xa9lectionn\xc3\xa9""e sur ce pas (encore : le vider). "
-                                        "Molette : une autre tranche (maj : la hauteur). Clic droit : inverser, r\xc3\xa9p\xc3\xa9ter, hauteur, couper."));
+    setTooltip ("The selected loop's steps. Click: the selected slice on this step (again: empty it). "
+                "Wheel: another slice (shift: the pitch). Right-click: reverse, repeat, pitch, cut.");
 }
 
 void StepGrid::refresh()
@@ -287,13 +287,13 @@ void StepGrid::paint (juce::Graphics& g)
     if (idea < 0)
     {
         g.setColour (cream.withAlpha (0.5f));
-        g.drawFittedText (juce::String::fromUTF8 ("Clique LOOP CREATOR, puis choisis une boucle en bas : ses pas s'affichent ici."), getLocalBounds().reduced (10),
+        g.drawFittedText (juce::String ("Click LOOP CREATOR, then pick a loop below: its steps show here."), getLocalBounds().reduced (10),
                           juce::Justification::centred, 3);
         return;
     }
     const auto& pt = proc.getIdea (idea).pattern;
     g.setColour (cream.withAlpha (0.8f));
-    g.drawText (juce::String::fromUTF8 ("ID\xc3\x89""E ") + juce::String (idea + 1) + juce::String::fromUTF8 (" \xc2\xb7 ") + styleName (pt.style),
+    g.drawText ("LOOP " + juce::String (idea + 1) + juce::String::fromUTF8 (" \xc2\xb7 ") + styleName (pt.style),
                 juce::Rectangle<float> (0.0f, 0.0f, (float) getWidth() - 125.0f, 18.0f), juce::Justification::centredLeft);
     for (int b = 0; b < 4; ++b)
     {
@@ -369,17 +369,17 @@ void StepGrid::mouseDown (const juce::MouseEvent& e)
     {
         const auto st = proc.getIdea (idea).pattern.steps[(size_t) k];
         juce::PopupMenu m;
-        m.addItem (1, "Inverser", st.slice >= 0, st.reverse);
-        m.addItem (2, juce::String::fromUTF8 ("R\xc3\xa9p\xc3\xa9ter x2 (1/32)"), st.slice >= 0, st.repeat == 2);
-        m.addItem (3, juce::String::fromUTF8 ("R\xc3\xa9p\xc3\xa9ter x4 (1/64)"), st.slice >= 0, st.repeat == 4);
-        m.addItem (4, "Hauteur +1", st.slice >= 0);
-        m.addItem (5, "Hauteur -1", st.slice >= 0);
-        m.addItem (6, "Hauteur +12", st.slice >= 0);
-        m.addItem (7, "Hauteur -12", st.slice >= 0);
-        m.addItem (8, juce::String::fromUTF8 ("Hauteur \xc3\xa0 0"), st.slice >= 0 && st.pitch != 0);
+        m.addItem (1, "Reverse", st.slice >= 0, st.reverse);
+        m.addItem (2, "Repeat x2 (1/32)", st.slice >= 0, st.repeat == 2);
+        m.addItem (3, "Repeat x4 (1/64)", st.slice >= 0, st.repeat == 4);
+        m.addItem (4, "Pitch +1", st.slice >= 0);
+        m.addItem (5, "Pitch -1", st.slice >= 0);
+        m.addItem (6, "Pitch +12", st.slice >= 0);
+        m.addItem (7, "Pitch -12", st.slice >= 0);
+        m.addItem (8, "Pitch to 0", st.slice >= 0 && st.pitch != 0);
         m.addSeparator();
-        m.addItem (9, "Couper (silence)", true, st.cut);
-        m.addItem (10, "Vider", st.slice >= 0 || st.cut);
+        m.addItem (9, "Cut (silence)", true, st.cut);
+        m.addItem (10, "Clear", st.slice >= 0 || st.cut);
         m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(),
                          [this, k] (int r)
                          {

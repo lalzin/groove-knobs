@@ -10,7 +10,7 @@ namespace colours
 {
     const juce::Colour coral (0xffff5a36), cream (0xfffff4e0), black (0xff141414), panel (0xff1e1c1b), surface (0xff2a2725);
     juce::Colour forType (SliceType t);
-    const char* letterFor (SliceType t); // K, S, H, V, T, B
+    const char* letterFor (SliceType t); // K, S, H, V, T, N
 } // namespace colours
 
 /** The sample's waveform with its slices (coloured by type), the beat grid

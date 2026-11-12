@@ -29,16 +29,15 @@ namespace colours
             case SliceType::tonal: return "T";
             case SliceType::noise: break;
         }
-        return "B";
+        return "N";
     }
 } // namespace colours
 
 //==============================================================================
 WaveformView::WaveformView (DaftChunkProcessor& p) : proc (p)
 {
-    setTooltip (juce::String::fromUTF8 ("Les tranches du sample. Molette (ou pincement) : zoom ; maj + molette : avancer ; la barre du bas : o\xc3\xb9 tu es (double-clic : tout). "
-                                        "Glisse une coupe pour la d\xc3\xa9placer, glisse le drapeau 1 pour placer le premier temps. ")
-                + juce::String::fromUTF8 ("Double-clic : une coupe en plus. Clic droit (ou alt-clic) sur une coupe : l'enlever. Clic sur une tranche : l'\xc3\xa9""couter."));
+    setTooltip ("The sample's slices. Wheel (or pinch): zoom; shift + wheel: move along; the bar below: where you are (double-click: all of it). "
+                "Drag a cut to move it, drag the 1 flag to set beat 1. Double-click: one more cut. Right-click (or alt-click) a cut: remove it. Click a slice: hear it.");
 }
 
 void WaveformView::setDropHighlight (bool on)
@@ -193,7 +192,7 @@ void WaveformView::paint (juce::Graphics& g)
         if (proc.isAnalysing())
         {
             const float p = proc.getAnalysisProgress();
-            g.drawText (juce::String::fromUTF8 ("ANALYSE\xe2\x80\xa6 ") + juce::String (juce::roundToInt (p * 100.0f)) + " %", r.withTrimmedBottom (24.0f), juce::Justification::centred);
+            g.drawText (juce::String::fromUTF8 ("ANALYSING\xe2\x80\xa6 ") + juce::String (juce::roundToInt (p * 100.0f)) + " %", r.withTrimmedBottom (24.0f), juce::Justification::centred);
             const auto bar = juce::Rectangle<float> (r.getCentreX() - 140.0f, r.getCentreY() + 14.0f, 280.0f, 8.0f);
             g.setColour (colours::surface);
             g.fillRoundedRectangle (bar, 4.0f);
@@ -202,7 +201,7 @@ void WaveformView::paint (juce::Graphics& g)
         }
         else
         {
-            g.drawText (proc.getStatus().isNotEmpty() ? proc.getStatus() : juce::String ("Glisse un sample ici (WAV, AIFF, FLAC, MP3), ou CHARGER"),
+            g.drawText (proc.getStatus().isNotEmpty() ? proc.getStatus() : juce::String ("Drop a sample here (WAV, AIFF, FLAC, MP3), or LOAD"),
                         r, juce::Justification::centred);
         }
         if (dropHighlight)
@@ -223,7 +222,7 @@ void WaveformView::paint (juce::Graphics& g)
         const float w0 = std::max (6.0f, (float) (visible() / total()) * o.getWidth());
         g.setColour (isZoomed() ? colours::coral : colours::cream.withAlpha (0.25f));
         g.fillRoundedRectangle (juce::Rectangle<float> (x0, o.getY(), w0, o.getHeight()), 3.0f);
-        const char* labels[] { "-", "+", "TOUT" };
+        const char* labels[] { "-", "+", "ALL" };
         for (int i = 0; i < 3; ++i)
         {
             const auto zb = zoomButton (i);
@@ -369,7 +368,7 @@ void WaveformView::paint (juce::Graphics& g)
         {
             g.setColour (colours::cream.withAlpha (0.5f));
             g.setFont (gk::GrooveFonts::font (11.0f));
-            g.drawText (juce::String::fromUTF8 ("64 tranches au plus"), juce::Rectangle<float> (x, r.getBottom() - 18.0f, r.getRight() - x, 14.0f), juce::Justification::centred);
+            g.drawText (juce::String ("64 slices max"), juce::Rectangle<float> (x, r.getBottom() - 18.0f, r.getRight() - x, 14.0f), juce::Justification::centred);
         }
     }
 
