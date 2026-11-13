@@ -180,14 +180,16 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto& t = proc.getDsp().getTelemetry();
-        const float sweep = t.sweep.load (std::memory_order_relaxed), pump = t.pump.load (std::memory_order_relaxed);
+        const float sweep = t.sweep.load (std::memory_order_relaxed), pump = t.pump.load (std::memory_order_relaxed),
+                    mod = t.mod.load (std::memory_order_relaxed);
         auto b = getLocalBounds().toFloat();
+        const float rowH = (b.getHeight() - 8.0f) / 3.0f;
         g.setFont (gk::GrooveFonts::font (9.5f).withExtraKerningFactor (0.12f));
         auto row = [&] (juce::Rectangle<float> r, const char* label, float v, bool active, const juce::String& text)
         {
             g.setColour (cream.withAlpha (0.55f));
             g.drawText (label, r.removeFromLeft (52.0f), juce::Justification::centredLeft);
-            const auto bar = r.withSizeKeepingCentre (r.getWidth(), 12.0f);
+            const auto bar = r.withSizeKeepingCentre (r.getWidth(), std::min (12.0f, rowH - 2.0f));
             g.setColour (surface);
             g.fillRoundedRectangle (bar, 5.0f);
             if (active)
@@ -198,10 +200,12 @@ public:
             g.setColour (cream.withAlpha (active ? 0.9f : 0.35f));
             g.drawText (text, bar, juce::Justification::centred);
         };
-        row (b.removeFromTop (26.0f), "SWEEP", sweep, sweep >= 0.0f, sweep >= 0.0f ? juce::String (juce::roundToInt (sweep * 100.0f)) + " % open" : juce::String ("off"));
-        b.removeFromTop (6.0f);
+        row (b.removeFromTop (rowH), "SWEEP", sweep, sweep >= 0.0f, sweep >= 0.0f ? juce::String (juce::roundToInt (sweep * 100.0f)) + " % open" : juce::String ("off"));
+        b.removeFromTop (4.0f);
         const float pumpDb = juce::Decibels::gainToDecibels (std::max (1.0e-3f, pump));
-        row (b.removeFromTop (26.0f), "PUMP", pump, true, pump < 0.999f ? juce::String (pumpDb, 1) + " dB" : juce::String ("0 dB"));
+        row (b.removeFromTop (rowH), "PUMP", pump, true, pump < 0.999f ? juce::String (pumpDb, 1) + " dB" : juce::String ("0 dB"));
+        b.removeFromTop (4.0f);
+        row (b.removeFromTop (rowH), "MOD", mod, mod >= 0.0f, mod >= 0.0f ? juce::String ("phaser / flanger") : juce::String ("off"));
     }
 
 private:
@@ -414,7 +418,7 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
     tabSequence = std::make_unique<Pill> ("SEQUENCE", [this] { showPage (2); }, 12.0f);
     tabSequence->setTooltip ("The selected loop's steps, to correct by hand");
     tabFx = std::make_unique<Pill> ("FX", [this] { showPage (3); }, 12.0f);
-    tabFx->setTooltip ("The output effects: PUMP (ducked on every beat), CRUSH, MIX, and SWEEP (the low-pass opening over the bars)");
+    tabFx->setTooltip ("The output effects: PHASER and FLANGER (at RATE), PUMP (ducked on every beat), CRUSH, MIX, and SWEEP (the low-pass opening over the bars)");
     addToCanvas (*tabSound, { 340, 314, 54, 22 });
     addToCanvas (*tabSlice, { 397, 314, 50, 22 });
     addToCanvas (*tabSequence, { 450, 314, 78, 22 });
@@ -424,9 +428,11 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
     {
         using E = DaftChunkEngine;
         struct K { int knob; juce::Rectangle<int> at; juce::Colour colour; const char* tip; };
-        const K fx[] { { E::pumpKnob, { 340, 342, 66, 70 }, coral, "PUMP: the sound ducks on every beat and comes back, like a sidechain to the kick (locked to the host's tempo)" },
-                       { E::crushKnob, { 410, 342, 66, 70 }, cream, "CRUSH: fewer bits, a lower rate: grit" },
-                       { E::mixKnob, { 480, 342, 66, 70 }, cream, "MIX: the effects against the dry slices" } };
+        const K fx[] { { E::phaserKnob, { 336, 340, 64, 68 }, coral, "PHASER: notches sweeping up and down, locked to the bars (the filter-disco swirl)" },
+                       { E::flangerKnob, { 400, 340, 64, 68 }, coral, "FLANGER: a short delay that moves, with feedback: the jet" },
+                       { E::pumpKnob, { 464, 340, 64, 68 }, coral, "PUMP: the sound ducks on every beat and comes back, like a sidechain to the kick (locked to the host's tempo)" },
+                       { E::crushKnob, { 528, 340, 64, 68 }, cream, "CRUSH: fewer bits, a lower rate: grit" },
+                       { E::mixKnob, { 592, 340, 64, 68 }, cream, "MIX: the effects against the dry slices" } };
         for (const auto& k : fx)
         {
             fxKnobs.push_back (std::make_unique<gk::SmallKnob> (p.getKnobParameter (k.knob), getPalette(), p.getConfig().knobs[(size_t) k.knob].caption, k.colour));
@@ -436,9 +442,12 @@ DaftChunkEditor::DaftChunkEditor (DaftChunkProcessor& p)
         sweepSelector = std::make_unique<gk::ChoiceSelector> (p.getChoiceParameter (E::sweepChoice), "SWEEP", coral, getPalette());
         sweepSelector->setTooltip ("SWEEP: a low-pass that opens over 4, 8 or 16 bars, locked to the host's bars (the French touch gesture). "
                                    "IDEA: the playing loop's own (FILTER TOUCH loops open over 8 bars)");
-        addToCanvas (*sweepSelector, { 562, 350, 96, 38 });
+        addToCanvas (*sweepSelector, { 340, 412, 100, 38 });
+        rateSelector = std::make_unique<gk::ChoiceSelector> (p.getChoiceParameter (E::modRateChoice), "RATE", cream, getPalette());
+        rateSelector->setTooltip ("RATE: one PHASER / FLANGER sweep every 1, 2, 4 or 8 bars, locked to the host's bars");
+        addToCanvas (*rateSelector, { 448, 412, 100, 38 });
         fxMeter = std::make_unique<FxMeter> (p);
-        addToCanvas (*fxMeter, { 340, 424, 320, 78 });
+        addToCanvas (*fxMeter, { 340, 456, 320, 48 });
     }
     stepGrid = std::make_unique<StepGrid> (p);
     addToCanvas (*stepGrid, { 336, 342, 328, 162 });
@@ -631,6 +640,7 @@ void DaftChunkEditor::showPage (int index)
     for (auto& k : fxKnobs)
         k->setVisible (page == 3);
     sweepSelector->setVisible (page == 3);
+    rateSelector->setVisible (page == 3);
     fxMeter->setVisible (page == 3);
     stepGrid->setVisible (page == 2);
     lockButton->setVisible (page == 1);

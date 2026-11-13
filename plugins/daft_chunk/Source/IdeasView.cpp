@@ -25,14 +25,24 @@ namespace
         return t == SliceType::hat || t == SliceType::voice;
     }
 
-    void drawPlay (juce::Graphics& g, juce::Rectangle<float> r, bool playing)
+    void drawPlay (juce::Graphics& g, juce::Rectangle<float> r, bool playing, juce::Colour colour)
     {
+        // a round button, its symbol in proportion (not stretched to the button's width)
+        g.setColour (colour.withAlpha (playing ? 0.22f : 0.12f));
+        g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
+        g.setColour (colour);
+        g.drawRoundedRectangle (r.reduced (0.5f), r.getHeight() * 0.5f, 1.2f);
         juce::Path p;
-        const auto c = r.reduced (r.getHeight() * 0.25f);
+        const float h = r.getHeight() * 0.5f;
+        const auto ctr = r.getCentre();
         if (playing)
-            p.addRectangle (c);
+            p.addRoundedRectangle (juce::Rectangle<float> (h * 0.85f, h * 0.85f).withCentre (ctr), 1.5f);
         else
-            p.addTriangle (c.getX(), c.getY(), c.getRight(), c.getCentreY(), c.getX(), c.getBottom());
+        {
+            const float w = h * 0.9f, x0 = ctr.x - w * 0.4f; // a triangle's eye centre sits left of its box centre
+            p.addTriangle (x0, ctr.y - h * 0.5f, x0 + w, ctr.y, x0, ctr.y + h * 0.5f);
+            p = p.createPathWithRoundedCorners (1.2f);
+        }
         g.fillPath (p);
     }
 
@@ -89,7 +99,7 @@ juce::Rectangle<float> IdeaStrip::handle (int i, int h) const
     return { s.getX() + 4.0f + (float) h * (w + 2.0f), s.getY() + 31.0f, w, 14.0f };
 }
 
-juce::Rectangle<float> IdeaStrip::playButton (int i) const { const auto s = slot (i); return { s.getX() + 4.0f, s.getBottom() - 22.0f, 26.0f, 18.0f }; }
+juce::Rectangle<float> IdeaStrip::playButton (int i) const { const auto s = slot (i); return { s.getX() + 5.0f, s.getBottom() - 23.0f, 32.0f, 20.0f }; }
 juce::Rectangle<float> IdeaStrip::starButton (int i) const { const auto s = slot (i); return { s.getRight() - 50.0f, s.getBottom() - 22.0f, 22.0f, 18.0f }; }
 juce::Rectangle<float> IdeaStrip::crossButton (int i) const { const auto s = slot (i); return { s.getRight() - 26.0f, s.getBottom() - 22.0f, 22.0f, 18.0f }; }
 
@@ -149,8 +159,7 @@ void IdeaStrip::paint (juce::Graphics& g)
             g.setFont (gk::GrooveFonts::font (9.0f));
             g.drawText (names[h], hr, juce::Justification::centred);
         }
-        g.setColour (playing ? coral : cream.withAlpha (0.85f));
-        drawPlay (g, playButton (i), playing);
+        drawPlay (g, playButton (i), playing, playing ? coral : cream.withAlpha (0.85f));
         g.setColour (idea.starred ? coral : cream.withAlpha (0.6f));
         drawStar (g, starButton (i), idea.starred);
         g.setColour (cream.withAlpha (0.6f));

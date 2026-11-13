@@ -206,6 +206,8 @@ TEST_CASE ("DC F5 the effects: no allocation; the WAV export has them", "[dc][fx
     setParam (p->getKnobParameter (E::pumpKnob), 0.6f);
     setParam (p->getKnobParameter (E::crushKnob), 0.4f);
     setParam (p->getKnobParameter (E::mixKnob), 0.7f);
+    setParam (p->getKnobParameter (E::phaserKnob), 0.8f);
+    setParam (p->getKnobParameter (E::flangerKnob), 0.8f);
     setParam (p->getChoiceParameter (E::sweepChoice), (float) E::sweep8);
     REQUIRE (p->rollDice() >= 0);
     juce::AudioBuffer<float> b (2, 512);
@@ -252,4 +254,53 @@ TEST_CASE ("DC F6 a session keeps its preset and settings (no loop made on load)
     CHECK (q.getPresetParameter().getIndex() == 8);
     CHECK (q.getKnobParameter (E::crushKnob).convertFrom0to1 (q.getKnobParameter (E::crushKnob).getValue()) == Catch::Approx (0.2f).margin (0.01));
     CHECK (q.getPlayingIdea() == -1);
+}
+
+TEST_CASE ("DC F7 PHASER and FLANGER: they colour the sound, move with the bars, stay tame", "[dc][fx]")
+{
+    for (int fx : { (int) E::phaserKnob, (int) E::flangerKnob })
+    {
+        Clock c;
+        auto p = sawKit (c);
+        p->setBpm (30.0); // slices of 2 s: one held note over the whole cycle
+        setParam (p->getChoiceParameter (E::modRateChoice), (float) E::mod1); // a cycle every bar (2 s at 120)
+        const auto dry = run (*p, c, 1.8);
+        run (*p, c, 2.5, false);
+        setParam (p->getKnobParameter (fx), 1.0f);
+        run (*p, c, 0.2, false); // (the knob glides there)
+        c.ppq = 0.0;
+        const auto wet = run (*p, c, 1.8);
+        INFO ((fx == E::phaserKnob ? "PHASER" : "FLANGER"));
+        double d = 0.0;
+        for (int i = 2000; i < wet.getNumSamples(); ++i)
+            d += std::abs (wet.getSample (0, i) - dry.getSample (0, i));
+        CHECK (d > 0.02 * wet.getNumSamples());                       // it is heard
+        CHECK (wet.getMagnitude (0, 0, wet.getNumSamples()) < 1.2f);  // no runaway feedback
+        // the colour moves: the saw's harmonics (110 Hz apart) weigh differently at the cycle's start and middle
+        auto harmonics = [&] (int from)
+        {
+            std::vector<double> h;
+            for (int k = 1; k <= 40; ++k)
+            {
+                double re = 0.0, im = 0.0;
+                for (int i = 0; i < 8192; ++i)
+                {
+                    const double ph = juce::MathConstants<double>::twoPi * 110.0 * k * i / sr;
+                    re += wet.getSample (0, from + i) * std::cos (ph);
+                    im += wet.getSample (0, from + i) * std::sin (ph);
+                }
+                h.push_back (std::sqrt (re * re + im * im));
+            }
+            return h;
+        };
+        const auto a = harmonics (3000), b = harmonics ((int) (0.95 * sr));
+        double num = 0.0, den = 0.0;
+        for (size_t k = 0; k < a.size(); ++k)
+        {
+            num += std::abs (a[k] - b[k]);
+            den += a[k] + b[k];
+        }
+        CHECK (num / den > 0.1);
+        CHECK (p->getDsp().getTelemetry().mod.load() >= 0.0f);
+    }
 }

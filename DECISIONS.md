@@ -1033,3 +1033,14 @@ Une ligne par décision : **contexte** — choix — raison.
 - **Presets** : One More Chop et Filter Sunrise passent à 0,35, Disco Loop à 0,3, MPC Mode à 0,25 ; CHOP vaut 0,35 par défaut.
 - **Bug corrigé au passage** : la répétition « le temps 3 reprend le temps 1 » pouvait recopier une tranche verrouillée ailleurs.
 - **Test G13** : après chacun des 10 presets, 12 clics sur LOOP CREATOR ne donnent jamais deux boucles semblables à plus de 80 %. 53 tests passent.
+
+### Daft Chunk : PHASER, FLANGER, bouton lecture (test11)
+- **PHASER** : 6 passe-tout du premier ordre par canal avec du retour (jusqu'à 0,65). Les creux balayent de 150 Hz à 4,5 kHz sur une courbe en cosinus. Le canal droit est légèrement décalé, pour la largeur. Plus le bouton monte, plus le mélange est profond.
+- **FLANGER** : un retard de 0,3 à 6,5 ms avec du retour positif (0,2 à 0,75), ce qui donne le « jet ». La ligne a une taille en puissance de 2 et est allouée dans `prepare`.
+- **RATE** : un cycle toutes les 1, 2, 4 ou 8 mesures, à 2 mesures par défaut. Il est calé sur la position musicale de l'hôte, qui avance aussi transport arrêté (HostSync).
+- **Ordre de la chaîne** : SWEEP, puis PHASER, FLANGER, CRUSH et PUMP ; MIX mélange le tout avec les tranches sèches.
+- **Presets** : chacun fixe désormais PHASER, FLANGER et RATE. Chunky Funk a du phaser à 0,35, Robot Glitch du flanger à 0,5 sur 1 mesure, les autres sont à 0.
+- **Le bouton lecture** : un bouton rond de 32 × 20, avec un triangle et un carré stop qui gardent leurs proportions. Avant, le symbole s'étirait sur toute la largeur du bouton.
+- **Latence MIDI signalée par Alan** : rien trouvé dans le plugin. Une note MIDI démarre à l'échantillon près (test P3). L'étirement Signalsmith `exact()` reste aligné à ±1,5 ms. Le plugin annonce 0 de latence. À préciser avec Alan : clavier, clip MIDI ou MIDI CAPTURE vers une autre piste. Piste possible : PUMP (0,45 dans One More Chop) atténue le son juste après chaque temps, ce qui peut donner l'impression d'une attaque en retard.
+- **Test F7** : PHASER et FLANGER sont audibles, font varier les harmoniques au fil du cycle et restent sous 1,2 en crête. Le test F5 (aucune allocation) les inclut. 54 tests passent.
+

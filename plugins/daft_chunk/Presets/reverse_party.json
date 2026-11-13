@@ -7,6 +7,9 @@
     "pump": 0.15,
     "crush": 0.0,
     "mix": 1.0,
+    "phaser": 0.0,
+    "flanger": 0.0,
+    "modrate": "2 bars",
     "swing": 0.0,
     "length": "Auto",
     "mode": "Choke"

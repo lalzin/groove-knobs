@@ -7,6 +7,12 @@ void DaftChunkEngine::prepare (double sr, int maxBlockSize, int)
     sampleRate = sr;
     dryCopy.setSize (2, std::max (1, maxBlockSize));
     cutFade = std::max (1, (int) std::lround (0.003 * sr));
+    int size = 1;
+    while (size < (int) (0.03 * sr) + 4)
+        size *= 2;
+    for (auto& l : flangerLine)
+        l.assign ((size_t) size, 0.0f);
+    flangerMask = size - 1;
     reset();
 }
 
@@ -20,6 +26,17 @@ void DaftChunkEngine::reset()
         f.reset();
     crushHold[0] = crushHold[1] = 0.0f;
     crushCount = 0;
+    for (auto& l : flangerLine)
+        std::fill (l.begin(), l.end(), 0.0f);
+    flangerWrite = 0;
+    for (int c = 0; c < 2; ++c)
+    {
+        for (auto& z : phaserZ[c])
+            z = 0.0f;
+        phaserLast[c] = 0.0f;
+    }
+    phaserSmoothed = knobs[phaserKnob];
+    flangerSmoothed = knobs[flangerKnob];
     pumpSmoothed = knobs[pumpKnob];
     crushSmoothed = knobs[crushKnob];
     mixSmoothed = knobs[mixKnob];
@@ -51,6 +68,8 @@ void DaftChunkEngine::setChoices (const int* indices, int n)
         captureOn = indices[captureChoice] == 1;
     if (n > sweepChoice)
         sweepMode = indices[sweepChoice];
+    if (n > modRateChoice)
+        modRate = indices[modRateChoice];
 }
 
 void DaftChunkEngine::noteOn (int note, float velocity, int previewSamples)
@@ -214,6 +233,8 @@ void DaftChunkEngine::processEffects (juce::AudioBuffer<float>& buffer, int numS
     pumpSmoothed += a * (juce::jlimit (0.0, 1.0, (double) knobs[pumpKnob]) - pumpSmoothed);
     crushSmoothed += a * (juce::jlimit (0.0, 1.0, (double) knobs[crushKnob]) - crushSmoothed);
     mixSmoothed += a * (juce::jlimit (0.0, 1.0, (double) knobs[mixKnob]) - mixSmoothed);
+    phaserSmoothed += a * (juce::jlimit (0.0, 1.0, (double) knobs[phaserKnob]) - phaserSmoothed);
+    flangerSmoothed += a * (juce::jlimit (0.0, 1.0, (double) knobs[flangerKnob]) - flangerSmoothed);
 
     // SWEEP: how many bars (IDEA: the playing loop's own, its style's)
     int sweepBars = 0;
@@ -227,8 +248,17 @@ void DaftChunkEngine::processEffects (juce::AudioBuffer<float>& buffer, int numS
     const bool sweeping = sweepBars > 0 && timing.beatsPerSample > 0.0;
     const bool pumping = pumpSmoothed > 0.002 && timing.beatsPerSample > 0.0;
     const bool crushing = crushSmoothed > 0.005;
+    const bool phasing = phaserSmoothed > 0.003, flanging = flangerSmoothed > 0.003 && flangerMask > 0;
+    const double modCycle = modBars (modRate) * timing.beatsPerBar; // beats a PHASER / FLANGER cycle
+    auto modAt = [&] (int i, double offset)
+    {
+        // 0..1..0 over the cycle (a raised cosine), locked to the host's bars
+        const double ph = std::fmod (timing.beatsAt (i) / modCycle + offset, 1.0);
+        return 0.5 - 0.5 * std::cos (juce::MathConstants<double>::twoPi * (ph < 0.0 ? ph + 1.0 : ph));
+    };
+    telemetry.mod.store (phasing || flanging ? (float) modAt (numSamples, 0.0) : -1.0f, std::memory_order_relaxed);
     telemetry.sweep.store (sweeping ? (float) std::fmod (timing.beatsAt (numSamples) / (sweepBars * timing.beatsPerBar), 1.0) : -1.0f, std::memory_order_relaxed);
-    if (! sweeping && ! pumping && ! crushing)
+    if (! sweeping && ! pumping && ! crushing && ! phasing && ! flanging)
     {
         telemetry.pump.store (1.0f, std::memory_order_relaxed);
         return;
@@ -266,6 +296,41 @@ void DaftChunkEngine::processEffects (juce::AudioBuffer<float>& buffer, int numS
             float y = x[c][i];
             if (sweeping)
                 y = (float) sweepFilter[c].processLowpass (y, sc);
+            if (phasing)
+            {
+                // the notches sweep 150 Hz .. 4.5 kHz; deeper and with more feedback as the knob goes up
+                if ((i & 15) == 0)
+                {
+                    const double hz = 150.0 * std::pow (30.0, modAt (i, c == 0 ? 0.0 : 0.12));
+                    const double t = std::tan (juce::MathConstants<double>::pi * std::min (hz, 0.45 * sampleRate) / sampleRate);
+                    phaserCoef[c] = (float) ((t - 1.0) / (t + 1.0));
+                }
+                const float m = (float) std::min (1.0, phaserSmoothed * 1.4), fb = (float) (0.65 * phaserSmoothed);
+                float v = y + fb * phaserLast[c];
+                for (auto& z : phaserZ[c])
+                {
+                    const float o = phaserCoef[c] * v + z;
+                    z = v - phaserCoef[c] * o;
+                    v = o;
+                }
+                phaserLast[c] = juce::jlimit (-4.0f, 4.0f, v);
+                y = y * (1.0f - 0.5f * m) + 0.5f * m * v;
+            }
+            if (flanging)
+            {
+                // 0.3 .. 6.5 ms, the right channel a little behind (width); positive feedback: the jet
+                const double ms = 0.3 + 6.2 * modAt (i, c == 0 ? 0.0 : 0.06);
+                const double d = ms * 0.001 * sampleRate;
+                const double rp = (double) flangerWrite - d;
+                const int i0 = (int) std::floor (rp);
+                const float f = (float) (rp - i0);
+                const auto& line = flangerLine[c];
+                const float a0 = line[(size_t) (i0 & flangerMask)], a1 = line[(size_t) ((i0 + 1) & flangerMask)];
+                const float del = a0 + f * (a1 - a0);
+                const float m = (float) std::min (1.0, flangerSmoothed * 1.5) * 0.8f, fb = (float) (0.2 + 0.55 * flangerSmoothed);
+                flangerLine[c][(size_t) (flangerWrite & flangerMask)] = juce::jlimit (-4.0f, 4.0f, y + fb * del);
+                y = (y + m * del) / (1.0f + 0.35f * m);
+            }
             if (crushing)
             {
                 if (takeCrush)
@@ -275,6 +340,8 @@ void DaftChunkEngine::processEffects (juce::AudioBuffer<float>& buffer, int numS
             y *= pumpGain;
             x[c][i] = mixing ? (float) (mixSmoothed * y + (1.0 - mixSmoothed) * dryCopy.getSample (c, i)) : y;
         }
+        if (flanging)
+            flangerWrite = (flangerWrite + 1) & flangerMask;
     }
     telemetry.pump.store (pumpGain, std::memory_order_relaxed);
 }

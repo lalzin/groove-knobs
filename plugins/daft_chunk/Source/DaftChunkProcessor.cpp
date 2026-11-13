@@ -40,7 +40,9 @@ namespace
                       // the output effects (step 5)
                       { "pump", "Pump", "PUMP", 0.0f },
                       { "crush", "Crush", "CRUSH", 0.0f },
-                      { "mix", "Mix", "MIX", 1.0f } };
+                      { "mix", "Mix", "MIX", 1.0f },
+                      { "phaser", "Phaser", "PHASER", 0.0f },
+                      { "flanger", "Flanger", "FLANGER", 0.0f } };
         const auto time = [] (float v) { return v < 1.0f ? juce::String (v * 1000.0f, v < 0.01f ? 1 : 0) + " ms" : juce::String (v, 2) + " s"; };
         cfg.knobs[E::attackKnob].textFromValue = time;
         cfg.knobs[E::decayKnob].textFromValue = time;
@@ -62,7 +64,8 @@ namespace
                         { "style", "Style", "STYLE", { "Filter Touch", "Disco Loop", "Vocal Chop", "Stutter House", "Reverse Party", "Pitch Party" }, 0, true },
                         { "capture", "MIDI Capture", "MIDI CAPTURE", { "Off", "On" }, 0, true },
                         { "length", "Loop length", "LENGTH", { "Auto", "1 bar", "2 bars", "4 bars" }, 0, true },
-                        { "sweep", "Sweep", "SWEEP", { "Idea", "Off", "4 bars", "8 bars", "16 bars" }, 0, true } };
+                        { "sweep", "Sweep", "SWEEP", { "Idea", "Off", "4 bars", "8 bars", "16 bars" }, 0, true },
+                        { "modrate", "Mod rate", "RATE", { "1 bar", "2 bars", "4 bars", "8 bars" }, E::mod2, true } };
         cfg.tailSeconds = 0.1;
         cfg.featuresFromOutput = true; // (an instrument: Chunky hears what it plays)
         return cfg;

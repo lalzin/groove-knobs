@@ -72,6 +72,7 @@ private:
     std::unique_ptr<Pill> undoButton, redoButton, tabSequence, lockButton, capture, length, tabFx;
     std::vector<std::unique_ptr<gk::SmallKnob>> fxKnobs;
     std::unique_ptr<gk::ChoiceSelector> sweepSelector;
+    std::unique_ptr<gk::ChoiceSelector> rateSelector;
     std::unique_ptr<FxMeter> fxMeter;
     std::unique_ptr<InfoLabel> ideaInfo;
     int shownIdeas = -1, shownGenKit = -1;
