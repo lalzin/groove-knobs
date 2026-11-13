@@ -28,7 +28,7 @@ jobs:
           echo "$ids: $tag"
 
   macos:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
       - name: Build, test, package
