@@ -26,7 +26,7 @@
       },
       "windows": {
         "file": "GrooveKnobs-0.1.10-Windows-Setup.exe",
-        "bytes": null,
+        "bytes": 99998958,
         "requirements": "Windows 10/11 64-bit",
         "formats": [
           "VST3",
@@ -115,7 +115,7 @@
         },
         "windows": {
           "file": "FrenchFilter-0.1.10-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 14738065,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -192,7 +192,7 @@
         },
         "windows": {
           "file": "BoogieTrio-0.1.10-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 6137698,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -259,7 +259,7 @@
         },
         "windows": {
           "file": "Backwash-0.1.10-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 6637893,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -340,7 +340,7 @@
         },
         "windows": {
           "file": "PewPew-0.1.10-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 13350352,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -409,7 +409,7 @@
         },
         "windows": {
           "file": "SingItBack-0.1.10-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 11782529,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -480,7 +480,7 @@
         },
         "windows": {
           "file": "KickLock-0.1.10-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 24232723,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -657,7 +657,7 @@
         },
         "windows": {
           "file": "Slapper-0.1.10-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 9305280,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -762,7 +762,7 @@
         },
         "windows": {
           "file": "Crackle-0.1.10-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 6708744,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -864,7 +864,7 @@
         },
         "windows": {
           "file": "HeadSpin-0.1.10-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 6931350,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -981,7 +981,7 @@
         },
         "windows": {
           "file": "Ballroom-0.1.10-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 14108777,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
@@ -1086,7 +1086,7 @@
         },
         "windows": {
           "file": "DaftChunk-0.1.10-Windows-Setup.exe",
-          "bytes": null,
+          "bytes": 12705577,
           "requirements": "Windows 10/11 64-bit",
           "formats": [
             "VST3",
