@@ -1044,3 +1044,17 @@ Une ligne par décision : **contexte** — choix — raison.
 - **Latence MIDI signalée par Alan** : rien trouvé dans le plugin. Une note MIDI démarre à l'échantillon près (test P3). L'étirement Signalsmith `exact()` reste aligné à ±1,5 ms. Le plugin annonce 0 de latence. À préciser avec Alan : clavier, clip MIDI ou MIDI CAPTURE vers une autre piste. Piste possible : PUMP (0,45 dans One More Chop) atténue le son juste après chaque temps, ce qui peut donner l'impression d'une attaque en retard.
 - **Test F7** : PHASER et FLANGER sont audibles, font varier les harmoniques au fil du cycle et restent sous 1,2 en crête. Le test F5 (aucune allocation) les inclut. 54 tests passent.
 
+## Groove Knobs 0.1.10 — Daft Chunk dans la suite (2026-11-13)
+- Alan : « c'est nickel, ça marche bien ; fais un état des lieux, sinon fais le push, ajoute à la suite, fais les assets du site et lance le tag 0.1.10 ».
+- **Intégration de Daft Chunk** : `DC_VERSION` 0.1.10 et toute la suite en 0.1.10. Daft Chunk est ajouté à :
+  - la CI : version, macOS, release ;
+  - Windows : `make_installer_win.ps1`, `GrooveKnobs.iss` (AppId `70F65623-8194-45C1-AEA1-EE00E5157F51`), `GrooveKnobsSuite.iss` (composant `dc`), `DaftChunk.ico` (via `make_ico.py`, depuis l'icône de Chunky) ;
+  - macOS : l'installateur de la suite (rangé parmi les instruments) et `welcome.html` ;
+  - les données : `plugins.json` (tailles à `null` jusqu'aux installateurs), `versions.json`, `PROMPT-site-update-0.1.10.md` ;
+  - le contrôle de mise à jour, `updateSlug` « daft-chunk ». « 0.1.10 » se compare bien comme un nombre : `UpdateCheck::compareVersions` compare champ par champ.
+- **Visuels** : `dc_screenshots --web`. Le hero est la page SEQUENCE avec 5 boucles, l'une étoilée et jouée ; la galerie montre SLICE, FX et SOUND ; Chunky est en frame 0. Daft Chunk vient en dernier dans `suiteVisuals()`. Sa fenêtre est large (860 × 660), donc il passe au premier plan à côté de Head Spin.
+- **État des lieux avant le tag** :
+  - **Notarisation** : Apple refuse depuis le 13/11 avec une erreur 403 « A required agreement is missing or has expired ». Un accord est à accepter sur le compte développeur ; les certificats ne sont pas en cause. Sans notarisation, pas de pkg macOS publiable.
+  - **Le nom** : « Daft Chunk » (et le preset « One More Chop », Chunky à tête d'écran) évoque directement Daft Punk. C'est un risque de marque à trancher par Alan avant la publication publique.
+  - Le build Windows de Daft Chunk (Signalsmith, MSVC) n'avait jamais tourné : le push de main le vérifie en CI avant le tag.
+

@@ -267,7 +267,7 @@ inline const std::vector<std::pair<juce::String, juce::String>>& suiteVisuals()
 {
     static const std::vector<std::pair<juce::String, juce::String>> v {
         { "french-filter", "" }, { "boogie-trio", "" }, { "backwash", "" }, { "pew-pew", "" }, { "sing-it-back", "" }, { "head-spin", "" },
-        { "kick-lock", "ui-send@3x.png" }, { "slapper", "" }, { "crackle", "" }, { "ballroom", "" }
+        { "kick-lock", "ui-send@3x.png" }, { "slapper", "" }, { "crackle", "" }, { "ballroom", "" }, { "daft-chunk", "" }
     };
     return v;
 }

@@ -1,4 +1,4 @@
-# Groove Knobs — French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back, Kick Lock, Slapper, Crackle, Head Spin, Ballroom
+# Groove Knobs — French Filter, Boogie Trio, Backwash, Pew Pew, Sing It Back, Kick Lock, Slapper, Crackle, Head Spin, Ballroom, Daft Chunk
 
 La suite **Groove Knobs** (LALZIN) : des plugins à un seul knob pour la funky house et la disco. **French Filter** (le filtre French Touch), **Boogie Trio** (chorus triple de string machine), **Backwash** (reverb inversée calée sur le tempo), **Pew Pew** (le pew disco, instrument) et **Sing It Back** (une foule qui chante avec ta voix).
 VST3 / AU / Standalone, macOS (universel) et Windows.
@@ -296,3 +296,14 @@ Effet : **la réverbe qui fait de la place à ta musique** ; **SPACE** en knob p
 - **CLEAR** : la queue recule bande par bande (5 bandes) là où le son sec joue, et revient en 250 ms dans les silences (`Clear.h`).
 - **ROOM** (en bas à droite) : MAIN / EARLY / LATE et la courbe de décroissance ; **CUSTOM** s'allume quand la salle a été modifiée — un clic recharge celle du preset (SPACE gardé).
 - 22 presets. Tests : `ctest -R bl_`. Prototype, rendus et calage des niveaux : `prototypes/ballroom/render` (`quick`). Poses de Mira : `scripts/make_mira_frames.sh`.
+
+# Daft Chunk
+
+Instrument : **le découpeur de samples qui crée tes boucles**. Mascotte : **Chunky**, le robot à tête d'écran (ses blocs s'allument à chaque tranche jouée).
+
+- **Analyse** (`Analysis.cpp`) : flux spectral (total, grave, aigu), tempo par autocorrélation + peigne (une boucle d'un nombre entier de mesures verrouille le tempo), premier temps, tonalité (chroma + profils de Krumhansl), attaques affinées, YIN pour la hauteur ; types KICK, SNARE, HAT, VOICE, TONAL, NOISE.
+- **Découpe** : TRANSIENTS, GRID (1/4, 1/8, 1/16) ou MIXED, 64 tranches au plus ; coupes déplaçables à la souris, zoom de la forme d'onde. **SYNC** : Free, Tempo (étirement Signalsmith Stretch, même hauteur), Vinyl.
+- **Son** : 16 voix ADSR, filtre bipolaire (passe-bas à gauche, passe-haut à droite) global et par tranche, Choke / Poly, One shot / Gate ; tranches jouées en MIDI à partir de Do1.
+- **LOOP CREATOR** (`Generator.cpp`) : 6 styles, CHOP de ORDER à WILD, LENGTH, jonglage de temps, formes (AB, AAAB…), rythmes euclidiens, règles (temps 1, gamme, relance), verrous ; ne refait pas une boucle déjà là. 8 emplacements, ENCORE, séquenceur, annuler / rétablir. Glisser en WAV / MIDI / KIT (`~/Music/Daft Chunk`), MIDI CAPTURE.
+- **Effets** : SWEEP (4 / 8 / 16 mesures ou celui de la boucle), PHASER, FLANGER (RATE 1–8 mesures), PUMP, CRUSH, MIX.
+- 10 presets. Tests : `ctest -R dc_` (ou `dc_tests`). Captures : `dc_screenshots [dossier]`, visuels du site : `dc_screenshots --web web-assets`. Poses de Chunky : `scripts/make_chunky_frames.sh`.

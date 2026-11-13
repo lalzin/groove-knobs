@@ -11,7 +11,7 @@ namespace
         gk::OneKnobConfig cfg;
         cfg.productName = DC_PRODUCT_NAME;
         cfg.version = DC_VERSION_STRING;
-        cfg.updateSlug = ""; // not on the website yet: no update check
+        cfg.updateSlug = "daft-chunk"; // key in lalzin.com/plugins/versions.json
         cfg.suiteName = GK_SUITE_NAME;
         cfg.companyName = GK_COMPANY_NAME;
         cfg.presets = std::move (presets);

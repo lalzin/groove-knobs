@@ -3,7 +3,7 @@
 Générés depuis les vrais plugins (fenêtres rendues hors écran, mascottes des planches) :
 
 ```bash
-for t in ff bt bw pp sib; do build/tests/**/${t}_screenshots --web web-assets; done   # bl_screenshots --web en dernier : visuels de la suite
+for t in ff bt bw pp sib; do build/tests/**/${t}_screenshots --web web-assets; done   # dc_screenshots --web en dernier : visuels de la suite
 cd web-assets && find . -name '*.png' ! -name 'poses-sheet.png' -exec sh -c 'cwebp -quiet -q 86 -alpha_q 100 "$1" -o "${1%.png}.webp"' _ {} \;
 ```
 

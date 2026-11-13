@@ -1,13 +1,23 @@
 // DAFT CHUNK editor screenshots: empty, a drum loop sliced (TRANSITOIRES,
 // GRILLE 1/16, MIXTE), a slice playing; at 100 % and 200 %.
 //   dc_screenshots [out-dir] [sample-file]
+//   dc_screenshots --web [web-assets]   (the website's visuals, then the suite's: gkweb)
 #include "DaftChunkEditor.h"
 #include "DaftChunkProcessor.h"
 #include "../daft_chunk/DcSignals.h"
+#include "WebAssets.h"
 #include <iostream>
 
 namespace
 {
+juce::File repoRoot()
+{
+    for (auto d = juce::File::getCurrentWorkingDirectory(); d.exists() && ! d.isRoot(); d = d.getParentDirectory())
+        if (d.getChildFile ("plugins").isDirectory() && d.getChildFile ("modules/groove_core").isDirectory())
+            return d;
+    return juce::File::getCurrentWorkingDirectory();
+}
+
 void writePng (const juce::Image& img, const juce::File& f)
 {
     f.deleteFile();
@@ -63,11 +73,68 @@ void playSlice (daftchunk::DaftChunkProcessor& p, int slice)
     for (int k = 0; k < 3; ++k)
         p.processBlock (b, midi);
 }
+std::unique_ptr<daftchunk::DaftChunkProcessor> withSample (const juce::String& file);
+
+/** The website: the loops made and one playing (SEQUENCE), the slices, the effects. */
+int runWeb (const juce::File& out)
+{
+    auto p = withSample ({});
+    p->setMode (daftchunk::SliceMode::grid);
+    p->setDivision (16);
+    p->getAmountParameter().setValueNotifyingHost (0.5f);
+    for (int k = 0; k < 5; ++k)
+        p->rollDice();
+    p->selectIdea (2);
+    p->toggleStar (2);
+    p->togglePlay (2);
+    playSlice (*p, 4);
+    std::vector<gkweb::Shot> shots { { "hero", shoot (*p, 3.0f, 2) } };
+    {
+        daftchunk::SliceParams sp;
+        sp.pitch = 5.0f;
+        sp.filter = -0.3f;
+        sp.reverse = true;
+        p->selectSlice (6);
+        p->setSliceParams (6, sp);
+        shots.push_back ({ "slice", shoot (*p, 2.0f, 1) });
+    }
+    using E = daftchunk::DaftChunkEngine;
+    auto set = [&] (juce::RangedAudioParameter& prm, float v) { prm.setValueNotifyingHost (prm.convertTo0to1 (v)); };
+    set (p->getKnobParameter (E::phaserKnob), 0.45f);
+    set (p->getKnobParameter (E::flangerKnob), 0.3f);
+    set (p->getKnobParameter (E::pumpKnob), 0.5f);
+    playSlice (*p, 2);
+    shots.push_back ({ "fx", shoot (*p, 2.0f, 3) });
+    shots.push_back ({ "sound", shoot (*p, 2.0f, 0) });
+
+    gkweb::PluginInfo info;
+    info.slug = "daft-chunk";
+    info.name = "Daft Chunk";
+    info.taglineFr = juce::String::fromUTF8 ("Le d\xc3\xa9" "coupeur de samples qui cr\xc3\xa9" "e tes boucles");
+    info.taglineEn = "The sample chopper that makes your loops";
+    info.palette = daftchunk::DaftChunkEditor::makePalette();
+    info.assetsDir = repoRoot().getChildFile ("plugins/daft_chunk/Assets");
+    info.framePrefix = "chunky_";
+    info.heroFrame = std::atoi (std::getenv ("GK_HERO") != nullptr ? std::getenv ("GK_HERO") : "0");
+    for (int i = 0; i < 32; ++i)
+        info.poses.push_back (i);
+    gkweb::writePlugin (info, shots, out);
+    // the suite (every plug-in's visuals already on disk): Daft Chunk is the last one in
+    gkweb::writeSuite (out, gkweb::suiteVisuals(), info.palette);
+    return 0;
+}
 } // namespace
 
 int main (int argc, char* argv[])
 {
+#if JUCE_WINDOWS
+    _putenv_s ("GK_NO_UPDATE_CHECK", "1");
+#else
+    setenv ("GK_NO_UPDATE_CHECK", "1", 1);
+#endif
     juce::ScopedJuceInitialiser_GUI init;
+    if (argc > 1 && juce::String (argv[1]) == "--web")
+        return runWeb (juce::File::getCurrentWorkingDirectory().getChildFile (argc > 2 ? argv[2] : "web-assets"));
     const juce::File out (argc > 1 ? juce::File::getCurrentWorkingDirectory().getChildFile (argv[1]) : juce::File::getCurrentWorkingDirectory().getChildFile ("dc_screenshots"));
     const juce::String sampleFile = argc > 2 ? juce::String (argv[2]) : juce::String();
     out.createDirectory();
