@@ -1108,3 +1108,10 @@ Une ligne par décision : **contexte** — choix — raison.
 - **PRECISION : 35 / 50 (par défaut) / 65 / 340 ms** (35,0 / 50,0 / 65,3 / 340,3 ms à 44,1, 48 et 96 kHz). À 35 la rotation arrive ~25 ms après le kick, à 50 ~10 ms après, à 65 avant le kick, à 340 tout est vu.
 - Aucun clic (KL 41), niveau tenu (KL 18), automation (KL 12) : tous les tests Kick Lock passent ; KL 44 vérifie la latence sous 55 ms. CPU : pire bloc PRECISE 0,14 ms en blocs de 128.
 - Plus bas que 35 ms : impossible sans changer la paire (le Hilbert de ±30 ms est le besoin de la sortie elle-même). LIVE reste à 32 ms.
+
+## Groove Knobs 0.1.11 — Kick Lock à ~50 ms (2026-11-19)
+- Alan : « Passe au nouveau tag et lance la notarisation. »
+- **Toute la suite en 0.1.11** plutôt qu'un tag `kick-lock-v…` seul : le cadre commun a changé (les choix donnés au moteur avant les interrupteurs, `OneKnobProcessor.cpp`), donc tous les binaires changent ; l'installateur de la suite exige des versions alignées.
+- Versions : `GrooveIds.cmake`, les deux `.iss`, `plugins.json` (versions, fichiers, URL de la release, tailles à `null` jusqu'aux installateurs ; Kick Lock : `latency_ms` 50, `features`), `versions.json`, `.github/release-notes.md` (section 0.1.11), CHANGELOG, `PROMPT-site-update-0.1.11.md`.
+- Visuels : `kl_screenshots --web` (le sélecteur PRECISION) puis `dc_screenshots --web` (bannière et OG de la suite, qui montrent la fenêtre de Kick Lock Send).
+- Les pkg macOS sont construits depuis un worktree propre au commit taggé (les modifications non commitées d'une autre session restent hors de la release), puis notarisés.

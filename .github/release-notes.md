@@ -13,12 +13,12 @@
 | **Crackle** | le grain lo-fi en un knob — *lo-fi grain, in one knob* |
 | **Head Spin** | le son tourne autour de ta tête, sur une forme — *the sound goes round your head, on a shape* |
 | **Ballroom** | la réverbe qui fait de la place à ta musique — *the reverb that makes room for your music* |
-| **Daft Chunk** *(nouveau, instrument)* | le découpeur de samples qui crée tes boucles — *the sample chopper that makes your loops* |
+| **Daft Chunk** *(instrument)* | le découpeur de samples qui crée tes boucles — *the sample chopper that makes your loops* |
 
-### Nouveau dans la 0.1.10 / *What's new in 0.1.10*
-- **Daft Chunk** (nouveau, instrument) : glisse un sample (WAV, AIFF, FLAC, MP3) ; il trouve le tempo, le premier temps, la tonalité et les attaques, et le découpe en tranches jouables en MIDI comme des pads. **LOOP CREATOR** invente des boucles dans six styles (Filter Touch, Disco Loop, Vocal Chop, Stutter House, Reverse Party, Pitch Party), de ORDER à WILD, calées sur le tempo d'Ableton ; 8 boucles, un séquenceur pas à pas, ENCORE, et le glisser vers Ableton en WAV, MIDI ou KIT. Effets SWEEP, PHASER, FLANGER, PUMP, CRUSH. 10 presets. Mascotte : Chunky, le robot.
-- *Daft Chunk (new, instrument): drop a sample (WAV, AIFF, FLAC, MP3); it finds the tempo, the downbeat, the key and the hits, and chops it into slices you play in MIDI like pads. **LOOP CREATOR** invents loops in six styles, from ORDER to WILD, locked to Ableton's tempo; 8 loops, a step sequencer, ENCORE, and drag into Ableton as WAV, MIDI or KIT. SWEEP, PHASER, FLANGER, PUMP, CRUSH effects. 10 presets. Mascot: Chunky the robot.*
-- Les autres plugins passent en 0.1.10 sans changement de son. *The other plug-ins move to 0.1.10, their sound unchanged.*
+### Nouveau dans la 0.1.11 / *What's new in 0.1.11*
+- **Kick Lock** : PRECISE passe de ~360 ms à **~50 ms de latence**, pour le même verrouillage du sub sur le kick. Kick Lock voit les 25 premières ms après chaque kick et prédit la suite de la basse. Nouveau réglage **PRECISION** (sous PRECISE) : 35, 50 (par défaut), 65 ou 340 ms. LIVE reste à 32 ms.
+- *Kick Lock: PRECISE goes from ~360 ms to **~50 ms of latency**, for the same lock of the sub on the kick. Kick Lock sees the first 25 ms after each kick and predicts the rest of the bass. New **PRECISION** setting (under PRECISE): 35, 50 (default), 65 or 340 ms. LIVE stays at 32 ms.*
+- Les autres plugins passent en 0.1.11 sans changement de son. *The other plug-ins move to 0.1.11, their sound unchanged.*
 
 ### Windows (10 / 11, 64 bits)
 **Toute la suite d'un coup** : `GrooveKnobs-…-Windows-Setup.exe` (les onze plugins, chacun décochable). *The whole suite at once: `GrooveKnobs-…-Windows-Setup.exe`.*
