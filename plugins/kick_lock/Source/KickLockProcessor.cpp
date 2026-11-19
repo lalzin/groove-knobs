@@ -31,7 +31,7 @@ namespace
         // PHASE: the phase analysis (off: the ducking alone — a pad, a synth;
         // no CPU spent on it); LOCK: the sub turned in phase with the kick
         // PRECISE (the default, Alan: "le résultat est vraiment satisfaisant"): no note
-        // detection, the collision itself seen ahead (~360 ms of latency); LIVE: 32 ms, to play
+        // detection, the collision itself seen ahead (~160 ms of latency); LIVE: 32 ms, to play
         cfg.switches = { { "lock", "Lock", "LOCK", false }, { "phase", "Phase analysis", "PHASE", true }, { "precise", "Precise", "PRECISE", true } };
         cfg.knobs = { { "targetPhase", "Target phase", "TARGET", 0.0f, 0.0f, 360.0f, 1.0f, juce::String::fromUTF8 ("\xc2\xb0") },
                       { "offsetMs", "Offset", "OFFSET", 0.0f, -20.0f, 20.0f, 1.0f, "ms" },

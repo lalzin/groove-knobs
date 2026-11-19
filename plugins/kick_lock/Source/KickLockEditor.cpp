@@ -966,7 +966,7 @@ public:
         setClickingTogglesState (true);
         setTitle ("Precise");
         setTooltip ("LIVE: the note's pitch is followed, 32 ms of latency (play live). PRECISE: no note detection - the bass's low band "
-                    "and the kick are compared over the whole collision, seen ahead: ~360 ms of latency (the host compensates it: for mixing)");
+                    "and the kick are compared over the whole collision, its first 100 ms seen ahead: ~160 ms of latency (the host compensates it: for mixing)");
         setMouseCursor (juce::MouseCursor::PointingHandCursor);
     }
 

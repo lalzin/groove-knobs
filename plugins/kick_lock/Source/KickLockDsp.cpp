@@ -1188,11 +1188,56 @@ void KickLockDsp::onKickPrecise (std::int64_t when, int source)
     const auto& table = shape == custom ? customTables[(size_t) customPublished.load (std::memory_order_acquire)] : presetTables[(size_t) shape];
     const int D = decimation;
     const auto kFirst = (std::int64_t) std::ceil (((double) when - dFirst) / D);
-    const auto kLast = juce::jmin ((std::int64_t) std::floor (((double) when + window - dFirst) / D), dWritten - 1 - hilM);
+    const auto kEnd = (std::int64_t) std::floor (((double) when + window - dFirst) / D);
+    const auto kSeen = juce::jmin (kEnd, dWritten - 1 - hilM); // the last sample of the low band known
     const bool current = source == 1;
     const auto heardUpTo = clock - latency;
+    auto lowAt = [&] (std::int64_t k, double& L, double& H)
+    {
+        L = H = 0.0;
+        for (int ch = 0; ch < numChannels; ++ch)
+        {
+            L += dLow[(size_t) ch][(size_t) (k & dMask)];
+            H += dHil[(size_t) ch][(size_t) (k & dMask)];
+        }
+        L /= numChannels;
+        H /= numChannels;
+    };
+    // Past what is seen (preciseSeenSeconds after the kick): the low band
+    // (L + iH) carried on, turning at the rate and fading at the decay it has
+    // over its last ~20 ms (never growing). The kick there: the sidechain's
+    // own until now, then the last kick as heard (the same sample every beat).
+    double zr = 0.0, zi = 0.0, stepRe = 1.0, stepIm = 0.0;
+    if (kEnd > kSeen)
+    {
+        const auto span = juce::jmax ((std::int64_t) 2, (std::int64_t) std::round (0.02 * sampleRate / D));
+        const auto k0 = juce::jmax (kFirst, kSeen - span);
+        if (kSeen - k0 >= 2)
+        {
+            double sr_ = 0.0, si_ = 0.0, pL, pH;
+            lowAt (k0, pL, pH);
+            for (auto k = k0 + 1; k <= kSeen; ++k)
+            {
+                double cL, cH;
+                lowAt (k, cL, cH);
+                sr_ += cL * pL + cH * pH; // z[k] conj z[k-1]
+                si_ += cH * pL - cL * pH;
+                pL = cL;
+                pH = cH;
+            }
+            double aL, aH;
+            lowAt (k0, aL, aH);
+            const double m0 = std::hypot (aL, aH), m1 = std::hypot (pL, pH);
+            const double decay = m0 > 1.0e-9 ? juce::jlimit (0.0, 1.0, std::pow (m1 / m0, 1.0 / (double) (kSeen - k0))) : 1.0;
+            const double w = std::atan2 (si_, sr_);
+            stepRe = decay * std::cos (w);
+            stepIm = decay * std::sin (w);
+            zr = pL;
+            zi = pH;
+        }
+    }
     double A = 0.0, B = 0.0, kk = 0.0, ll = 0.0;
-    for (auto k = juce::jmax (kFirst, dWritten - dMask); k <= kLast; ++k)
+    for (auto k = juce::jmax (kFirst, dWritten - dMask); k <= kEnd; ++k)
     {
         const double t = dFirst + (double) k * D, u = t - (double) when;
         const float pos = (float) juce::jmin (1.0, u / releaseLength) * (float) curveTableSize;
@@ -1200,7 +1245,7 @@ void KickLockDsp::onKickPrecise (std::int64_t when, int source)
         const float c = 1.0f - (table[(size_t) i0] + (pos - (float) i0) * (table[(size_t) i0 + 1] - table[(size_t) i0]));
         const double g = 1.0 - depth * c;
         double kv = 0.0;
-        if (current)
+        if (current && (std::int64_t) std::llround (t) + D <= clock)
         {
             const auto t0 = (std::int64_t) std::llround (t) - D / 2;
             for (int j = 0; j < D; ++j)
@@ -1210,13 +1255,16 @@ void KickLockDsp::onKickPrecise (std::int64_t when, int source)
         else if (prevKick >= 0 && prevKick + (std::int64_t) u <= heardUpTo)
             kv = heardKick[(size_t) (((prevKick + (std::int64_t) u) / KickTelemetry::scopeDecimation) & heardMask)];
         double L = 0.0, H = 0.0;
-        for (int ch = 0; ch < numChannels; ++ch)
+        if (k <= kSeen)
+            lowAt (k, L, H);
+        else
         {
-            L += dLow[(size_t) ch][(size_t) (k & dMask)];
-            H += dHil[(size_t) ch][(size_t) (k & dMask)];
+            const double nr = zr * stepRe - zi * stepIm, ni = zr * stepIm + zi * stepRe;
+            zr = nr;
+            zi = ni;
+            L = zr;
+            H = zi;
         }
-        L /= numChannels;
-        H /= numChannels;
         A += kv * g * L;
         B += kv * g * H;
         kk += kv * kv * g * g;

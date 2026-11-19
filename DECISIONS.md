@@ -1058,3 +1058,14 @@ Une ligne par décision : **contexte** — choix — raison.
   - **Le nom** : « Daft Chunk » (et le preset « One More Chop », Chunky à tête d'écran) évoque directement Daft Punk. C'est un risque de marque à trancher par Alan avant la publication publique.
   - Le build Windows de Daft Chunk (Signalsmith, MSVC) n'avait jamais tourné : le push de main le vérifie en CI avant le tag.
 
+
+## Kick Lock — PRECISE : ~160 ms de latence au lieu de ~360 (2026-11-19)
+- Alan : « Kick Lock a des problèmes de latence chez certains utilisateurs, 360 ms ; potentiellement on peut améliorer ? Trouve sans casser le système de phase. »
+- **D'où venaient les 360 ms** : FIR du sub 8 ms + demi-Hilbert 45 ms + **toute la collision vue à l'avance, 300 ms** + fondu 5 ms + 1,5 ms. Le choix de la rotation (ψ = atan2 (B, A), A = Σ k g L, B = Σ k g H sur la queue du kick) est une somme linéaire : seule la basse future (L + iH) manque si on voit moins loin. Le kick, lui, est connu (celui du sidechain jusqu'à maintenant, sinon le dernier entendu : le même sample à chaque temps).
+- **Le changement** : PRECISE voit les **100 premières ms** de la collision (`preciseSeenSeconds`) ; le reste de la fenêtre (jusqu'à 300 ms, ou le kick suivant) est la basse prolongée : le signal analytique L + iH tourne au rythme et décroît à la vitesse mesurés sur ses ~20 dernières ms vues (jamais en croissance). Latence : ~161 ms à 48 kHz. Rien d'autre ne change (même filtre de Hilbert, même rotation en sortie, mêmes fondus).
+- **Mesures** (énergie kick + basse sur la queue du kick, ou part commune kick × basse) :
+  - fichiers d'Alan (`[.kldiag15]`, 133 BPM, note pincée qui repart sur chaque kick, kick court) : **655,1 contre 655,2** — la même rotation qu'à 300 ms vues ;
+  - KL 44, note tenue à 55 Hz : identique (52 077 contre 52 074 ; 64 112 contre 64 111) ;
+  - KL 44, saw filtrée qui change de note à chaque croche (le pire cas : la note suivante arrive dans la fenêtre, imprévisible) : −0,9 % à 124 BPM, −2,2 % à 145 BPM ; toujours au-dessus de LOCK off, et au-dessus de LIVE à 145.
+  - Courbe sur la saw (vu 80 → 300 ms) : non monotone, ±1 % ; 100 ms est le meilleur point sous 200 ms. Couper la fenêtre au lieu de prolonger : un peu moins bien.
+- Tous les tests Kick Lock passent (43 cas, dont KL 41 : aucun clic en PRECISE). Version de test : `dist/test/KickLock-0.1.10-latency1-macOS.pkg`.

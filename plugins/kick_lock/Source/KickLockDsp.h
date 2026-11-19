@@ -131,14 +131,22 @@ public:
         transform (the same band turned 90 deg, whatever it holds: legato,
         glides, a saw), and the rotation chosen on the collision itself: the
         kick against the sub coming back, weighted by the ducking curve, over
-        ~90 ms after the kick, both seen ahead. It needs to see them: ~150 ms
-        of latency (the host compensates it; for mixing, not for playing). */
+        ~300 ms after the kick, the first 100 ms seen ahead (the rest carried
+        on): ~160 ms of latency (the host compensates it; for mixing, not for
+        playing). */
     static constexpr double hilbertSeconds = 0.045, collisionSeconds = 0.3; // PRECISE sees this much of the kick's tail ahead (a long kick's: 0.15 lost 4 %)
     static constexpr double templateSeconds = 0.3; // LIVE: the last kick's tail it weighs (no latency: it is past)
+    /** PRECISE sees this much of the collision ahead (~160 ms of latency
+        instead of ~360 when it saw all of it); the rest of the window (up to
+        collisionSeconds) is the low band carried on at the frequency and decay
+        it has at the end of what is seen. Alan's files: the same rotation as
+        at 300 ms; a filtered saw changing note every eighth: -1 / -2 % of the
+        kick + bass energy (KL 44). */
+    static constexpr double preciseSeenSeconds = 0.1;
     static int preciseLatencyFor (double sampleRate, int maxBlock) noexcept
     {
         const int D = juce::jmax (1, (int) std::round (sampleRate / 3000.0));
-        return (int) std::round ((firSeconds + hilbertSeconds + collisionSeconds + crossfadeSeconds + 0.0015) * sampleRate) + 4 * D
+        return (int) std::round ((firSeconds + hilbertSeconds + preciseSeenSeconds + crossfadeSeconds + 0.0015) * sampleRate) + 4 * D
                + linkSlackFor (sampleRate, maxBlock);
     }
     void setKnobs (const float* v, int n) override;
