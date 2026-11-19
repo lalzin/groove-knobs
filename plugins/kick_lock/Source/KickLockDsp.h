@@ -132,7 +132,7 @@ public:
         glides, a saw), and the rotation chosen on the collision itself: the
         kick against the sub coming back, weighted by the ducking curve, over
         ~300 ms after the kick, the first 25 ms seen ahead (the rest predicted):
-        ~65 ms of latency (the host compensates it; for mixing, not for
+        ~50 ms of latency (the host compensates it; for mixing, not for
         playing). */
     static constexpr double hilbertSeconds = 0.03, collisionSeconds = 0.3; // the pair's half-length (0.045 before: see designPair); the collision window after the kick
     static constexpr double templateSeconds = 0.3; // LIVE: the last kick's tail it weighs (no latency: it is past)
@@ -141,18 +141,20 @@ public:
         collisionSeconds) is the sub carried on by linear prediction (forward-
         backward least squares, order predictOrder, fitted on the sub from
         predictStartSeconds after the kick, cleaned under ~160 Hz), then the
-        same low-pass / Hilbert pair. ~65 ms of latency with the default
-        PRECISION (see preciseSeenFor) instead of ~360 when it saw everything
-        through the sub's FIR and a +-45 ms pair.
+        same low-pass / Hilbert pair. ~50 ms of latency with the default
+        PRECISION (see preciseSeenFor, preciseLatencySecondsFor) instead of
+        ~360 when it saw everything through the sub's FIR and a +-45 ms pair.
         Measured (DECISIONS 2026-11-19): Alan's files -0.25 %; his bass against
         a long kick, the same; a held or legato sine, the same; a filtered saw
         changing note every eighth, -0.8 / -1.7 % of the kick + bass energy. */
-    /** PRECISION (PRECISE only): how much of the collision is seen ahead —
-        65 (default) / 80 / 100 / 340 ms of latency; 340 sees all of it (no prediction). */
-    static constexpr int precisionLevels = 4, defaultPrecision = 0;
+    /** PRECISION (PRECISE only): 35 / 50 (default) / 65 / 340 ms of latency.
+        The first three see 25 ms of the collision (the rest predicted); at 35
+        and 50 the rotation is reached ~25 / ~10 ms after the kick, while the
+        ducking holds the sub down; at 65 before the kick; 340 sees all of it. */
+    static constexpr int precisionLevels = 4, defaultPrecision = 1;
     static double preciseSeenFor (int level) noexcept
     {
-        constexpr double seen[precisionLevels] { 0.025, 0.04, 0.06, collisionSeconds };
+        constexpr double seen[precisionLevels] { 0.025, 0.025, 0.025, collisionSeconds };
         return seen[juce::jlimit (0, precisionLevels - 1, level)];
     }
     /** PRECISE's own input: the bass through a +-2.5 ms low-pass (flat to ~220 Hz)
@@ -162,10 +164,29 @@ public:
     static constexpr double predictStartSeconds = 0.01, predictMinSeconds = 0.03,
                             predictMaxSeconds = 0.15, predictRidge = 1.0e-7;
     static constexpr int predictOrder = 32, maxPredictOrder = predictOrder;
+    /** When each kick's rotation is chosen: the low band seen preciseSeenFor
+        past it (the sub hilbertSeconds further, through the +-2.5 ms low-pass). */
+    static int decisionLagFor (double sampleRate, int level) noexcept
+    {
+        const int D = juce::jmax (1, (int) std::round (sampleRate / 3000.0));
+        return (int) std::round ((preSeconds + hilbertSeconds + preciseSeenFor (level)) * sampleRate) + 4 * D;
+    }
+    /** The latency: at most what lets the rotation be in place before the kick
+        is heard (decision + crossfade); below, the rotation is reached just
+        after the kick, while the ducking holds the sub down (the collision is
+        weighed from there). Never under the output's own need: the pair's
+        half-length and the low-pass, + 1 ms. */
+    static double preciseLatencySecondsFor (int level) noexcept
+    {
+        constexpr double l[precisionLevels] { 0.035, 0.05, 1.0, 1.0 }; // (1.0: as much as the rotation before the kick needs)
+        return l[juce::jlimit (0, precisionLevels - 1, level)];
+    }
     static int preciseLatencyFor (double sampleRate, int maxBlock, int level = defaultPrecision) noexcept
     {
         const int D = juce::jmax (1, (int) std::round (sampleRate / 3000.0));
-        return (int) std::round ((preSeconds + hilbertSeconds + preciseSeenFor (level) + crossfadeSeconds + 0.0015) * sampleRate) + 4 * D
+        const int beforeKick = decisionLagFor (sampleRate, level) + (int) std::round ((crossfadeSeconds + 0.0015) * sampleRate);
+        const int outputNeed = (int) std::round ((preSeconds + hilbertSeconds + 0.001) * sampleRate) + 4 * D;
+        return juce::jlimit (outputNeed, juce::jmax (outputNeed, beforeKick), (int) std::round (preciseLatencySecondsFor (level) * sampleRate))
                + linkSlackFor (sampleRate, maxBlock);
     }
     void setKnobs (const float* v, int n) override;
@@ -346,7 +367,7 @@ private:
     double dFirst = 0.0;
     int dPhase = 0, hilM = 0, liveLatency = 0, preciseLatency = 0;
     std::array<int, precisionLevels> preciseLatencies {};
-    int precisionWanted = defaultPrecision, precision = defaultPrecision; // (the PRECISION choice; applied with the switches: it changes the latency)
+    int precisionWanted = defaultPrecision, precision = defaultPrecision, decisionLag = 0; // (the PRECISION choice; applied with the switches: it changes the latency)
     float hilbertAt (int channel, std::int64_t t) const noexcept;
     void onKickPrecise (std::int64_t when, int source);
     void applyLatency() noexcept;

@@ -1,8 +1,8 @@
 # Changelog
 
-## Kick Lock 0.1.10-latency4 — 2026-11-19 (version de test)
-- **PRECISE passe de ~360 ms à ~65 ms de latence.** Kick Lock voit à l'avance les 25 premières ms après chaque kick et prédit la suite de la basse (jusqu'à 300 ms) pour choisir la rotation ; son analyse part de la basse elle-même et tourne la phase avec un filtre plus court. Sur tes fichiers de test, le résultat reste à 2 % de l'ancien PRECISE ; une note tenue, une mélodie legato ou un kick long, pareil ou mieux. LIVE reste à 32 ms.
-- **PRECISION** (sous PRECISE) : choisis la latence de PRECISE, 65 (par défaut), 80, 100 ou 340 ms. Plus elle est longue, moins Kick Lock prédit ; à 340 ms il voit toute la collision.
+## Kick Lock 0.1.10-latency5 — 2026-11-19 (version de test)
+- **PRECISE passe de ~360 ms à ~50 ms de latence.** Kick Lock voit les 25 premières ms après chaque kick et prédit la suite de la basse (jusqu'à 300 ms) pour choisir la rotation ; la rotation arrive juste après le kick, pendant que le ducking tient le sub bas. Son analyse part de la basse elle-même et tourne la phase avec un filtre plus court. Sur tes fichiers de test, le résultat reste à 2 % de l'ancien PRECISE ; une note tenue, une mélodie legato ou un kick long, pareil. LIVE reste à 32 ms.
+- **PRECISION** (sous PRECISE) : choisis la latence de PRECISE, 35, 50 (par défaut), 65 ou 340 ms. À 65 ms la rotation est en place avant le kick ; à 340 ms Kick Lock voit toute la collision.
 
 ## 0.1.10 — 2026-11-13 (toute la suite, onze plugins)
 - **Daft Chunk** entre dans la suite : le découpeur de samples qui crée tes boucles, en instrument. Il trouve le tempo, le premier temps, la tonalité et les attaques, et découpe le sample en tranches jouables en MIDI. LOOP CREATOR invente des boucles dans six styles, de ORDER à WILD, calées sur le tempo d'Ableton, à glisser dans Ableton en WAV, MIDI ou KIT. Effets SWEEP, PHASER, FLANGER, PUMP, CRUSH. 10 presets. Chunky le robot en mascotte. (Le détail de son développement est dans les versions de test ci-dessous.)

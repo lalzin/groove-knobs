@@ -31,7 +31,7 @@ namespace
         // PHASE: the phase analysis (off: the ducking alone — a pad, a synth;
         // no CPU spent on it); LOCK: the sub turned in phase with the kick
         // PRECISE (the default, Alan: "le résultat est vraiment satisfaisant"): no note
-        // detection, the collision itself seen ahead, the rest predicted (~65 ms of latency); LIVE: 32 ms, to play
+        // detection, the collision itself seen ahead, the rest predicted (~50 ms of latency); LIVE: 32 ms, to play
         cfg.switches = { { "lock", "Lock", "LOCK", false }, { "phase", "Phase analysis", "PHASE", true }, { "precise", "Precise", "PRECISE", true } };
         cfg.knobs = { { "targetPhase", "Target phase", "TARGET", 0.0f, 0.0f, 360.0f, 1.0f, juce::String::fromUTF8 ("\xc2\xb0") },
                       { "offsetMs", "Offset", "OFFSET", 0.0f, -20.0f, 20.0f, 1.0f, "ms" },
@@ -53,7 +53,7 @@ namespace
                         { "monoBelow", "Mono below", "MONO BELOW", { "Off", "60 Hz", "80 Hz", "100 Hz", "120 Hz", "150 Hz", "200 Hz" }, 0 },
                         // PRECISE's latency (Alan: "un paramétrage de précision, pour avoir le choix"):
                         // how much of the collision it sees ahead, the rest predicted; 340 ms sees all of it
-                        { "precision", "Precision", "PRECISION", { "65 ms", "80 ms", "100 ms", "340 ms" }, KickLockDsp::defaultPrecision } };
+                        { "precision", "Precision", "PRECISION", { "35 ms", "50 ms", "65 ms", "340 ms" }, KickLockDsp::defaultPrecision } };
         cfg.editorBuildsControls = false; // KickLockEditor: its own 760 x 480 layout
         cfg.editorWidth = 760;
         cfg.editorHeight = 480;

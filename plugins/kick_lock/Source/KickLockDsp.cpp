@@ -136,6 +136,7 @@ void KickLockDsp::prepare (double sr, int maxBlock, int nch)
     for (int l = 0; l < precisionLevels; ++l)
         preciseLatencies[(size_t) l] = preciseLatencyFor (sr, maxBlock, l);
     preciseLatency = preciseLatencies[(size_t) precision];
+    decisionLag = decisionLagFor (sr, precision);
     latency = precise ? preciseLatency : liveLatency;
     for (int k = 0; k < 2; ++k)
     {
@@ -1129,6 +1130,7 @@ void KickLockDsp::setSwitches (const bool* on, int n)
         precise = p;
         precision = precisionWanted;
         preciseLatency = preciseLatencies[(size_t) precision];
+        decisionLag = decisionLagFor (sampleRate, precision);
         applyLatency(); // (the processor has faded the output out for it, when it changes)
     }
 }
@@ -1387,10 +1389,15 @@ void KickLockDsp::onKickPrecise (std::int64_t when, int source)
         }
         }
     }
+    // where the new rotation is in place (heard): before the kick when the
+    // latency allows it, else just after it (the ducking holds the sub down)
+    const double inPlaceFrom = (double) (clock - latency + fadeLength - when);
     double A = 0.0, B = 0.0, kk = 0.0, ll = 0.0;
     for (auto k = juce::jmax (kFirst, dWritten - dMask); k <= kStop; ++k)
     {
         const double t = dFirst + (double) k * D, u = t - (double) when;
+        if (u < inPlaceFrom)
+            continue; // (the previous rotation is still heard there)
         const float pos = (float) juce::jmin (1.0, u / releaseLength) * (float) curveTableSize;
         const int i0 = juce::jlimit (0, curveTableSize - 1, (int) pos);
         const float c = 1.0f - (table[(size_t) i0] + (pos - (float) i0) * (table[(size_t) i0 + 1] - table[(size_t) i0]));
@@ -2065,7 +2072,7 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
                 }
             }
         }
-        if (pendingCount > 0 && precise && clock >= pendingKicks[0] + (latency - linkSlack - fadeLength - (std::int64_t) (0.0015 * sampleRate)))
+        if (pendingCount > 0 && precise && clock >= pendingKicks[0] + decisionLag)
         {
             const auto when = pendingKicks[0];
             const int source = pendingSource[0];
