@@ -1804,7 +1804,7 @@ TEST_CASE ("KL 43. Hold on a real-ish bass melody: filtered saw, eighth notes, s
     CHECK (worst < 10.0);
 }
 
-TEST_CASE ("KL 44. PRECISE: no note detection, the collision seen ahead - the kick and the bass add up the most, on a held note, a legato melody, a filtered saw", "[kl][precise]")
+TEST_CASE ("KL 44. PRECISE: no note detection, the collision seen ahead (40 ms, the rest predicted) - the kick and the bass add up the most, on a held note, a legato melody, a filtered saw", "[kl][precise]")
 {
     const double sr = 48000.0, seconds = 10.0;
   for (double bpm : { 124.0, 145.0 })
@@ -1849,7 +1849,10 @@ TEST_CASE ("KL 44. PRECISE: no note detection, the collision seen ahead - the ki
             const auto out = run (*p, b, &k, { 512 }, bpm);
             const int L = p->getLatencySamples();
             if (engine == 2)
+            {
                 CHECK (L == KickLockDsp::preciseLatencyFor (sr, 512));
+                CHECK (L < (int) (0.105 * sr)); // ~100 ms (was ~360 when the whole collision was seen)
+            }
             double sum = 0.0;
             for (double t : kt)
                 if (t > 1.0 && t < seconds - 0.5)

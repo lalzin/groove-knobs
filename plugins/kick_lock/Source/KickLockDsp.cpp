@@ -200,6 +200,11 @@ void KickLockDsp::prepare (double sr, int maxBlock, int nch)
         while (n < (std::int64_t) (1.3 * fsd))
             n <<= 1;
         dMask = n - 1;
+        // the prediction past what is seen (see onKickPrecise)
+        extSub.assign ((size_t) std::ceil ((collisionSeconds + 0.05) * fsd) + 4 * (size_t) hilM + 16, 0.0);
+        fitBuf.assign ((size_t) std::ceil (predictMaxSeconds * fsd) + 16, 0.0);
+        lpMatrix.assign ((size_t) (maxPredictOrder * (maxPredictOrder + 1)), 0.0);
+        lpCoef.assign ((size_t) predictOrder + 2, 0.0);
         for (int c = 0; c < 2; ++c)
         {
             dSub[(size_t) c].assign ((size_t) n, 0.0f);
@@ -1155,6 +1160,65 @@ float KickLockDsp::hilbertAt (int channel, std::int64_t t) const noexcept
     return p1 + 0.5f * f * (p2 - p0 + f * (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3 + f * (3.0f * (p1 - p2) + p3 - p0)));
 }
 
+bool KickLockDsp::fitPredictor (const double* x, int n, int m, double* d) noexcept
+{
+    // Linear prediction by forward-backward least squares (the modified
+    // covariance method): x[t] ~ sum d[j] x[t - j] and x[t] ~ sum d[j] x[t + j],
+    // j = 1..m. Unlike Burg, unbiased on a few periods of low sines.
+    if (n <= 2 * m)
+        return false;
+    auto& R = lpMatrix; // m x (m + 1), the right-hand side in the last column
+    const int w = m + 1;
+    std::fill (R.begin(), R.begin() + m * w, 0.0);
+    for (int t = m; t < n; ++t)
+        for (int i = 0; i < m; ++i)
+        {
+            const double vi = x[t - 1 - i], vb = x[n - 1 - t + 1 + i];
+            const double tb = x[n - 1 - t]; // backward: x[t'] from x[t' + 1 .. t' + m], t' = n - 1 - t
+            R[(size_t) (i * w + m)] += vi * x[t] + vb * tb;
+            for (int j = 0; j <= i; ++j)
+                R[(size_t) (i * w + j)] += vi * x[t - 1 - j] + vb * x[n - 1 - t + 1 + j];
+        }
+    double tr = 0.0;
+    for (int i = 0; i < m; ++i)
+    {
+        for (int j = i + 1; j < m; ++j)
+            R[(size_t) (i * w + j)] = R[(size_t) (j * w + i)];
+        tr += R[(size_t) (i * w + i)];
+    }
+    if (tr <= 1.0e-18)
+        return false;
+    for (int i = 0; i < m; ++i)
+        R[(size_t) (i * w + i)] += predictRidge * tr / m;
+    // Gaussian elimination, partial pivoting
+    for (int c = 0; c < m; ++c)
+    {
+        int p = c;
+        for (int r = c + 1; r < m; ++r)
+            if (std::abs (R[(size_t) (r * w + c)]) > std::abs (R[(size_t) (p * w + c)]))
+                p = r;
+        if (std::abs (R[(size_t) (p * w + c)]) < 1.0e-300)
+            return false;
+        if (p != c)
+            for (int k = 0; k < w; ++k)
+                std::swap (R[(size_t) (c * w + k)], R[(size_t) (p * w + k)]);
+        for (int r = c + 1; r < m; ++r)
+        {
+            const double f = R[(size_t) (r * w + c)] / R[(size_t) (c * w + c)];
+            for (int k = c; k < w; ++k)
+                R[(size_t) (r * w + k)] -= f * R[(size_t) (c * w + k)];
+        }
+    }
+    for (int i = m - 1; i >= 0; --i)
+    {
+        double v = R[(size_t) (i * w + m)];
+        for (int k = i + 1; k < m; ++k)
+            v -= R[(size_t) (i * w + k)] * d[k + 1];
+        d[i + 1] = v / R[(size_t) (i * w + i)];
+    }
+    return true;
+}
+
 void KickLockDsp::onKickPrecise (std::int64_t when, int source)
 {
     const int count = telemetry.kickEvents.load (std::memory_order_relaxed) + 1;
@@ -1203,41 +1267,63 @@ void KickLockDsp::onKickPrecise (std::int64_t when, int source)
         L /= numChannels;
         H /= numChannels;
     };
-    // Past what is seen (preciseSeenSeconds after the kick): the low band
-    // (L + iH) carried on, turning at the rate and fading at the decay it has
-    // over its last ~20 ms (never growing). The kick there: the sidechain's
-    // own until now, then the last kick as heard (the same sample every beat).
-    double zr = 0.0, zi = 0.0, stepRe = 1.0, stepIm = 0.0;
+    // Past what is seen: L and H need the sub hilM samples further than they
+    // are, and the sub itself is known up to now. The sub (mono) is carried
+    // on by linear prediction (fitPredictor) fitted on what follows the kick, then
+    // the same low-pass / Hilbert pair runs over it.
+    const auto subEnd = dWritten - 1; // the last decimated sub known
+    auto kStop = kEnd; // (kSeen if the prediction cannot run)
+    std::int64_t extFrom = 0;
     if (kEnd > kSeen)
     {
-        const auto span = juce::jmax ((std::int64_t) 2, (std::int64_t) std::round (0.02 * sampleRate / D));
-        const auto k0 = juce::jmax (kFirst, kSeen - span);
-        if (kSeen - k0 >= 2)
+        extFrom = kSeen + 1 - hilM;
+        const auto extTo = kEnd + hilM;
+        const auto n = extTo - extFrom + 1;
+        if (n > (std::int64_t) extSub.size() || extFrom <= subEnd - dMask)
+            kStop = kSeen;
+        else
         {
-            double sr_ = 0.0, si_ = 0.0, pL, pH;
-            lowAt (k0, pL, pH);
-            for (auto k = k0 + 1; k <= kSeen; ++k)
-            {
-                double cL, cH;
-                lowAt (k, cL, cH);
-                sr_ += cL * pL + cH * pH; // z[k] conj z[k-1]
-                si_ += cH * pL - cL * pH;
-                pL = cL;
-                pH = cH;
-            }
-            double aL, aH;
-            lowAt (k0, aL, aH);
-            const double m0 = std::hypot (aL, aH), m1 = std::hypot (pL, pH);
-            const double decay = m0 > 1.0e-9 ? juce::jlimit (0.0, 1.0, std::pow (m1 / m0, 1.0 / (double) (kSeen - k0))) : 1.0;
-            const double w = std::atan2 (si_, sr_);
-            stepRe = decay * std::cos (w);
-            stepIm = decay * std::sin (w);
-            zr = pL;
-            zi = pH;
+        for (auto k = extFrom; k <= juce::jmin (subEnd, extTo); ++k)
+        {
+            double v = 0.0;
+            for (int ch = 0; ch < numChannels; ++ch)
+                v += dSub[(size_t) ch][(size_t) (k & dMask)];
+            extSub[(size_t) (k - extFrom)] = v / numChannels;
+        }
+        // the fit: from just after the kick (the note heard with it) to now,
+        // at least predictMinSeconds (earlier if the kick is too recent)
+        const int order = predictOrder;
+        const auto fitLen = juce::jlimit ((std::int64_t) (3 * order), (std::int64_t) fitBuf.size(),
+                                          juce::jmax ((std::int64_t) std::round (predictMinSeconds * sampleRate / D),
+                                                      subEnd - (std::int64_t) std::ceil (((double) when + predictStartSeconds * sampleRate - dFirst) / D) + 1));
+        const auto fitFrom = subEnd - fitLen + 1;
+        for (std::int64_t k = 0; k < fitLen; ++k)
+        {
+            double v = 0.0;
+            for (int ch = 0; ch < numChannels; ++ch)
+                v += dSub[(size_t) ch][(size_t) ((fitFrom + k) & dMask)];
+            fitBuf[(size_t) k] = v / numChannels;
+        }
+        const bool ok = fitPredictor (fitBuf.data(), (int) fitLen, order, lpCoef.data());
+        double peak = 0.0;
+        for (std::int64_t k = 0; k < fitLen; ++k)
+            peak = juce::jmax (peak, std::abs (fitBuf[(size_t) k]));
+        for (auto k = subEnd + 1; k <= extTo; ++k)
+        {
+            double v = 0.0;
+            if (ok)
+                for (int j = 1; j <= order; ++j)
+                {
+                    const auto src = k - j;
+                    v += lpCoef[(size_t) j] * (src >= extFrom ? extSub[(size_t) (src - extFrom)]
+                                                                : (double) (fitBuf[(size_t) juce::jlimit ((std::int64_t) 0, fitLen - 1, src - fitFrom)]));
+                }
+            extSub[(size_t) (k - extFrom)] = juce::jlimit (-1.5 * peak, 1.5 * peak, v); // (never growing away)
+        }
         }
     }
     double A = 0.0, B = 0.0, kk = 0.0, ll = 0.0;
-    for (auto k = juce::jmax (kFirst, dWritten - dMask); k <= kEnd; ++k)
+    for (auto k = juce::jmax (kFirst, dWritten - dMask); k <= kStop; ++k)
     {
         const double t = dFirst + (double) k * D, u = t - (double) when;
         const float pos = (float) juce::jmin (1.0, u / releaseLength) * (float) curveTableSize;
@@ -1259,11 +1345,14 @@ void KickLockDsp::onKickPrecise (std::int64_t when, int source)
             lowAt (k, L, H);
         else
         {
-            const double nr = zr * stepRe - zi * stepIm, ni = zr * stepIm + zi * stepRe;
-            zr = nr;
-            zi = ni;
-            L = zr;
-            H = zi;
+            const auto c0 = (size_t) (k - extFrom);
+            L = lowKernel[0] * extSub[c0];
+            for (int m = 1; m <= hilM; ++m)
+            {
+                const double before = extSub[c0 - (size_t) m], after = extSub[c0 + (size_t) m];
+                L += lowKernel[(size_t) m] * (before + after);
+                H += hilbertKernel[(size_t) m] * (before - after);
+            }
         }
         A += kv * g * L;
         B += kv * g * H;

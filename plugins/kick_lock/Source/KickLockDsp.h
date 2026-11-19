@@ -131,18 +131,23 @@ public:
         transform (the same band turned 90 deg, whatever it holds: legato,
         glides, a saw), and the rotation chosen on the collision itself: the
         kick against the sub coming back, weighted by the ducking curve, over
-        ~300 ms after the kick, the first 100 ms seen ahead (the rest carried
-        on): ~160 ms of latency (the host compensates it; for mixing, not for
+        ~300 ms after the kick, the first 40 ms seen ahead (the rest predicted):
+        ~100 ms of latency (the host compensates it; for mixing, not for
         playing). */
     static constexpr double hilbertSeconds = 0.045, collisionSeconds = 0.3; // PRECISE sees this much of the kick's tail ahead (a long kick's: 0.15 lost 4 %)
     static constexpr double templateSeconds = 0.3; // LIVE: the last kick's tail it weighs (no latency: it is past)
-    /** PRECISE sees this much of the collision ahead (~160 ms of latency
-        instead of ~360 when it saw all of it); the rest of the window (up to
-        collisionSeconds) is the low band carried on at the frequency and decay
-        it has at the end of what is seen. Alan's files: the same rotation as
-        at 300 ms; a filtered saw changing note every eighth: -1 / -2 % of the
-        kick + bass energy (KL 44). */
-    static constexpr double preciseSeenSeconds = 0.1;
+    /** PRECISE sees the low band (L, H) this far past the kick, the sub
+        itself hilbertSeconds further; the rest of the collision window (up to
+        collisionSeconds) is the sub carried on by linear prediction (forward-
+        backward least squares, order predictOrder, fitted on the sub from
+        predictStartSeconds after the kick), then the same low-pass / Hilbert
+        pair. ~100 ms of latency instead of ~360 when it saw all of it.
+        Measured (DECISIONS 2026-11-19): Alan's files, the same rotation; a
+        held or legato sine, the same; a filtered saw changing note every
+        eighth, -1.5 % of the kick + bass energy. */
+    static constexpr double preciseSeenSeconds = 0.04, predictStartSeconds = 0.01, predictMinSeconds = 0.03,
+                            predictMaxSeconds = 0.15, predictRidge = 1.0e-7;
+    static constexpr int predictOrder = 32, maxPredictOrder = predictOrder;
     static int preciseLatencyFor (double sampleRate, int maxBlock) noexcept
     {
         const int D = juce::jmax (1, (int) std::round (sampleRate / 3000.0));
@@ -328,6 +333,8 @@ private:
     float hilbertAt (int channel, std::int64_t t) const noexcept;
     void onKickPrecise (std::int64_t when, int source);
     void applyLatency() noexcept;
+    std::vector<double> extSub, fitBuf, lpMatrix, lpCoef;
+    bool fitPredictor (const double* x, int n, int m, double* d) noexcept;
     bool aimAtCollision = true;
     using CurveTable = std::array<float, curveTableSize + 1>;
     std::array<CurveTable, 4> presetTables {};

@@ -1069,3 +1069,16 @@ Une ligne par décision : **contexte** — choix — raison.
   - KL 44, saw filtrée qui change de note à chaque croche (le pire cas : la note suivante arrive dans la fenêtre, imprévisible) : −0,9 % à 124 BPM, −2,2 % à 145 BPM ; toujours au-dessus de LOCK off, et au-dessus de LIVE à 145.
   - Courbe sur la saw (vu 80 → 300 ms) : non monotone, ±1 % ; 100 ms est le meilleur point sous 200 ms. Couper la fenêtre au lieu de prolonger : un peu moins bien.
 - Tous les tests Kick Lock passent (43 cas, dont KL 41 : aucun clic en PRECISE). Version de test : `dist/test/KickLock-0.1.10-latency1-macOS.pkg`.
+
+## Kick Lock — PRECISE : ~100 ms, la basse prédite au-delà de 40 ms (2026-11-19, suite)
+- Alan : « Tu peux mieux faire tu penses ? Va plus loin si besoin. Calcule. »
+- **Le calcul** : la latence de PRECISE = FIR du sub 8 ms + demi-Hilbert 45 ms + ce qui est vu après le kick + fondu 5 ms + 1,5 ms. Les ~60 ms fixes sont nécessaires à la rotation en sortie (tourner un sub de 35–40 Hz demande le Hilbert de ±45 ms ; le prédire en sortie ferait des artefacts aux changements de note). Seule la part « vue » est compressible. Et au moment de décider, le sub brut est connu 45 ms plus loin que L / H : c'est lui qu'on prolonge.
+- **La prédiction** : le sub (mono, ~3 kHz) est prolongé par **prédiction linéaire en moindres carrés avant-arrière** (ordre 32, ridge 1e-7, ajustée de 10 ms après le kick jusqu'à maintenant, au moins 30 ms), puis la même paire passe-bas / Hilbert passe dessus : L et H de toute la fenêtre de collision (300 ms au plus). Burg a été essayé d'abord : biaisé sur quelques périodes d'une sinusoïde grave (jusqu'à 40 % d'erreur à 40 Hz sur 250 ms) ; les moindres carrés avant-arrière : 0,03 % sur 30 ms vues (essai Python, 33–55 Hz + harmonique). Bornée à ±1,5 × la crête vue (jamais de croissance). Elle ne touche que le choix de ψ (une rotation par kick, en fondu) : une mauvaise prédiction ne peut pas faire de clic.
+- **Réglage** (balayé : vu −15 → 300 ms, ordre 4 → 32, début 2 → 20 ms, ridge 1e-9 → 1e-3) : 40 ms vues → **~101 ms de latence** à 44,1 et 48 kHz.
+- **Mesures** (référence : toute la collision vue, ~360 ms) :
+  - fichiers d'Alan (`[.kldiag15]`, kick court) : kick × basse **654,6 contre 655,2** ;
+  - sa basse contre un kick long de 300 ms (`[.kldiag14]`) : 9 039 contre 9 089 (LOCK off 8 263) : 94 % du gain ;
+  - KL 44 : note tenue et mélodie legato identiques ; saw filtrée qui change de note à chaque croche −0,9 % / −1,7 %, toujours au-dessus de LIVE à 145 BPM.
+  - 30 ms vues (~91 ms) : fichiers d'Alan identiques mais le kick long −9 % du gain ; 15 ms : −6,5 % sur ses fichiers. 40 ms gardé.
+- CPU : pire bloc PRECISE 0,17 ms en blocs de 128 (KL 40, inchangé). Tous les tests Kick Lock passent ; KL 44 vérifie la latence sous 105 ms.
+- Piste restante (non faite) : alimenter la paire Hilbert depuis la basse brute plutôt que le sub filtré (FIR de 8 ms) gagnerait ~8 ms ; ça touche la ligne de temps de toute l'analyse PRECISE.
