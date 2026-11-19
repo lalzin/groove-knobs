@@ -1872,6 +1872,61 @@ TEST_CASE ("KL 44. PRECISE: no note detection, the collision seen ahead (40 ms, 
   }
 }
 
+TEST_CASE ("KL 45. PRECISION: each level reports its latency (75 / 100 / 160 / 360 ms), locks the held note as well, and switching it while playing changes the latency with no jump", "[kl][precise]")
+{
+    const double sr = 48000.0, bpm = 124.0, seconds = 6.0;
+    const auto k = kicks (seconds, sr, bpm, 0.5);
+    const auto kt = kickTimes (seconds, bpm, 0.5);
+    const auto b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr);
+    const double expectMs[] { 75.0, 100.0, 160.0, 360.0 };
+    double reference = 0.0;
+    for (int level = KickLockDsp::precisionLevels - 1; level >= 0; --level)
+    {
+        auto p = makeKl (sr, 1.0f, true, 1.0f);
+        p->getDsp().setAimAtCollision (true);
+        setParam (p->getPreciseParameter(), 1.0f);
+        setParam (p->getPrecisionParameter(), (float) level);
+        p->prepareToPlay (sr, 512);
+        const int L = p->getLatencySamples();
+        INFO ("level " << level << ": " << 1000.0 * L / sr << " ms");
+        CHECK (L == KickLockDsp::preciseLatencyFor (sr, 512, level));
+        CHECK (std::abs (1000.0 * L / sr - expectMs[level]) < 3.0);
+        const auto out = run (*p, b, &k, { 512 }, bpm);
+        double sum = 0.0;
+        for (double t : kt)
+            if (t > 1.0 && t < seconds - 0.5)
+                for (int u = 0; u < (int) (0.3 * sr); ++u)
+                {
+                    const int i = (int) (t * sr) + u;
+                    const double v = k.getSample (0, i) + out.getSample (0, i + L);
+                    sum += v * v;
+                }
+        if (level == KickLockDsp::precisionLevels - 1)
+            reference = sum;
+        CHECK (sum > 0.995 * reference); // a held note: as well locked at every level
+    }
+    {
+        // switched while playing: 100 -> 360 -> 75 ms; the latency follows, the output stays finite and bounded
+        auto p = makeKl (sr, 1.0f, true, 1.0f);
+        setParam (p->getPreciseParameter(), 1.0f);
+        p->prepareToPlay (sr, 512);
+        CHECK (p->getLatencySamples() == KickLockDsp::preciseLatencyFor (sr, 512, KickLockDsp::defaultPrecision));
+        const auto out = run (*p, b, &k, { 512 }, bpm, [&] (int pos)
+        {
+            if (pos == (int) (2.0 * sr) / 512 * 512)
+                setParam (p->getPrecisionParameter(), 3.0f);
+            if (pos == (int) (4.0 * sr) / 512 * 512)
+                setParam (p->getPrecisionParameter(), 0.0f);
+        });
+        CHECK (p->getDsp().getLatencySamples() == KickLockDsp::preciseLatencyFor (sr, 512, 0)); // (the host is told on the message thread)
+        float peak = 0.0f;
+        for (int i = 0; i < out.getNumSamples(); ++i)
+            peak = juce::jmax (peak, std::abs (out.getSample (0, i)));
+        CHECK (std::isfinite (peak));
+        CHECK (peak < 1.0f);
+    }
+}
+
 TEST_CASE ("diag: Alan's bass and kick files (GK_KL_BASS, GK_KL_KICK, GK_KL_BPM): LOCK off / LIVE / PRECISE", "[.kldiag15]")
 {
     juce::AudioFormatManager fm;
@@ -1901,6 +1956,8 @@ TEST_CASE ("diag: Alan's bass and kick files (GK_KL_BASS, GK_KL_KICK, GK_KL_BPM)
             p->getDsp().setAimAtCollision (true);
             setParam (p->getPreciseParameter(), engine == 2 ? 1.0f : 0.0f);
             setParam (p->getLockModeParameter(), (float) mode);
+            if (const char* e = std::getenv ("GK_KL_PRECISION")) // (0..3, else the default)
+                setParam (p->getPrecisionParameter(), (float) std::atof (e));
             p->prepareToPlay (sr, 512);
             int seen = 0;
             juce::String kicksLog;
@@ -1950,6 +2007,8 @@ TEST_CASE ("diag: a bass file against a kick: LOCK off / LIVE / PRECISE (GK_KL_F
         setParam (p->getTargetPhaseParameter(), target);
         p->getDsp().setAimAtCollision (true);
         setParam (p->getPreciseParameter(), engine == 2 ? 1.0f : 0.0f);
+        if (const char* e = std::getenv ("GK_KL_PRECISION"))
+            setParam (p->getPrecisionParameter(), (float) std::atof (e));
         p->prepareToPlay (sr, 512);
         const auto out = run (*p, b, &k, { 512 }, bpm);
         const int L = p->getLatencySamples();

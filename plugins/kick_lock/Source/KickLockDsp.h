@@ -55,7 +55,7 @@ class KickLockDsp final : public gk::OneKnobEngine
 public:
     static constexpr int lockSwitch = 0, phaseSwitch = 1, preciseSwitch = 2;
     static constexpr int targetKnob = 0, offsetKnob = 1, subCutKnob = 2, depthKnob = 3, waveStartKnob = 4, thresholdKnob = 5;
-    static constexpr int shapeChoice = 0, releaseChoice = 1, modeChoice = 2, triggerChoice = 3, linkChoice = 4, monoChoice = 5;
+    static constexpr int shapeChoice = 0, releaseChoice = 1, modeChoice = 2, triggerChoice = 3, linkChoice = 4, monoChoice = 5, precisionChoice = 6;
     // MONO BELOW: Off, then these frequencies (the low band made mono)
     static constexpr int monoOptions = 7;
     static float monoHz (int index) noexcept { constexpr float hz[monoOptions] { 0.0f, 60.0f, 80.0f, 100.0f, 120.0f, 150.0f, 200.0f }; return hz[juce::jlimit (0, monoOptions - 1, index)]; }
@@ -125,8 +125,8 @@ public:
     int getLatencySamples() const override { return latency; }
     void setPreset (int) override {}
     void setSwitches (const bool* on, int n) override;
-    int latencyForSwitches (const bool* on, int n) const override { return n > preciseSwitch && on[preciseSwitch] ? preciseLatency : liveLatency; }
-    int getMaxLatencySamples() const override { return juce::jmax (liveLatency, preciseLatency); }
+    int latencyForSwitches (const bool* on, int n) const override { return n > preciseSwitch && on[preciseSwitch] ? preciseLatencies[(size_t) precisionWanted] : liveLatency; }
+    int getMaxLatencySamples() const override { return juce::jmax (liveLatency, preciseLatencies[precisionLevels - 1]); }
     /** PRECISE: no note detection at all — the low band and its Hilbert
         transform (the same band turned 90 deg, whatever it holds: legato,
         glides, a saw), and the rotation chosen on the collision itself: the
@@ -141,17 +141,26 @@ public:
         collisionSeconds) is the sub carried on by linear prediction (forward-
         backward least squares, order predictOrder, fitted on the sub from
         predictStartSeconds after the kick), then the same low-pass / Hilbert
-        pair. ~100 ms of latency instead of ~360 when it saw all of it.
+        pair. ~100 ms of latency instead of ~360 when it saw all of it (the
+        default PRECISION; see preciseSeenFor).
         Measured (DECISIONS 2026-11-19): Alan's files, the same rotation; a
         held or legato sine, the same; a filtered saw changing note every
         eighth, -1.5 % of the kick + bass energy. */
-    static constexpr double preciseSeenSeconds = 0.04, predictStartSeconds = 0.01, predictMinSeconds = 0.03,
+    /** PRECISION (PRECISE only): how much of the collision is seen ahead —
+        75 / 100 (default) / 160 / 360 ms of latency; 360 sees all of it (no prediction). */
+    static constexpr int precisionLevels = 4, defaultPrecision = 1;
+    static double preciseSeenFor (int level) noexcept
+    {
+        constexpr double seen[precisionLevels] { 0.015, 0.04, 0.1, collisionSeconds };
+        return seen[juce::jlimit (0, precisionLevels - 1, level)];
+    }
+    static constexpr double predictStartSeconds = 0.01, predictMinSeconds = 0.03,
                             predictMaxSeconds = 0.15, predictRidge = 1.0e-7;
     static constexpr int predictOrder = 32, maxPredictOrder = predictOrder;
-    static int preciseLatencyFor (double sampleRate, int maxBlock) noexcept
+    static int preciseLatencyFor (double sampleRate, int maxBlock, int level = defaultPrecision) noexcept
     {
         const int D = juce::jmax (1, (int) std::round (sampleRate / 3000.0));
-        return (int) std::round ((firSeconds + hilbertSeconds + preciseSeenSeconds + crossfadeSeconds + 0.0015) * sampleRate) + 4 * D
+        return (int) std::round ((firSeconds + hilbertSeconds + preciseSeenFor (level) + crossfadeSeconds + 0.0015) * sampleRate) + 4 * D
                + linkSlackFor (sampleRate, maxBlock);
     }
     void setKnobs (const float* v, int n) override;
@@ -330,6 +339,8 @@ private:
     std::int64_t dWritten = 0, dMask = 0;
     double dFirst = 0.0;
     int dPhase = 0, hilM = 0, liveLatency = 0, preciseLatency = 0;
+    std::array<int, precisionLevels> preciseLatencies {};
+    int precisionWanted = defaultPrecision, precision = defaultPrecision; // (the PRECISION choice; applied with the switches: it changes the latency)
     float hilbertAt (int channel, std::int64_t t) const noexcept;
     void onKickPrecise (std::int64_t when, int source);
     void applyLatency() noexcept;

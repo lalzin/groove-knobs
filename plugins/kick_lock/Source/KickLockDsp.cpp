@@ -133,7 +133,9 @@ void KickLockDsp::prepare (double sr, int maxBlock, int nch)
     firLength = 2 * firDelay + 1;
     linkSlack = linkSlackFor (sr, maxBlock);
     liveLatency = latencyFor (sr, maxBlock);
-    preciseLatency = preciseLatencyFor (sr, maxBlock);
+    for (int l = 0; l < precisionLevels; ++l)
+        preciseLatencies[(size_t) l] = preciseLatencyFor (sr, maxBlock, l);
+    preciseLatency = preciseLatencies[(size_t) precision];
     latency = precise ? preciseLatency : liveLatency;
     for (int k = 0; k < 2; ++k)
     {
@@ -331,6 +333,7 @@ void KickLockDsp::setChoices (const int* idx, int n)
     trigger = n > triggerChoice ? juce::jlimit (0, 3, idx[triggerChoice]) : triggerAuto;
     linkChannel = n > linkChoice ? juce::jlimit (0, KickLinkMemory::channels - 1, idx[linkChoice]) : 1;
     monoBelow = n > monoChoice ? juce::jlimit (0, monoOptions - 1, idx[monoChoice]) : 0;
+    precisionWanted = n > precisionChoice ? juce::jlimit (0, precisionLevels - 1, idx[precisionChoice]) : defaultPrecision;
 }
 
 void KickLockDsp::setSidechain (const float* const* channels, int n, int)
@@ -1077,10 +1080,12 @@ void KickLockDsp::setSwitches (const bool* on, int n)
     lock = n > lockSwitch && on[lockSwitch];
     phaseOn = n <= phaseSwitch || on[phaseSwitch];
     const bool p = n > preciseSwitch && on[preciseSwitch];
-    if (p != precise)
+    if (p != precise || precisionWanted != precision)
     {
         precise = p;
-        applyLatency(); // (the processor has faded the output out for it)
+        precision = precisionWanted;
+        preciseLatency = preciseLatencies[(size_t) precision];
+        applyLatency(); // (the processor has faded the output out for it, when it changes)
     }
 }
 

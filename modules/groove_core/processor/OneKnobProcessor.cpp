@@ -272,6 +272,14 @@ void OneKnobProcessor::prepareToPlay (double newSampleRate, int samplesPerBlock)
     const int numChannels = juce::jmax (1, getMainBusNumOutputChannels());
 
     engine->prepare (sampleRate, maxBlock, numChannels);
+    if (! choiceParams.empty())
+    {
+        std::array<int, 64> idx {};
+        const int n = juce::jmin ((int) choiceParams.size(), (int) idx.size());
+        for (int c = 0; c < n; ++c)
+            idx[(size_t) c] = juce::roundToInt (choiceValues[(size_t) c]->load());
+        engine->setChoices (idx.data(), n);
+    }
     if (! switchParams.empty())
     {
         std::array<bool, 8> on {};
@@ -426,8 +434,8 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
         toggleSmoothers[t].setTarget (target);
     }
 
-    if (! switchParams.empty())
-        updateSwitches (snapToggles);
+    // (the choices first: an engine's latency may depend on them, see
+    // OneKnobEngine::latencyForSwitches)
     if (! choiceParams.empty())
     {
         std::array<int, 64> idx {};
@@ -436,6 +444,8 @@ void OneKnobProcessor::processInternal (juce::AudioBuffer<float>& buffer, bool f
             idx[(size_t) c] = juce::roundToInt (choiceValues[(size_t) c]->load());
         engine->setChoices (idx.data(), n);
     }
+    if (! switchParams.empty())
+        updateSwitches (snapToggles);
 
     if (! config.featuresFromOutput)
         featureExtractor.process (buffer, 0, numSamples, features);

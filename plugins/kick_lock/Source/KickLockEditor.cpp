@@ -966,7 +966,7 @@ public:
         setClickingTogglesState (true);
         setTitle ("Precise");
         setTooltip ("LIVE: the note's pitch is followed, 32 ms of latency (play live). PRECISE: no note detection - the bass's low band "
-                    "and the kick are compared over the whole collision, its first 40 ms seen ahead and the rest predicted: ~100 ms of latency (the host compensates it: for mixing)");
+                    "and the kick are compared over the whole collision, seen ahead and predicted: 75 to 360 ms of latency (PRECISION, 100 by default; the host compensates it: for mixing)");
         setMouseCursor (juce::MouseCursor::PointingHandCursor);
     }
 
@@ -1108,7 +1108,14 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
     engine = std::make_unique<EnginePill> (pal);
     engineAttachment = std::make_unique<juce::ButtonParameterAttachment> (proc.getPreciseParameter(), *engine);
     // (under LOCK, where MODE was: Hold / Transition is gone, Alan)
-    addToCanvas (*engine, { 488, 376, 86, 30 });
+    addToCanvas (*engine, { 488, 350, 86, 26 });
+    // under it: PRECISE's latency, how much of the collision it sees ahead
+    precisionSel = std::make_unique<gk::ChoiceSelector> (p.getPrecisionParameter(), "PRECISION", lime, pal);
+    precisionSel->setTooltip ("PRECISE only: how far ahead Kick Lock looks at each kick (the host compensates the latency). "
+                              "75 ms: the lightest, a little less exact on notes that change right after the kick. 100 ms: the default, "
+                              "the same result as 360 on most basses. 160 ms: closer still on fast note changes. "
+                              "360 ms: the whole collision seen, nothing predicted.");
+    addToCanvas (*precisionSel, { 488, 380, 86, 38 });
     gauge = std::make_unique<PhaseGauge> (p, pal);
     addToCanvas (*gauge, { 10, 70, 182, 104 });
     scope = std::make_unique<Scope> (p, pal);
@@ -1119,10 +1126,10 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
     // next to MIX: the kick threshold (left), LOCK and its MODE (right)
     lockButton = std::make_unique<LockButton> (pal);
     lockAttachment = std::make_unique<juce::ButtonParameterAttachment> (proc.getLockParameter(), *lockButton);
-    addToCanvas (*lockButton, { 488, 326, 86, 36 });
+    addToCanvas (*lockButton, { 488, 314, 86, 32 });
     phaseButton = std::make_unique<LockButton> (pal, true);
     phaseAttachment = std::make_unique<juce::ButtonParameterAttachment> (proc.getPhaseParameter(), *phaseButton);
-    addToCanvas (*phaseButton, { 488, 284, 86, 36 });
+    addToCanvas (*phaseButton, { 488, 278, 86, 32 });
 
     trigger = std::make_unique<gk::ChoiceSelector> (p.getTriggerParameter(), "TRIGGER", orange, pal);
     trigger->setTooltip ("Auto: the kicks of Kick Lock Send on the same LINK number (put it on the kick's track), else the host's beats. "
@@ -1191,6 +1198,9 @@ void KickLockEditor::editorTick (double dt)
         lockButton->setEnabled (phaseOn);
         engine->setEnabled (phaseOn);
     }
+    // PRECISION only means something in PRECISE
+    if (const bool on = proc.getPhaseParameter().get() && proc.getPreciseParameter().get(); precisionSel->isEnabled() != on)
+        precisionSel->setEnabled (on);
     // TARGET, OFFSET, SUB CUT, WAVE START (knobs 0..3): touched, hovered or
     // automated, the scope explains what it does (Alan: "trop obscur")
     {

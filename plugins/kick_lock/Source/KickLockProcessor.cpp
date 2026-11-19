@@ -50,7 +50,10 @@ namespace
                         // the Kick Lock Send it listens to (the same LINK number on the kick's track)
                         { "linkChannel", "Link channel", "LINK", { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10" }, 1 },
                         // the bass's low end made mono under this (linear phase, like the sub)
-                        { "monoBelow", "Mono below", "MONO BELOW", { "Off", "60 Hz", "80 Hz", "100 Hz", "120 Hz", "150 Hz", "200 Hz" }, 0 } };
+                        { "monoBelow", "Mono below", "MONO BELOW", { "Off", "60 Hz", "80 Hz", "100 Hz", "120 Hz", "150 Hz", "200 Hz" }, 0 },
+                        // PRECISE's latency (Alan: "un paramétrage de précision, pour avoir le choix"):
+                        // how much of the collision it sees ahead, the rest predicted; 360 ms sees all of it
+                        { "precision", "Precision", "PRECISION", { "75 ms", "100 ms", "160 ms", "360 ms" }, KickLockDsp::defaultPrecision } };
         cfg.editorBuildsControls = false; // KickLockEditor: its own 760 x 480 layout
         cfg.editorWidth = 760;
         cfg.editorHeight = 480;
