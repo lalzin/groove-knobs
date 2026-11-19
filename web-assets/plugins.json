@@ -495,8 +495,8 @@
       },
       "images_note": "the window is 760 x 480: ui-*.webp are 1520 x 960 (ui-hero@3x.webp 2280 x 1440); ui-send.webp is Kick Lock Send's window, 840 x 1040",
       "latency_note": {
-        "fr": "PRECISE (par défaut) ~100 ms, réglable de 75 à 360 ms, compensée par le DAW ; LIVE 32 ms pour jouer",
-        "en": "PRECISE (default) ~100 ms, adjustable from 75 to 360 ms, compensated by the DAW; LIVE 32 ms to play"
+        "fr": "PRECISE (par défaut) ~65 ms, réglable jusqu'à 340 ms, compensée par le DAW ; LIVE 32 ms pour jouer",
+        "en": "PRECISE (default) ~65 ms, adjustable up to 340 ms, compensated by the DAW; LIVE 32 ms to play"
       },
       "gallery": [
         {

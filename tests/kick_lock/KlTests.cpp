@@ -1804,7 +1804,7 @@ TEST_CASE ("KL 43. Hold on a real-ish bass melody: filtered saw, eighth notes, s
     CHECK (worst < 10.0);
 }
 
-TEST_CASE ("KL 44. PRECISE: no note detection, the collision seen ahead (40 ms, the rest predicted) - the kick and the bass add up the most, on a held note, a legato melody, a filtered saw", "[kl][precise]")
+TEST_CASE ("KL 44. PRECISE: no note detection, the collision seen ahead (25 ms, the rest predicted) - the kick and the bass add up the most, on a held note, a legato melody, a filtered saw", "[kl][precise]")
 {
     const double sr = 48000.0, seconds = 10.0;
   for (double bpm : { 124.0, 145.0 })
@@ -1851,7 +1851,7 @@ TEST_CASE ("KL 44. PRECISE: no note detection, the collision seen ahead (40 ms, 
             if (engine == 2)
             {
                 CHECK (L == KickLockDsp::preciseLatencyFor (sr, 512));
-                CHECK (L < (int) (0.105 * sr)); // ~100 ms (was ~360 when the whole collision was seen)
+                CHECK (L < (int) (0.07 * sr)); // ~65 ms (was ~360 when the whole collision was seen)
             }
             double sum = 0.0;
             for (double t : kt)
@@ -1872,13 +1872,13 @@ TEST_CASE ("KL 44. PRECISE: no note detection, the collision seen ahead (40 ms, 
   }
 }
 
-TEST_CASE ("KL 45. PRECISION: each level reports its latency (75 / 100 / 160 / 360 ms), locks the held note as well, and switching it while playing changes the latency with no jump", "[kl][precise]")
+TEST_CASE ("KL 45. PRECISION: each level reports its latency (65 / 80 / 100 / 340 ms), locks the held note as well, and switching it while playing changes the latency with no jump", "[kl][precise]")
 {
     const double sr = 48000.0, bpm = 124.0, seconds = 6.0;
     const auto k = kicks (seconds, sr, bpm, 0.5);
     const auto kt = kickTimes (seconds, bpm, 0.5);
     const auto b = bass ({ { 0.0, seconds, 55.0 } }, seconds, sr);
-    const double expectMs[] { 75.0, 100.0, 160.0, 360.0 };
+    const double expectMs[] { 65.0, 80.0, 100.0, 340.0 };
     double reference = 0.0;
     for (int level = KickLockDsp::precisionLevels - 1; level >= 0; --level)
     {
@@ -1906,7 +1906,7 @@ TEST_CASE ("KL 45. PRECISION: each level reports its latency (75 / 100 / 160 / 3
         CHECK (sum > 0.995 * reference); // a held note: as well locked at every level
     }
     {
-        // switched while playing: 100 -> 360 -> 75 ms; the latency follows, the output stays finite and bounded
+        // switched while playing: 65 -> 340 -> 80 ms; the latency follows, the output stays finite and bounded
         auto p = makeKl (sr, 1.0f, true, 1.0f);
         setParam (p->getPreciseParameter(), 1.0f);
         p->prepareToPlay (sr, 512);
@@ -1916,9 +1916,9 @@ TEST_CASE ("KL 45. PRECISION: each level reports its latency (75 / 100 / 160 / 3
             if (pos == (int) (2.0 * sr) / 512 * 512)
                 setParam (p->getPrecisionParameter(), 3.0f);
             if (pos == (int) (4.0 * sr) / 512 * 512)
-                setParam (p->getPrecisionParameter(), 0.0f);
+                setParam (p->getPrecisionParameter(), 1.0f);
         });
-        CHECK (p->getDsp().getLatencySamples() == KickLockDsp::preciseLatencyFor (sr, 512, 0)); // (the host is told on the message thread)
+        CHECK (p->getDsp().getLatencySamples() == KickLockDsp::preciseLatencyFor (sr, 512, 1)); // (the host is told on the message thread)
         float peak = 0.0f;
         for (int i = 0; i < out.getNumSamples(); ++i)
             peak = juce::jmax (peak, std::abs (out.getSample (0, i)));

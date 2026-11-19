@@ -966,7 +966,7 @@ public:
         setClickingTogglesState (true);
         setTitle ("Precise");
         setTooltip ("LIVE: the note's pitch is followed, 32 ms of latency (play live). PRECISE: no note detection - the bass's low band "
-                    "and the kick are compared over the whole collision, seen ahead and predicted: 75 to 360 ms of latency (PRECISION, 100 by default; the host compensates it: for mixing)");
+                    "and the kick are compared over the whole collision, seen ahead and predicted: 65 to 340 ms of latency (PRECISION, 65 by default; the host compensates it: for mixing)");
         setMouseCursor (juce::MouseCursor::PointingHandCursor);
     }
 
@@ -1112,9 +1112,8 @@ KickLockEditor::KickLockEditor (KickLockProcessor& p)
     // under it: PRECISE's latency, how much of the collision it sees ahead
     precisionSel = std::make_unique<gk::ChoiceSelector> (p.getPrecisionParameter(), "PRECISION", lime, pal);
     precisionSel->setTooltip ("PRECISE only: how far ahead Kick Lock looks at each kick (the host compensates the latency). "
-                              "75 ms: the lightest, a little less exact on notes that change right after the kick. 100 ms: the default, "
-                              "the same result as 360 on most basses. 160 ms: closer still on fast note changes. "
-                              "360 ms: the whole collision seen, nothing predicted.");
+                              "65 ms: the default, the same result as 340 on most basses. 80 / 100 ms: closer still on notes "
+                              "that change fast after the kick. 340 ms: the whole collision seen, nothing predicted.");
     addToCanvas (*precisionSel, { 488, 380, 86, 38 });
     gauge = std::make_unique<PhaseGauge> (p, pal);
     addToCanvas (*gauge, { 10, 70, 182, 104 });

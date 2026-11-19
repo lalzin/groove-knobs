@@ -244,7 +244,7 @@ TRIGGER : **Auto** (le Send de son LINK, sinon le tempo), **Link**, **Beat** (le
 
 ## Latence
 
-**PRECISE** (par défaut) : ~100 ms — Kick Lock voit à l'avance les 40 premières ms de la collision et prédit la suite de la basse (la queue du kick, jusqu'à 300 ms) ; **PRECISION** règle ce compromis : 75, 100 (par défaut), 160 ou 360 ms (toute la collision vue, rien de prédit) et le bas de la basse, sans détection de note ; le DAW compense, c'est pour le mixage. **LIVE** : ~32 ms (le cycle de basse qui suit chaque kick est mesuré avant d'être entendu ; la note est suivie), pour jouer. Avec Kick Lock Send et un gros buffer audio, un peu plus pour attendre les kicks de l'autre piste : Kick Lock ne devine jamais un kick.
+**PRECISE** (par défaut) : ~65 ms — Kick Lock voit à l'avance les 25 premières ms de la collision et prédit la suite de la basse (la queue du kick, jusqu'à 300 ms); **PRECISION** règle ce compromis : 65 (par défaut), 80, 100 ou 340 ms (toute la collision vue, rien de prédit) et le bas de la basse, sans détection de note ; le DAW compense, c'est pour le mixage. **LIVE** : ~32 ms (le cycle de basse qui suit chaque kick est mesuré avant d'être entendu ; la note est suivie), pour jouer. Avec Kick Lock Send et un gros buffer audio, un peu plus pour attendre les kicks de l'autre piste : Kick Lock ne devine jamais un kick.
 
 Tests : `kl_tests` (30 cas : phase, convergence, ducking, lien, détection, niveau...), `kl_render`, `kl_screenshots` (`--web` pour les visuels du site), pluginval 10 et auval (`aufx KkLk Lalz`, `aufx KkLs Lalz`).
 

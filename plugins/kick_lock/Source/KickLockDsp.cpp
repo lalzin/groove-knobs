@@ -194,6 +194,33 @@ void KickLockDsp::prepare (double sr, int maxBlock, int nch)
         // rings of the sub there (~1.3 s)
         const double fsd = sr / decimation;
         hilM = (int) std::round (hilbertSeconds * fsd) | 1;
+        // the anti-alias low-pass before the decimation (Kaiser, beta 7)
+        preM = juce::jmax (1, (int) std::round (preSeconds * sr));
+        preKernel.assign ((size_t) preM + 1, 0.0f);
+        {
+            auto i0 = [] (double x)
+            {
+                double sum = 1.0, term = 1.0;
+                for (int j = 1; j < 40; ++j)
+                {
+                    term *= (x / (2.0 * j)) * (x / (2.0 * j));
+                    sum += term;
+                }
+                return sum;
+            };
+            const double fc = preCutoffHz / sr, w = juce::MathConstants<double>::twoPi * fc;
+            std::vector<double> k ((size_t) preM + 1);
+            k[0] = 2.0 * fc;
+            double dc = k[0];
+            for (int m = 1; m <= preM; ++m)
+            {
+                const double r = (double) m / (preM + 1);
+                k[(size_t) m] = std::sin (w * m) / (juce::MathConstants<double>::pi * m) * i0 (7.0 * std::sqrt (1.0 - r * r)) / i0 (7.0);
+                dc += 2.0 * k[(size_t) m];
+            }
+            for (int m = 0; m <= preM; ++m)
+                preKernel[(size_t) m] = (float) (k[(size_t) m] / dc);
+        }
         lowKernel.assign ((size_t) hilM + 1, 0.0f);
         hilbertKernel.assign ((size_t) hilM + 1, 0.0f);
         pairCutoff = -1.0f;
@@ -206,6 +233,23 @@ void KickLockDsp::prepare (double sr, int maxBlock, int nch)
         extSub.assign ((size_t) std::ceil ((collisionSeconds + 0.05) * fsd) + 4 * (size_t) hilM + 16, 0.0);
         fitBuf.assign ((size_t) std::ceil (predictMaxSeconds * fsd) + 16, 0.0);
         lpMatrix.assign ((size_t) (maxPredictOrder * (maxPredictOrder + 1)), 0.0);
+        predBuf.assign (fitBuf.size() + extSub.size() + 64, 0.0);
+        // the predictor's input: a +-8 ms low-pass at ~160 Hz on the ~3 kHz sub
+        cleanM = juce::jmax (1, (int) std::round (cleanSeconds * fsd));
+        cleanKernel.assign ((size_t) cleanM + 1, 0.0);
+        {
+            const double fc = cleanCutoffHz / fsd, w = juce::MathConstants<double>::twoPi * fc;
+            double dc = 2.0 * fc;
+            cleanKernel[0] = 2.0 * fc;
+            for (int m = 1; m <= cleanM; ++m)
+            {
+                const double r = (double) m / (cleanM + 1), win = 0.5 + 0.5 * std::cos (juce::MathConstants<double>::pi * r);
+                cleanKernel[(size_t) m] = std::sin (w * m) / (juce::MathConstants<double>::pi * m) * win;
+                dc += 2.0 * cleanKernel[(size_t) m];
+            }
+            for (auto& v : cleanKernel)
+                v /= dc;
+        }
         lpCoef.assign ((size_t) predictOrder + 2, 0.0);
         for (int c = 0; c < 2; ++c)
         {
@@ -1105,12 +1149,13 @@ void KickLockDsp::applyLatency() noexcept
 void KickLockDsp::designPair() noexcept
 {
     // everything under SUB CUT passes whole (the transition, ~30 Hz, above
-    // it): the low-pass sin (w m) / (pi m), its Hilbert pair
+    // it: centred pairMarginHz above SUB CUT, < 0.7 % rotation error 28 Hz..SUB CUT
+    // with the +-30 ms pair): the low-pass sin (w m) / (pi m), its Hilbert pair
     // (1 - cos (w m)) / (pi m), windowed alike (Kaiser, ~50 dB)
     if (juce::exactlyEqual (pairCutoff, subCutoff) || lowKernel.empty())
         return;
     pairCutoff = subCutoff;
-    const double fsd = sampleRate / decimation, fc = (subCutoff + 16.0) / fsd, w = juce::MathConstants<double>::twoPi * fc;
+    const double fsd = sampleRate / decimation, fc = (subCutoff + pairMarginHz) / fsd, w = juce::MathConstants<double>::twoPi * fc;
     const double beta = 5.0;
     auto i0 = [] (double x)
     {
@@ -1295,35 +1340,50 @@ void KickLockDsp::onKickPrecise (std::int64_t when, int source)
                 v += dSub[(size_t) ch][(size_t) (k & dMask)];
             extSub[(size_t) (k - extFrom)] = v / numChannels;
         }
-        // the fit: from just after the kick (the note heard with it) to now,
-        // at least predictMinSeconds (earlier if the kick is too recent)
-        const int order = predictOrder;
+        // the fit: on the sub cleaned of what is above ~160 Hz (a +-8 ms
+        // linear-phase low-pass: the harmonics the pair drops anyway would
+        // take the predictor's order; 300 Hz / 3 ms: -5 % on Alan's files), from just after the kick (the note
+        // heard with it) to what the cleaning allows, at least
+        // predictMinSeconds (earlier if the kick is too recent)
+        const int order = predictOrder, cm = cleanM;
+        const auto fitEnd = subEnd - cm;
         const auto fitLen = juce::jlimit ((std::int64_t) (3 * order), (std::int64_t) fitBuf.size(),
                                           juce::jmax ((std::int64_t) std::round (predictMinSeconds * sampleRate / D),
-                                                      subEnd - (std::int64_t) std::ceil (((double) when + predictStartSeconds * sampleRate - dFirst) / D) + 1));
-        const auto fitFrom = subEnd - fitLen + 1;
-        for (std::int64_t k = 0; k < fitLen; ++k)
+                                                      fitEnd - (std::int64_t) std::ceil (((double) when + predictStartSeconds * sampleRate - dFirst) / D) + 1));
+        const auto fitFrom = fitEnd - fitLen + 1;
+        auto mono = [&] (std::int64_t k)
         {
             double v = 0.0;
             for (int ch = 0; ch < numChannels; ++ch)
-                v += dSub[(size_t) ch][(size_t) ((fitFrom + k) & dMask)];
-            fitBuf[(size_t) k] = v / numChannels;
+                v += dSub[(size_t) ch][(size_t) (k & dMask)];
+            return v / numChannels;
+        };
+        for (std::int64_t k = 0; k < fitLen; ++k)
+        {
+            const auto at = fitFrom + k;
+            double v = cleanKernel[0] * mono (at);
+            for (int m = 1; m <= cm; ++m)
+                v += cleanKernel[(size_t) m] * (mono (at - m) + mono (at + m));
+            fitBuf[(size_t) k] = v;
+            predBuf[(size_t) k] = v;
         }
         const bool ok = fitPredictor (fitBuf.data(), (int) fitLen, order, lpCoef.data());
         double peak = 0.0;
         for (std::int64_t k = 0; k < fitLen; ++k)
             peak = juce::jmax (peak, std::abs (fitBuf[(size_t) k]));
-        for (auto k = subEnd + 1; k <= extTo; ++k)
+        // past the cleaned part: the prediction (cleaned too: the pair keeps
+        // only what is under ~SUB CUT + 60 Hz)
+        for (auto k = fitEnd + 1; k <= extTo; ++k)
         {
+            const auto r = k - fitFrom;
             double v = 0.0;
             if (ok)
                 for (int j = 1; j <= order; ++j)
-                {
-                    const auto src = k - j;
-                    v += lpCoef[(size_t) j] * (src >= extFrom ? extSub[(size_t) (src - extFrom)]
-                                                                : (double) (fitBuf[(size_t) juce::jlimit ((std::int64_t) 0, fitLen - 1, src - fitFrom)]));
-                }
-            extSub[(size_t) (k - extFrom)] = juce::jlimit (-1.5 * peak, 1.5 * peak, v); // (never growing away)
+                    v += lpCoef[(size_t) j] * predBuf[(size_t) (r - j)];
+            v = juce::jlimit (-1.5 * peak, 1.5 * peak, v); // (never growing away)
+            predBuf[(size_t) r] = v;
+            if (k >= extFrom)
+                extSub[(size_t) (k - extFrom)] = v;
         }
         }
     }
@@ -1790,17 +1850,22 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         // behind (it needs that much of the future)
         if (precise)
         {
-            for (int c = 0; c < nch; ++c)
-                dAcc[(size_t) c] += sub[(size_t) c][(size_t) (aligned & mask)];
+            // the bass itself, through a short linear-phase low-pass (+-2.5 ms,
+            // flat to ~220 Hz: the pair below does the band split), taken
+            // every `decimation` samples — not the sub's FIR (8 ms more latency)
             if (++dPhase >= decimation)
             {
                 dPhase = 0;
+                const std::int64_t centre = clock - preM;
                 if (dWritten == 0)
-                    dFirst = (double) aligned - 0.5 * (decimation - 1);
+                    dFirst = (double) centre;
                 for (int c = 0; c < nch; ++c)
                 {
-                    dSub[(size_t) c][(size_t) (dWritten & dMask)] = dAcc[(size_t) c] / (float) decimation;
-                    dAcc[(size_t) c] = 0.0f;
+                    const auto& in = input[(size_t) c];
+                    float acc = preKernel[0] * in[(size_t) (centre & mask)];
+                    for (int m = 1; m <= preM; ++m)
+                        acc += preKernel[(size_t) m] * (in[(size_t) ((centre - m) & mask)] + in[(size_t) ((centre + m) & mask)]);
+                    dSub[(size_t) c][(size_t) (dWritten & dMask)] = acc;
                 }
                 ++dWritten;
                 const auto k = dWritten - 1 - hilM;
