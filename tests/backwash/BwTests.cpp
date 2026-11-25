@@ -2,6 +2,7 @@
 // stability, clicks, block sizes, state, focus, UI data, CPU.
 
 #include "BackwashProcessor.h"
+#include "BackwashBounce.h"
 #include "GkTestUtils.h"
 #include <catch2/catch_approx.hpp>
 #include <cstring>
@@ -868,4 +869,155 @@ TEST_CASE ("BW 22. HITS in real time, with the defaults (LIVE + LOCK), changed a
             CHECK (juce::jmax (e[1], e[2], e[3]) < 0.05 * even);
         }
     }
+}
+
+//==============================================================================
+// BOUNCE: a file dropped on Backwash comes back with its swells (offline, 2 s mode)
+
+namespace
+{
+std::unique_ptr<BackwashProcessor> liveWith (int preset, float amount, int hits = 0)
+{
+    // The plugin as the user has it: LIVE + LOCK on (defaults)
+    auto p = std::make_unique<BackwashProcessor>();
+    setLayout (*p, 2);
+    setParam (p->getPresetParameter(), (float) preset);
+    setParam (p->getAmountParameter(), amount);
+    setParam (p->getHitsParameter(), (float) hits);
+    return p;
+}
+
+bw::bounce::Request requestAt (BackwashProcessor& live, double bpm)
+{
+    auto r = bw::bounce::requestFrom (live);
+    r.bpm = bpm;
+    return r;
+}
+} // namespace
+
+TEST_CASE ("BW 23. BOUNCE: same as the 2 s mode, latency removed, whole bars of swell before the file", "[bw][bounce]")
+{
+    const double sr = 44100.0, bpm = 124.0;
+    const auto in = ts::backbeatLoop (sr, bpm, 4);
+    const double bar = 4.0 * 60.0 / bpm * sr;
+    for (int preset : { 0, 4, 5 }) // Snare Swell, Big Inhale, Reverse Echo
+    {
+        auto live = liveWith (preset, 0.8f);
+        const auto request = requestAt (*live, bpm);
+        auto renderer = bw::bounce::makeRenderer (request);
+        int bars = -1;
+        const auto out = bw::bounce::renderBuffer (*renderer, request, in, sr, bars);
+        INFO ("preset " << preset << ", bars " << bars);
+        CHECK (renderer->getLatencySamples() == (int) std::round (2.0 * sr)); // the 2 s mode, although LIVE is on in the plugin
+        REQUIRE (bars >= 1);
+        const int pre = (int) std::llround (bars * bar);
+        REQUIRE (out.getNumSamples() == pre + in.getNumSamples());
+
+        // Reference: the plug-in in the 2 s mode, the file starting on a bar line
+        const int maxBars = (int) std::ceil (2.0 * sr / bar);
+        const int refPre = (int) std::llround (maxBars * bar), L = (int) std::round (2.0 * sr);
+        auto ref = makeProc (2, sr, preset, 0.8f);
+        const auto refOut = runAt (*ref, withSilence (in, refPre, L), sr, bpm, 512);
+        double maxDiff = 0.0;
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < out.getNumSamples(); ++i)
+                maxDiff = juce::jmax (maxDiff, (double) std::abs (out.getSample (ch, i) - refOut.getSample (ch, L + refPre - pre + i)));
+        CHECK (maxDiff < 1.0e-5);
+
+        // The swell of the first hit (beat 1 of the file) is in the bars before it
+        double before = 0.0;
+        for (int i = pre - (int) (bar / 4); i < pre; ++i)
+            before += (double) out.getSample (0, i) * out.getSample (0, i);
+        CHECK (before > 1.0e-3);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < out.getNumSamples(); ++i)
+                REQUIRE (std::isfinite (out.getSample (ch, i)));
+    }
+}
+
+TEST_CASE ("BW 24. BOUNCE: knob at 0 gives the file back, untouched", "[bw][bounce]")
+{
+    const double sr = 48000.0, bpm = 120.0;
+    const auto in = ts::backbeatLoop (sr, bpm, 2);
+    auto live = liveWith (0, 0.0f);
+    const auto request = requestAt (*live, bpm);
+    auto renderer = bw::bounce::makeRenderer (request);
+    int bars = -1;
+    const auto out = bw::bounce::renderBuffer (*renderer, request, in, sr, bars);
+    CHECK (bars == 0);
+    REQUIRE (out.getNumSamples() == in.getNumSamples());
+    double maxDiff = 0.0;
+    for (int i = 0; i < in.getNumSamples(); ++i)
+        maxDiff = juce::jmax (maxDiff, (double) std::abs (out.getSample (0, i) - in.getSample (0, i)));
+    CHECK (maxDiff < 1.0e-5);
+}
+
+TEST_CASE ("BW 25. BOUNCE: HITS and the tempo come from the plugin; no swell before beat 1, no bar added", "[bw][bounce]")
+{
+    const double sr = 44100.0;
+    for (double bpm : { 90.0, 128.0 })
+    {
+        const auto in = ts::backbeatLoop (sr, bpm, 2);
+        const double bar = 4.0 * 60.0 / bpm * sr, beat = bar / 4.0;
+        auto live = liveWith (2, 0.8f, 3); // Clap Rewind, HITS 2 + 4
+        const auto request = requestAt (*live, bpm);
+        auto renderer = bw::bounce::makeRenderer (request);
+        int bars = -1;
+        const auto out = bw::bounce::renderBuffer (*renderer, request, in, sr, bars);
+        INFO ("bpm " << bpm << ", bars " << bars);
+        CHECK (bars == 0); // 2 + 4: beat 1 has no swell, the file comes back with its own start
+        const int pre = (int) std::llround (bars * bar);
+        // wet = out - dry, in the quarter beat before each beat of bar 2
+        std::array<double, 4> e {};
+        for (int k = 0; k < 4; ++k)
+            for (int i = (int) (bar + k * beat - beat / 4); i < (int) (bar + k * beat); ++i)
+            {
+                const double w = out.getSample (0, pre + i) - in.getSample (0, i);
+                e[(size_t) k] += w * w;
+            }
+        INFO (e[0] << " " << e[1] << " " << e[2] << " " << e[3]);
+        CHECK (juce::jmin (e[1], e[3]) > 20.0 * juce::jmax (e[0], e[2]));
+    }
+}
+
+TEST_CASE ("BW 26. BOUNCE: from a file to a WAV next to the others, never over an earlier one", "[bw][bounce]")
+{
+    const double sr = 44100.0, bpm = 124.0;
+    const auto dir = juce::File::createTempFile ("bw_bounce");
+    dir.createDirectory();
+    const auto src = dir.getChildFile ("Clap loop.wav");
+    {
+        const auto in = ts::backbeatLoop (sr, bpm, 2);
+        std::unique_ptr<juce::OutputStream> os = std::make_unique<juce::FileOutputStream> (src);
+        juce::WavAudioFormat wav;
+        auto w = wav.createWriterFor (os, juce::AudioFormatWriterOptions {}.withSampleRate (sr).withNumChannels (1).withBitsPerSample (24));
+        REQUIRE (w != nullptr);
+        REQUIRE (w->writeFromAudioSampleBuffer (in, 0, in.getNumSamples()));
+    }
+    auto live = liveWith (0, 0.8f);
+    const auto request = requestAt (*live, bpm);
+    juce::File first;
+    for (int k = 0; k < 2; ++k)
+    {
+        auto renderer = bw::bounce::makeRenderer (request);
+        const auto r = bw::bounce::render (*renderer, request, src, dir);
+        INFO (r.error);
+        REQUIRE (r.file.existsAsFile());
+        CHECK (r.file.getFileName().startsWith ("Clap_loop_Backwash_Snare_Swell_124bpm_1bar"));
+        CHECK (r.file != first);
+        first = r.file;
+        juce::WavAudioFormat wav;
+        std::unique_ptr<juce::AudioFormatReader> rd (wav.createReaderFor (new juce::FileInputStream (r.file), true));
+        REQUIRE (rd != nullptr);
+        CHECK (rd->numChannels == 2);
+        CHECK (juce::exactlyEqual (rd->sampleRate, sr));
+        CHECK ((double) rd->lengthInSamples == Catch::Approx (2.0 * 4.0 * 60.0 / bpm * sr + 1.0 * 4.0 * 60.0 / bpm * sr).margin (2.0));
+    }
+    const auto bad = dir.getChildFile ("notes.txt");
+    bad.replaceWithText ("x");
+    auto renderer = bw::bounce::makeRenderer (request);
+    CHECK (bw::bounce::render (*renderer, request, bad, dir).error.isNotEmpty());
+    CHECK_FALSE (bw::bounce::isAcceptedFile (bad.getFullPathName()));
+    CHECK (bw::bounce::isAcceptedFile (src.getFullPathName()));
+    dir.deleteRecursively();
 }

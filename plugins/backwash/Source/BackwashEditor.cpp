@@ -1,5 +1,6 @@
 #include "BackwashEditor.h"
 #include "SwellMascot.h"
+#include "BounceChip.h"
 
 namespace bw
 {
@@ -47,6 +48,47 @@ BackwashEditor::BackwashEditor (BackwashProcessor& p)
         modes->setChipTooltip (BackwashDsp::lockSwitch,
                                juce::String::fromUTF8 ("LOCK : fige la m\xc3\xa9moire du mode LIVE (le swell continue m\xc3\xaame si la piste change). M\xc3\xa9moire vide : la premi\xc3\xa8re mesure jou\xc3\xa9""e est enregistr\xc3\xa9""e d'abord"));
     }
+    // WAV: drop a sound, drag it back out with its swells (under LIVE / LOCK)
+    const auto palette = makePalette();
+    bounceChip = std::make_unique<BounceChip> (p, palette);
+    addToCanvas (*bounceChip, { 8, 374, 68, 36 });
+    dropOverlay = std::make_unique<DropOverlay> (palette);
+    addToCanvas (*dropOverlay, { 0, 0, 420, 520 });
+    dropOverlay->setVisible (false);
+}
+
+BackwashEditor::~BackwashEditor() = default;
+
+bool BackwashEditor::isInterestedInFileDrag (const juce::StringArray& files)
+{
+    if (bounceChip->isBusy())
+        return false;
+    for (const auto& f : files)
+        if (bounce::isAcceptedFile (f))
+            return true;
+    return false;
+}
+
+void BackwashEditor::showDropOverlay (bool on)
+{
+    dropOverlay->setVisible (on);
+    if (on)
+        dropOverlay->toFront (false);
+    bounceChip->setDropHighlight (on);
+}
+
+void BackwashEditor::fileDragEnter (const juce::StringArray&, int, int) { showDropOverlay (true); }
+void BackwashEditor::fileDragExit (const juce::StringArray&) { showDropOverlay (false); }
+
+void BackwashEditor::filesDropped (const juce::StringArray& files, int, int)
+{
+    showDropOverlay (false);
+    for (const auto& f : files)
+        if (bounce::isAcceptedFile (f))
+        {
+            bounceChip->start (juce::File (f));
+            break;
+        }
 }
 
 void BackwashEditor::setInhaleOverride (float inhale)

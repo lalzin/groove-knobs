@@ -6,6 +6,7 @@
 // Writes contact_sheet.png and breath_sheet.png for review.
 
 #include "BackwashEditor.h"
+#include "BounceChip.h"
 #include "WebAssets.h"
 #include <iostream>
 
@@ -20,13 +21,15 @@ bool writePng (const juce::Image& img, const juce::File& file)
     return os.openedOk() && juce::PNGImageFormat().writeImageToStream (img, os);
 }
 
-juce::Image shoot (bw::BackwashProcessor& proc, float scale, float inhale = 0.5f)
+juce::Image shoot (bw::BackwashProcessor& proc, float scale, float inhale = 0.5f, std::function<void (bw::BackwashEditor&)> setup = {})
 {
     proc.editorScale.store (juce::jmin (2.0f, scale)); // the editor caps its zoom at 200 %
     std::unique_ptr<juce::AudioProcessorEditor> ed (proc.createEditor());
     auto* editor = dynamic_cast<bw::BackwashEditor*> (ed.get());
     editor->setInhaleOverride (proc.getAmountParameter().getValue() > 0.0f ? inhale : 0.0f);
     editor->snapForSnapshot();
+    if (setup)
+        setup (*editor);
     return editor->createComponentSnapshot (editor->getLocalBounds(), true, juce::jmax (1.0f, scale / 2.0f));
 }
 
@@ -184,6 +187,16 @@ int main (int argc, char** argv)
         writePng (shoot (proc, 2.0f, 0.5f), outDir.getChildFile ("selectors_long@2x.png"));
         setParam (proc.getSwellLengthParameter(), 0.0f);
         setParam (proc.getHitsParameter(), 0.0f);
+        // BOUNCE: a file dragged over the plugin, then the WAV ready to drag out
+        auto overlay = [] (bw::BackwashEditor& e) { e.showDropOverlay (true); };
+        row.push_back ({ "WAV: drop", shoot (proc, 1.0f, 0.5f, overlay) });
+        writePng (shoot (proc, 2.0f, 0.5f, overlay), outDir.getChildFile ("bounce_drop@2x.png"));
+        const auto wav = juce::File::createTempFile (".wav");
+        wav.replaceWithText ("x");
+        auto ready = [wav] (bw::BackwashEditor& e) { e.getBounceChip().setResult ({ wav, {}, 1 }); };
+        row.push_back ({ "WAV: ready", shoot (proc, 1.0f, 0.5f, ready) });
+        writePng (shoot (proc, 2.0f, 0.5f, ready), outDir.getChildFile ("bounce_ready@2x.png"));
+        wav.deleteFile();
         setParam (proc.getLiveParameter(), 0.0f);
         setParam (proc.getLockParameter(), 0.0f);
         chipRows.push_back (std::move (row));

@@ -160,6 +160,8 @@ public:
         locked = n > lockSwitch && on[lockSwitch];
     }
     bool isLiveMode() const noexcept { return liveMode; }
+    /** Host bar length in quarter notes, as last seen (4 until a block ran). */
+    double getBeatsPerBar() const noexcept { return beatsPerBarShared.load(); }
     void setChoices (const int* idx, int n) override
     {
         lengthIndex = n > lengthChoice ? idx[lengthChoice] : 0;

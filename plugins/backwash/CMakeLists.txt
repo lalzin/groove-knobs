@@ -29,6 +29,8 @@ add_library(BackwashCode INTERFACE)
 target_sources(BackwashCode INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/BackwashDsp.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/BackwashProcessor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/BackwashBounce.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/Source/BounceChip.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/BackwashEditor.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Source/SwellMascot.cpp)
 target_include_directories(BackwashCode INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/Source)
