@@ -1,7 +1,8 @@
 # Changelog
 
-## Backwash 0.1.11-bounce1 — 2026-11-25 (version de test)
-- **Backwash : glisser-déposer en WAV, sans latence.** Dépose un son sur Backwash (ou clique sur la nouvelle puce **WAV**, sous LIVE / LOCK) : il revient tout de suite avec ses souffles, rendu hors ligne dans le mode 2 s (exact sur n'importe quel son) avec le preset, le knob, les puces et HITS en cours, au tempo d'Ableton. Glisse ensuite le WAV (puce **DRAG**) dans ton set, une mesure avant l'original : les souffles tombent pile sur ses coups. Fichiers dans Musique/Backwash.
+## Backwash 0.1.11-bounce2 — 2026-11-25 (version de test)
+- **Backwash : glisse les souffles dans ton set, puis zéro latence.** Dès que Backwash a entendu une mesure, la nouvelle puce **WAV** (sous LIVE / LOCK) devient **DRAG** : glisse-la dans Ableton et tu obtiens les souffles seuls de cette mesure, en WAV d'une mesure, avec les réglages en cours. Pose-le sur une piste, sur une barre de mesure, en boucle : tu peux retirer Backwash. Fichiers dans Musique/Backwash.
+- (bounce1, même jour : il fallait déposer un fichier sur Backwash pour le récupérer avec ses souffles ; remplacé.)
 
 ## 0.1.11 — 2026-11-19 (toute la suite, onze plugins)
 - **Kick Lock : PRECISE passe de ~360 ms à ~50 ms de latence.** Kick Lock voit les 25 premières ms après chaque kick et prédit la suite de la basse (jusqu'à 300 ms) pour choisir la rotation ; la rotation arrive juste après le kick, pendant que le ducking tient le sub bas. Son analyse part de la basse elle-même et tourne la phase avec un filtre plus court. Sur tes fichiers de test, le résultat reste à 2 % de l'ancien PRECISE ; une note tenue, une mélodie legato ou un kick long, pareil. LIVE reste à 32 ms.

@@ -980,44 +980,79 @@ TEST_CASE ("BW 25. BOUNCE: HITS and the tempo come from the plugin; no swell bef
     }
 }
 
-TEST_CASE ("BW 26. BOUNCE: from a file to a WAV next to the others, never over an earlier one", "[bw][bounce]")
+TEST_CASE ("BW 26. WAV: the swells of the bar heard, as a loop equal to the 2 s mode's, written to a file", "[bw][bounce]")
 {
     const double sr = 44100.0, bpm = 124.0;
-    const auto dir = juce::File::createTempFile ("bw_bounce");
-    dir.createDirectory();
-    const auto src = dir.getChildFile ("Clap loop.wav");
-    {
-        const auto in = ts::backbeatLoop (sr, bpm, 2);
-        std::unique_ptr<juce::OutputStream> os = std::make_unique<juce::FileOutputStream> (src);
-        juce::WavAudioFormat wav;
-        auto w = wav.createWriterFor (os, juce::AudioFormatWriterOptions {}.withSampleRate (sr).withNumChannels (1).withBitsPerSample (24));
-        REQUIRE (w != nullptr);
-        REQUIRE (w->writeFromAudioSampleBuffer (in, 0, in.getNumSamples()));
-    }
+    const int bar = (int) std::round (4.0 * 60.0 / bpm * sr), beat = bar / 4;
+    // The plugin as the user has it (LIVE + LOCK): it hears a few bars
     auto live = liveWith (0, 0.8f);
-    const auto request = requestAt (*live, bpm);
+    live->prepareToPlay (sr, 512);
+    runAt (*live, ts::backbeatLoop (sr, bpm, 3), sr, bpm, 512);
+    REQUIRE (live->getBackwashDsp().getTelemetry().liveMemoryComplete.load());
+    const auto memory = live->getBackwashDsp().copyMemory();
+    REQUIRE ((int) memory.size() == bar);
+
+    const auto request = bw::bounce::requestFrom (*live);
+    auto renderer = bw::bounce::makeRenderer (request);
+    const auto t0 = juce::Time::getMillisecondCounterHiRes();
+    const auto loop = bw::bounce::renderLoop (*renderer, request, memory, 4.0, sr);
+    INFO ("render " << (juce::Time::getMillisecondCounterHiRes() - t0) << " ms");
+    REQUIRE (loop.getNumSamples() == bar);
+    REQUIRE (loop.getNumChannels() == 2);
+
+    // Reference: the 2 s mode on the bar looped, steady state (bar 3), minus the dry
+    Buffer tiled (2, 6 * bar);
+    for (int k = 0; k < 6; ++k)
+        for (int ch = 0; ch < 2; ++ch)
+            tiled.copyFrom (ch, k * bar, memory.data(), bar);
+    const int L = (int) std::round (2.0 * sr);
+    auto ref = makeProc (2, sr, 0, 0.8f);
+    const auto refOut = runAt (*ref, withSilence (tiled, 0, L), sr, bpm, 512);
+    double maxDiff = 0.0, peak = 0.0;
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < bar; ++i)
+        {
+            const double w = refOut.getSample (ch, L + 3 * bar + i) - memory[(size_t) i];
+            maxDiff = juce::jmax (maxDiff, std::abs (loop.getSample (ch, i) - w));
+            peak = juce::jmax (peak, std::abs (w));
+        }
+    INFO ("max diff " << maxDiff << ", peak " << peak);
+    CHECK (peak > 0.05);
+    CHECK (maxDiff < 1.0e-4 * peak + 1.0e-6);
+
+    // Swells before the claps (beats 2 and 4), and before beat 1 (from the bar before)
+    auto e = [&] (int from, int to)
+    {
+        double sum = 0.0;
+        for (int i = juce::jmax (0, from); i < to; ++i)
+            sum += (double) loop.getSample (0, i) * loop.getSample (0, i);
+        return sum;
+    };
+    CHECK (e (beat - beat / 4, beat) > 1.0e-2);
+    CHECK (e (3 * beat - beat / 4, 3 * beat) > 1.0e-2);
+    CHECK (e (bar - beat / 4, bar) > 1.0e-3);
+
+    // The file
+    const auto dir = juce::File::createTempFile ("bw_loop");
     juce::File first;
     for (int k = 0; k < 2; ++k)
     {
-        auto renderer = bw::bounce::makeRenderer (request);
-        const auto r = bw::bounce::render (*renderer, request, src, dir);
-        INFO (r.error);
-        REQUIRE (r.file.existsAsFile());
-        CHECK (r.file.getFileName().startsWith ("Clap_loop_Backwash_Snare_Swell_124bpm_1bar"));
-        CHECK (r.file != first);
-        first = r.file;
+        const auto f = bw::bounce::writeLoop (*live, dir);
+        REQUIRE (f.existsAsFile());
+        CHECK (f.getFileName().startsWith ("Backwash_Snare_Swell_124bpm_1bar"));
+        CHECK (f != first); // never over an earlier one
+        first = f;
         juce::WavAudioFormat wav;
-        std::unique_ptr<juce::AudioFormatReader> rd (wav.createReaderFor (new juce::FileInputStream (r.file), true));
+        std::unique_ptr<juce::AudioFormatReader> rd (wav.createReaderFor (new juce::FileInputStream (f), true));
         REQUIRE (rd != nullptr);
         CHECK (rd->numChannels == 2);
+        CHECK (rd->lengthInSamples == bar);
         CHECK (juce::exactlyEqual (rd->sampleRate, sr));
-        CHECK ((double) rd->lengthInSamples == Catch::Approx (2.0 * 4.0 * 60.0 / bpm * sr + 1.0 * 4.0 * 60.0 / bpm * sr).margin (2.0));
     }
-    const auto bad = dir.getChildFile ("notes.txt");
-    bad.replaceWithText ("x");
-    auto renderer = bw::bounce::makeRenderer (request);
-    CHECK (bw::bounce::render (*renderer, request, bad, dir).error.isNotEmpty());
-    CHECK_FALSE (bw::bounce::isAcceptedFile (bad.getFullPathName()));
-    CHECK (bw::bounce::isAcceptedFile (src.getFullPathName()));
     dir.deleteRecursively();
+
+    // Nothing heard yet: no file
+    auto fresh = liveWith (0, 0.8f);
+    fresh->prepareToPlay (sr, 512);
+    CHECK_FALSE (bw::bounce::writeLoop (*fresh, dir).existsAsFile());
 }

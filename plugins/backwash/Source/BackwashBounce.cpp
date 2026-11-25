@@ -4,15 +4,6 @@ namespace bw::bounce
 {
 namespace
 {
-    juce::AudioFormatManager& formats()
-    {
-        static juce::AudioFormatManager m;
-        static const bool registered = [] { m.registerBasicFormats(); return true; }(); // WAV, AIFF, FLAC, Ogg, MP3, CoreAudio on macOS
-        juce::ignoreUnused (registered);
-        return m;
-    }
-    std::mutex formatsLock;
-
     /** The host transport, as the offline render sees it: playing from 0 at a
         fixed tempo and time signature. */
     class BouncePlayHead final : public juce::AudioPlayHead
@@ -65,11 +56,6 @@ namespace
         return w != nullptr && w->writeFromAudioSampleBuffer (b, 0, b.getNumSamples());
     }
 } // namespace
-
-bool isAcceptedFile (const juce::String& path)
-{
-    return juce::File (path).hasFileExtension ("wav;wave;aif;aiff;flac;mp3;ogg");
-}
 
 juce::File defaultFolder()
 {
@@ -185,58 +171,54 @@ juce::AudioBuffer<float> renderBuffer (BackwashProcessor& renderer, const Reques
     return out;
 }
 
-Result render (BackwashProcessor& renderer, const Request& request, const juce::File& input, const juce::File& folder,
-               const std::function<bool (float)>& progress)
+juce::AudioBuffer<float> renderLoop (BackwashProcessor& renderer, const Request& request, const std::vector<float>& memory,
+                                     double cycleBeats, double sampleRate)
 {
-    Result r;
-    std::unique_ptr<juce::AudioFormatReader> reader;
-    {
-        const std::lock_guard<std::mutex> lock (formatsLock);
-        reader.reset (formats().createReaderFor (input));
-    }
-    if (reader == nullptr)
-    {
-        r.error = juce::String::fromUTF8 ("Format non lu : ") + input.getFileName();
-        return r;
-    }
-    const double sr = reader->sampleRate;
-    if (sr < 8000.0 || reader->lengthInSamples <= 0)
-    {
-        r.error = juce::String::fromUTF8 ("Fichier vide : ") + input.getFileName();
-        return r;
-    }
-    if ((double) reader->lengthInSamples > maxInputSeconds * sr)
-    {
-        r.error = juce::String::fromUTF8 ("Trop long (10 min max) : ") + input.getFileName();
-        return r;
-    }
-    const int n = (int) reader->lengthInSamples;
-    const int nch = juce::jlimit (1, 2, (int) reader->numChannels);
-    juce::AudioBuffer<float> in (nch, n);
-    reader->read (&in, 0, n, 0, true, nch > 1);
-    reader.reset();
-
+    const int len = (int) memory.size();
+    if (len <= 0 || cycleBeats <= 0.0)
+        return {};
+    // The tempo the memory was recorded at: one cycle is exactly `len` samples
+    Request r = request;
+    r.bpm = cycleBeats * 60.0 * sampleRate / (double) len;
+    // The cycle kept, with enough cycles before it for its longest swell (2 s)
+    // and one after it: the swell at the end of the bar leads to the next bar's
+    // first beat
+    const int cycles = (int) std::ceil (BackwashDsp::lookaheadSeconds * sampleRate / (double) len - 1.0e-9) + 2;
+    juce::AudioBuffer<float> in (1, cycles * len);
+    for (int c = 0; c < cycles; ++c)
+        in.copyFrom (0, c * len, memory.data(), len);
     int bars = 0;
-    const auto out = renderBuffer (renderer, request, in, sr, bars, progress);
-    if (out.getNumSamples() == 0)
-    {
-        r.error = juce::String::fromUTF8 ("Annul\xc3\xa9");
-        return r;
-    }
+    const auto out = renderBuffer (renderer, r, in, sampleRate, bars);
+    if (out.getNumSamples() < 2 * len)
+        return {};
+    const int last = out.getNumSamples() - 2 * len; // the next-to-last cycle (the output ends with the input)
+    juce::AudioBuffer<float> wet (2, len);
+    for (int ch = 0; ch < 2; ++ch)
+        for (int i = 0; i < len; ++i)
+            wet.setSample (ch, i, out.getSample (ch, last + i) - memory[(size_t) i]);
+    return wet;
+}
 
-    // e.g. "Clap_Backwash_Snare_Swell_124bpm_1bar.wav", never over an earlier one (it may be in a set)
-    const auto preset = clean (renderer.getConfig().presets[renderer.getPresetParameter().getIndex()].name);
-    const auto name = clean (input.getFileNameWithoutExtension()) + "_Backwash_" + preset + "_" + tempoText (request.bpm) + "bpm_"
-                      + juce::String (bars) + (bars == 1 ? "bar" : "bars");
+juce::File writeLoop (BackwashProcessor& live, const juce::File& folder)
+{
+    const auto memory = live.getBackwashDsp().copyMemory();
+    if (memory.empty() || ! live.getBackwashDsp().getTelemetry().liveMemoryComplete.load())
+        return {};
+    const auto request = requestFrom (live);
+    auto renderer = makeRenderer (request);
+    const double cycleBeats = live.getBackwashDsp().getMemoryCycleBeats();
+    const double sr = live.getBackwashDsp().getSampleRate();
+    const auto wet = renderLoop (*renderer, request, memory, cycleBeats, sr);
+    if (wet.getNumSamples() == 0)
+        return {};
+
+    // e.g. "Backwash_Snare_Swell_124bpm_1bar.wav"
+    const double bpm = cycleBeats * 60.0 * sr / (double) memory.size();
+    const int bars = juce::jmax (1, juce::roundToInt (cycleBeats / juce::jmax (0.25, request.beatsPerBar)));
+    const auto preset = clean (renderer->getConfig().presets[renderer->getPresetParameter().getIndex()].name);
+    const auto name = "Backwash_" + preset + "_" + tempoText (bpm) + "bpm_" + juce::String (bars) + (bars == 1 ? "bar" : "bars");
     folder.createDirectory();
     const auto file = folder.getChildFile (name + ".wav").getNonexistentSibling (false);
-    if (! writeWav (file, out, sr))
-    {
-        r.error = juce::String::fromUTF8 ("\xc3\x89""criture impossible : ") + file.getFullPathName();
-        return r;
-    }
-    r.file = file;
-    r.preRollBars = bars;
-    return r;
+    return writeWav (file, wet, sr) ? file : juce::File();
 }
 } // namespace bw::bounce

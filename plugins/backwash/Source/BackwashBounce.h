@@ -4,23 +4,17 @@
 
 namespace bw
 {
-/** BOUNCE: a sound file dropped on Backwash comes back as a new WAV with its
-    swells, rendered offline in the 2 s mode (exact on any sound, whatever the
-    LIVE / LOCK memory) and with no latency left in it.
+/** BOUNCE: the swells of the bar Backwash has heard (its LIVE memory), as a
+    WAV loop to drag into the DAW: put it on a track from a bar line, loop it,
+    and Backwash can go (no latency at all).
 
-    The file is assumed to start on a downbeat. The result starts whole bars
-    earlier (the room for the first swells, usually one bar) and ends with the
-    file: dropped in the DAW that many bars before the original, it lines up
-    with it. Same preset, knob, chips and HITS as the plugin, at the host
-    tempo and time signature. */
+    The memory (one bar, mono, by musical position) is played several times
+    in a row through an offline Backwash in the 2 s mode (exact), with the
+    plugin's preset, knob, chips and HITS; one bar in the middle, minus the dry
+    sound, is the loop: it holds the end of the swells of the bar before and
+    the swell into the next bar's first beat, as when it loops. */
 namespace bounce
 {
-    /** Files Backwash accepts (wav, aif, aiff, flac, mp3, ogg). */
-    bool isAcceptedFile (const juce::String& path);
-
-    /** Longest input accepted, seconds. */
-    constexpr double maxInputSeconds = 600.0;
-
     struct Request
     {
         juce::MemoryBlock state; // the plugin's state (getStateInformation)
@@ -30,26 +24,26 @@ namespace bounce
     /** Message thread: reads the live plugin's settings. */
     Request requestFrom (BackwashProcessor& live);
 
-    struct Result
-    {
-        juce::File file;      // the WAV written (invalid on failure)
-        juce::String error;   // why it failed, for the UI (French)
-        int preRollBars = 0;  // bars of swell before the original's start
-    };
-
     /** Message thread: an offline Backwash with the request's settings, in the
         2 s mode, not yet prepared (create it here: parameter changes on the
         message thread do not leave asynchronous updates behind). */
     std::unique_ptr<BackwashProcessor> makeRenderer (const Request& request);
 
-    /** Any thread: renders `input` through `renderer` and writes the WAV in
-        `folder`. `progress` (0..1) may return false to cancel. */
-    Result render (BackwashProcessor& renderer, const Request& request, const juce::File& input, const juce::File& folder,
-                   const std::function<bool (float)>& progress = {});
-
-    /** Pure: renders a buffer (no files). Fills `preRollBars`. */
+    /** Renders a buffer that starts on a bar line: [whole bars of swell
+        before it][the buffer, with its swells], latency removed. Fills
+        `preRollBars` (0 when nothing comes before the first beat). */
     juce::AudioBuffer<float> renderBuffer (BackwashProcessor& renderer, const Request& request, const juce::AudioBuffer<float>& input,
                                            double sampleRate, int& preRollBars, const std::function<bool (float)>& progress = {});
+
+    /** The swell alone (stereo) of one loop of `memory` (mono, one cycle of
+        `cycleBeats` quarter notes starting on a bar line, at `sampleRate`). */
+    juce::AudioBuffer<float> renderLoop (BackwashProcessor& renderer, const Request& request, const std::vector<float>& memory,
+                                         double cycleBeats, double sampleRate);
+
+    /** Message thread: renders the live plugin's memory and writes the WAV in
+        `folder` (never over an earlier one). Invalid file if there is no
+        complete memory yet or the write fails. */
+    juce::File writeLoop (BackwashProcessor& live, const juce::File& folder);
 
     /** ~/Music/Backwash (created). */
     juce::File defaultFolder();

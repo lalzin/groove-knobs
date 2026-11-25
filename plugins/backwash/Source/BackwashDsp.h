@@ -162,6 +162,10 @@ public:
     bool isLiveMode() const noexcept { return liveMode; }
     /** Host bar length in quarter notes, as last seen (4 until a block ran). */
     double getBeatsPerBar() const noexcept { return beatsPerBarShared.load(); }
+    /** Length of the LIVE memory in quarter notes (one bar; two with HITS 1 / 2 BARS). */
+    double getMemoryCycleBeats() const noexcept { return memoryCycleBeatsShared.load(); }
+    /** The rate the engine was prepared at (the memory's). */
+    double getSampleRate() const noexcept { return sampleRate; }
     void setChoices (const int* idx, int n) override
     {
         lengthIndex = n > lengthChoice ? idx[lengthChoice] : 0;

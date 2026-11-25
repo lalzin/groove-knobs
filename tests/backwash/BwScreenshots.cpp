@@ -187,16 +187,10 @@ int main (int argc, char** argv)
         writePng (shoot (proc, 2.0f, 0.5f), outDir.getChildFile ("selectors_long@2x.png"));
         setParam (proc.getSwellLengthParameter(), 0.0f);
         setParam (proc.getHitsParameter(), 0.0f);
-        // BOUNCE: a file dragged over the plugin, then the WAV ready to drag out
-        auto overlay = [] (bw::BackwashEditor& e) { e.showDropOverlay (true); };
-        row.push_back ({ "WAV: drop", shoot (proc, 1.0f, 0.5f, overlay) });
-        writePng (shoot (proc, 2.0f, 0.5f, overlay), outDir.getChildFile ("bounce_drop@2x.png"));
-        const auto wav = juce::File::createTempFile (".wav");
-        wav.replaceWithText ("x");
-        auto ready = [wav] (bw::BackwashEditor& e) { e.getBounceChip().setResult ({ wav, {}, 1 }); };
+        // WAV: a bar heard, ready to drag out
+        auto ready = [] (bw::BackwashEditor& e) { e.getBounceChip().setReadyForSnapshot (true); };
         row.push_back ({ "WAV: ready", shoot (proc, 1.0f, 0.5f, ready) });
-        writePng (shoot (proc, 2.0f, 0.5f, ready), outDir.getChildFile ("bounce_ready@2x.png"));
-        wav.deleteFile();
+        writePng (shoot (proc, 2.0f, 0.5f, ready), outDir.getChildFile ("wav_ready@2x.png"));
         setParam (proc.getLiveParameter(), 0.0f);
         setParam (proc.getLockParameter(), 0.0f);
         chipRows.push_back (std::move (row));
