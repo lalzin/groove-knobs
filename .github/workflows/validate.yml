@@ -70,8 +70,8 @@ jobs:
           if ($failed.Count -gt 0) { Write-Host "FAILED: $($failed -join ', ')"; exit 1 }
           Write-Host "All 12 VST3s pass both validators."
 
-      # Kick Lock failed now and then on Windows (2 runs in 3, nothing in the
-      # logs' error lines): run it again and again, keep what a failure says
+      # Kick Lock crashed now and then on Windows (the scope written past its rings after a rate change, fixed 2026-11-28):
+      # run again a few times under the debugger, the call stack of a crash kept
       - name: Kick Lock, repeated
         if: always()
         shell: pwsh
@@ -86,7 +86,7 @@ jobs:
           $pdb = Get-ChildItem build-win -Recurse -Filter "Kick Lock.pdb" | Select-Object -First 1
           $report += "cdb: $($cdb.FullName)  pdb: $($pdb.FullName)"
           $stacked = $false
-          for ($i = 1; $i -le 20; $i++) {
+          for ($i = 1; $i -le 5; $i++) {
             if ($cdb -and -not $stacked) {
               & $cdb.FullName -g -G -lines -y "$($pdb.DirectoryName);srv*" -c ".ecxr; r; kn 40; q" $validator.FullName $kl.FullName *> "logs\kl-cdb-$i.log"
               $c = $LASTEXITCODE
@@ -100,7 +100,7 @@ jobs:
               if ($c -ne 0) { $bad++ }
             }
           }
-          for ($i = 1; $i -le 2; $i++) {
+          for ($i = 1; $i -le 1; $i++) {
             & $pluginval.FullName --strictness-level 10 --validate-in-process --timeout-ms 600000 --validate $kl.FullName *> "logs\kl-pluginval-$i.log"; $c = $LASTEXITCODE
             $report += "pluginval #${i}: code $c"
             if ($c -ne 0) { $bad++; if ($i -eq 1) { Get-Content "logs\kl-pluginval-$i.log" -Tail 30 | ForEach-Object { $report += "    > $_" } } }
