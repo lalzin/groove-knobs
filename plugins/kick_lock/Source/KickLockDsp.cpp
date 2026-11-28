@@ -266,10 +266,21 @@ void KickLockDsp::prepare (double sr, int maxBlock, int nch)
     slowRelease = (float) (1.0 - std::exp (-1.0 / (0.06 * sr)));
     rmsCoeff = (float) (1.0 - std::exp (-1.0 / (0.05 * sr)));
     subPeakDecay = (float) std::exp (-1.0 / (1.0 * sr));
-    telemetry.scopeSize = (int) (2.0 * sr) / KickTelemetry::scopeDecimation;
-    telemetry.scopeSub = std::make_unique<std::atomic<float>[]> ((size_t) telemetry.scopeSize);
-    telemetry.scopeBass = std::make_unique<std::atomic<float>[]> ((size_t) telemetry.scopeSize);
-    telemetry.scopeKick = std::make_unique<std::atomic<float>[]> ((size_t) telemetry.scopeSize);
+    // the scope's rings: 2 s at this rate. Never shrunk (a lower rate uses
+    // their start), so the editor never reads a freed ring; and the write
+    // position back to 0 (it pointed past the end of the smaller rings after
+    // a higher rate: a crash on Windows, found by Steinberg's validator)
+    const int scopeSize = (int) (2.0 * sr) / KickTelemetry::scopeDecimation;
+    telemetry.scopeWrite.store (0, std::memory_order_relaxed);
+    if (scopeSize > telemetry.scopeCapacity)
+    {
+        telemetry.scopeSize = 0;
+        telemetry.scopeSub = std::make_unique<std::atomic<float>[]> ((size_t) scopeSize);
+        telemetry.scopeBass = std::make_unique<std::atomic<float>[]> ((size_t) scopeSize);
+        telemetry.scopeKick = std::make_unique<std::atomic<float>[]> ((size_t) scopeSize);
+        telemetry.scopeCapacity = scopeSize;
+    }
+    telemetry.scopeSize = scopeSize;
     reset();
 }
 
@@ -352,6 +363,7 @@ void KickLockDsp::reset()
     subRms = midRms = sideRms = lrRms = 0.0f;
     subPeak = 0.0f;
     scopeCounter = 0;
+    telemetry.scopeWrite.store (0, std::memory_order_relaxed);
     for (int i = 0; i < telemetry.scopeSize; ++i)
     {
         telemetry.scopeSub[(size_t) i].store (0.0f, std::memory_order_relaxed);
@@ -2233,7 +2245,9 @@ void KickLockDsp::processWet (juce::AudioBuffer<float>& buffer, int numSamples, 
         if (++scopeCounter >= KickTelemetry::scopeDecimation && telemetry.scopeSize > 0)
         {
             scopeCounter = 0;
-            const int w = telemetry.scopeWrite.load (std::memory_order_relaxed);
+            int w = telemetry.scopeWrite.load (std::memory_order_relaxed);
+            if (w < 0 || w >= telemetry.scopeSize)
+                w = 0;
             telemetry.scopeSub[(size_t) w].store (scopeSub, std::memory_order_relaxed);
             // the bass as heard, its lowest part only (Alan: a saw's highs hid
             // where its cycle is against the kick): its fundamental as heard

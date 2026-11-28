@@ -2326,3 +2326,27 @@ TEST_CASE ("KL 39. As a VST3 validator does it: 22.05 to 384 kHz, the defaults (
                 p->releaseResources();
             }
 }
+
+TEST_CASE ("KL 40. One instance through every rate, up then down (as a host or a validator re-prepares it): no write past the scope's rings", "[kl][stability]")
+{
+    // the scope's write position stayed where the 384 kHz rings had taken it:
+    // past the end of the smaller rings at the next, lower rate (a crash on
+    // Windows in Steinberg's validator and pluginval)
+    auto p = std::make_unique<KickLockProcessor>();
+    p->setNonRealtime (true);
+    for (double sr : { 44100.0, 384000.0, 22050.0, 192000.0, 32000.0, 96000.0, 48000.0 })
+    {
+        p->prepareToPlay (sr, 512);
+        const double seconds = 2.2; // past one scope ring (2 s)
+        const auto b = bass ({ { 0.0, 1.0, 41.2 } }, seconds, sr);
+        auto k = kicks (seconds, sr, 128.0);
+        k.setSize (2, k.getNumSamples(), true);
+        (void) run (*p, b, &k, { 512 }, 128.0);
+        const auto& tel = p->getDsp().getTelemetry();
+        INFO ("sr " << sr);
+        CHECK (tel.scopeSize == (int) (2.0 * sr) / kl::KickTelemetry::scopeDecimation);
+        CHECK (tel.scopeWrite.load() < tel.scopeSize);
+        CHECK (tel.scopeCapacity >= tel.scopeSize);
+        p->releaseResources();
+    }
+}

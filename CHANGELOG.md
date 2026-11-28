@@ -1,5 +1,9 @@
 # Changelog
 
+## Kick Lock — correctif (non publié) — 2026-11-28
+- **Kick Lock ne plante plus quand la fréquence d'échantillonnage change.** Après un passage à une fréquence plus haute (96, 192 ou 384 kHz) puis un retour plus bas, l'oscilloscope écrivait hors de sa mémoire. Sur Windows, Kick Lock plantait (trouvé par le validateur officiel de Steinberg et pluginval, 17 plantages sur 20). Sur Mac, la mémoire était corrompue sans plantage visible. Le son ne change pas.
+- La CI valide désormais les 12 VST3 sur Windows (validateur Steinberg + pluginval niveau 10) à chaque push.
+
 ## Backwash 0.1.11-bounce2 — 2026-11-25 (version de test)
 - **Backwash : glisse les souffles dans ton set, puis zéro latence.** Dès que Backwash a entendu une mesure, la nouvelle puce **WAV** (sous LIVE / LOCK) devient **DRAG** : glisse-la dans Ableton et tu obtiens les souffles seuls de cette mesure, en WAV d'une mesure, avec les réglages en cours. Pose-le sur une piste, sur une barre de mesure, en boucle : tu peux retirer Backwash. Fichiers dans Musique/Backwash.
 - (bounce1, même jour : il fallait déposer un fichier sur Backwash pour le récupérer avec ses souffles ; remplacé.)

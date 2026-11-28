@@ -28,7 +28,7 @@ struct KickTelemetry
     std::atomic<std::int64_t> lastKickSample { -1 }, outputClock { 0 };
     std::array<std::atomic<std::int64_t>, 4> recentKicks { { -1, -1, -1, -1 } }; // the last kicks (slot = count % 4)
     // oscilloscope: 2 s of the corrected sub, the output and the kick (1 in 8)
-    int scopeSize = 0;
+    int scopeSize = 0, scopeCapacity = 0; // (capacity: the rings' length, never shrunk)
     // scopeSub: the fundamental as heard; scopeBass: the output's low band (mono, under SUB CUT); scopeKick: the kick (L later, as heard)
     std::unique_ptr<std::atomic<float>[]> scopeSub, scopeKick, scopeBass;
     std::atomic<int> scopeWrite { 0 };
