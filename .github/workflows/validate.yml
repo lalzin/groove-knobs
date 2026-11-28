@@ -1,0 +1,71 @@
+# Validates the 12 VST3 plug-ins on Windows (the format of Cubase, FL Studio,
+# Ableton on Windows...) with the two references of the trade:
+#   - Steinberg's "validator" (the VST3 SDK's official conformance test, the one
+#     Cubase's own checks are based on), built from the SDK;
+#   - pluginval (Tracktion), strictness 10: opening, parameters, state, audio
+#     at several sample rates and block sizes, threads.
+# Run by hand (Actions > validate > Run workflow) or on a push to main; it does
+# not block the releases. Logs: the run's "validation-logs" artifact.
+name: validate
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  windows-vst3:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the VST3s
+        shell: pwsh
+        run: |
+          cmake -S . -B build-win -G "Visual Studio 17 2022" -A x64
+          $targets = "FrenchFilter","BoogieTrio","Backwash","PewPew","SingItBack","KickLock","KickLockSend","Slapper","Crackle","HeadSpin","Ballroom","DaftChunk" | ForEach-Object { "${_}_VST3" }
+          cmake --build build-win --config Release --parallel --target $targets
+
+      - name: Build Steinberg's validator
+        shell: pwsh
+        run: |
+          git clone --depth 1 --recursive --shallow-submodules https://github.com/steinbergmedia/vst3sdk.git $env:RUNNER_TEMP\vst3sdk
+          cmake -S $env:RUNNER_TEMP\vst3sdk -B $env:RUNNER_TEMP\vst3sdk-build -G "Visual Studio 17 2022" -A x64 `
+            -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF -DSMTG_ENABLE_VSTGUI_SUPPORT=OFF
+          cmake --build $env:RUNNER_TEMP\vst3sdk-build --config Release --target validator --parallel
+
+      - name: Get pluginval
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Windows.zip -OutFile $env:RUNNER_TEMP\pluginval.zip
+          Expand-Archive $env:RUNNER_TEMP\pluginval.zip -DestinationPath $env:RUNNER_TEMP\pluginval
+
+      - name: Validate
+        shell: pwsh
+        run: |
+          $validator = Get-ChildItem $env:RUNNER_TEMP\vst3sdk-build -Recurse -Filter validator.exe | Select-Object -First 1
+          $pluginval = Get-ChildItem $env:RUNNER_TEMP\pluginval -Recurse -Filter pluginval.exe | Select-Object -First 1
+          New-Item -ItemType Directory -Force logs | Out-Null
+          $plugins = Get-ChildItem build-win\plugins -Recurse -Directory -Filter *.vst3 | Where-Object { $_.FullName -match '\\Release\\VST3\\[^\\]+\.vst3$' }
+          if ($plugins.Count -ne 12) { Write-Host "expected 12 VST3s, found $($plugins.Count)"; exit 1 }
+          $failed = @()
+          foreach ($p in $plugins) {
+            $n = $p.BaseName -replace ' ', '_'
+            & $validator.FullName $p.FullName *> "logs\$n-steinberg.log"
+            $sv = $LASTEXITCODE
+            & $pluginval.FullName --strictness-level 10 --validate-in-process --timeout-ms 600000 --validate $p.FullName *> "logs\$n-pluginval.log"
+            $pv = $LASTEXITCODE
+            $s = if ($sv -eq 0) { "OK" } else { "FAILED" }
+            $v = if ($pv -eq 0) { "OK" } else { "FAILED" }
+            Write-Host ("{0,-16} Steinberg validator: {1,-6}  pluginval 10: {2}" -f $p.BaseName, $s, $v)
+            if ($sv -ne 0) { $failed += "$($p.BaseName) (Steinberg)"; Select-String -Path "logs\$n-steinberg.log" -Pattern "\[Failed\]|ERROR" | Select-Object -First 15 | ForEach-Object { Write-Host "    $($_.Line)" } }
+            if ($pv -ne 0) { $failed += "$($p.BaseName) (pluginval)"; Select-String -Path "logs\$n-pluginval.log" -Pattern "FAILED|!!!" | Select-Object -First 15 | ForEach-Object { Write-Host "    $($_.Line)" } }
+          }
+          if ($failed.Count -gt 0) { Write-Host "FAILED: $($failed -join ', ')"; exit 1 }
+          Write-Host "All 12 VST3s pass both validators."
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: validation-logs
+          path: logs/
