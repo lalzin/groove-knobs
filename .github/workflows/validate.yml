@@ -58,10 +58,10 @@ jobs:
             $pv = $LASTEXITCODE
             $s = if ($sv -eq 0) { "OK" } else { "FAILED" }
             $v = if ($pv -eq 0) { "OK" } else { "FAILED" }
-            $line = ("{0,-16} Steinberg: {1,-6}  pluginval 10: {2}" -f $p.BaseName, $s, $v)
+            $line = ("{0,-16} Steinberg: {1,-6} (code {3})  pluginval 10: {2} (code {4})" -f $p.BaseName, $s, $v, $sv, $pv)
             Write-Host $line; $report += $line
-            if ($sv -ne 0) { $failed += "$($p.BaseName) (Steinberg)"; Select-String -Path "logs\$n-steinberg.log" -Pattern "\[Failed\]|ERROR|failed" | Select-Object -First 8 | ForEach-Object { $report += "    S: $($_.Line.Trim())" } }
-            if ($pv -ne 0) { $failed += "$($p.BaseName) (pluginval)"; Select-String -Path "logs\$n-pluginval.log" -Pattern "FAILED|!!!|Error" | Select-Object -First 8 | ForEach-Object { $report += "    P: $($_.Line.Trim())" } }
+            if ($sv -ne 0) { $failed += "$($p.BaseName) (Steinberg)"; Select-String -Path "logs\$n-steinberg.log" -Pattern "\[Failed\]|ERROR|failed" | Select-Object -First 8 | ForEach-Object { $report += "    S: $($_.Line.Trim())" }; Get-Content "logs\$n-steinberg.log" -Tail 20 | ForEach-Object { $report += "    S> $_" } }
+            if ($pv -ne 0) { $failed += "$($p.BaseName) (pluginval)"; Select-String -Path "logs\$n-pluginval.log" -Pattern "FAILED|!!!|Error" | Select-Object -First 8 | ForEach-Object { $report += "    P: $($_.Line.Trim())" }; Get-Content "logs\$n-pluginval.log" -Tail 25 | ForEach-Object { $report += "    P> $_" } }
           }
           # the report as an annotation: readable without signing in (logs are not)
           $msg = ($report -join "`n").Replace('%','%25').Replace("`r",'').Replace("`n",'%0A')
