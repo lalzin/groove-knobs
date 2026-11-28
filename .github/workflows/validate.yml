@@ -49,6 +49,7 @@ jobs:
           $plugins = Get-ChildItem build-win\plugins -Recurse -Directory -Filter *.vst3 | Where-Object { $_.FullName -match '\\Release\\VST3\\[^\\]+\.vst3$' }
           if ($plugins.Count -ne 12) { Write-Host "expected 12 VST3s, found $($plugins.Count)"; exit 1 }
           $failed = @()
+          $report = @()
           foreach ($p in $plugins) {
             $n = $p.BaseName -replace ' ', '_'
             & $validator.FullName $p.FullName *> "logs\$n-steinberg.log"
@@ -57,10 +58,14 @@ jobs:
             $pv = $LASTEXITCODE
             $s = if ($sv -eq 0) { "OK" } else { "FAILED" }
             $v = if ($pv -eq 0) { "OK" } else { "FAILED" }
-            Write-Host ("{0,-16} Steinberg validator: {1,-6}  pluginval 10: {2}" -f $p.BaseName, $s, $v)
-            if ($sv -ne 0) { $failed += "$($p.BaseName) (Steinberg)"; Select-String -Path "logs\$n-steinberg.log" -Pattern "\[Failed\]|ERROR" | Select-Object -First 15 | ForEach-Object { Write-Host "    $($_.Line)" } }
-            if ($pv -ne 0) { $failed += "$($p.BaseName) (pluginval)"; Select-String -Path "logs\$n-pluginval.log" -Pattern "FAILED|!!!" | Select-Object -First 15 | ForEach-Object { Write-Host "    $($_.Line)" } }
+            $line = ("{0,-16} Steinberg: {1,-6}  pluginval 10: {2}" -f $p.BaseName, $s, $v)
+            Write-Host $line; $report += $line
+            if ($sv -ne 0) { $failed += "$($p.BaseName) (Steinberg)"; Select-String -Path "logs\$n-steinberg.log" -Pattern "\[Failed\]|ERROR|failed" | Select-Object -First 8 | ForEach-Object { $report += "    S: $($_.Line.Trim())" } }
+            if ($pv -ne 0) { $failed += "$($p.BaseName) (pluginval)"; Select-String -Path "logs\$n-pluginval.log" -Pattern "FAILED|!!!|Error" | Select-Object -First 8 | ForEach-Object { $report += "    P: $($_.Line.Trim())" } }
           }
+          # the report as an annotation: readable without signing in (logs are not)
+          $msg = ($report -join "`n").Replace('%','%25').Replace("`r",'').Replace("`n",'%0A')
+          Write-Host "::notice title=VST3 validation::$msg"
           if ($failed.Count -gt 0) { Write-Host "FAILED: $($failed -join ', ')"; exit 1 }
           Write-Host "All 12 VST3s pass both validators."
 
