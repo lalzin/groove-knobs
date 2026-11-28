@@ -69,6 +69,31 @@ jobs:
           if ($failed.Count -gt 0) { Write-Host "FAILED: $($failed -join ', ')"; exit 1 }
           Write-Host "All 12 VST3s pass both validators."
 
+      # Kick Lock failed now and then on Windows (2 runs in 3, nothing in the
+      # logs' error lines): run it again and again, keep what a failure says
+      - name: Kick Lock, repeated
+        if: always()
+        shell: pwsh
+        run: |
+          $validator = Get-ChildItem $env:RUNNER_TEMP\vst3sdk-build -Recurse -Filter validator.exe | Select-Object -First 1
+          $pluginval = Get-ChildItem $env:RUNNER_TEMP\pluginval -Recurse -Filter pluginval.exe | Select-Object -First 1
+          $kl = Get-ChildItem build-win\plugins\kick_lock -Recurse -Directory -Filter "Kick Lock.vst3" | Where-Object { $_.FullName -match '\\Release\\VST3\\' } | Select-Object -First 1
+          New-Item -ItemType Directory -Force logs | Out-Null
+          $report = @(); $bad = 0
+          for ($i = 1; $i -le 20; $i++) {
+            & $validator.FullName $kl.FullName *> "logs\kl-steinberg-$i.log"; $c = $LASTEXITCODE
+            $report += "Steinberg #${i}: code $c"
+            if ($c -ne 0) { $bad++; if ($bad -le 2) { Get-Content "logs\kl-steinberg-$i.log" -Tail 30 | ForEach-Object { $report += "    > $_" } } }
+          }
+          for ($i = 1; $i -le 4; $i++) {
+            & $pluginval.FullName --strictness-level 10 --validate-in-process --timeout-ms 600000 --validate $kl.FullName *> "logs\kl-pluginval-$i.log"; $c = $LASTEXITCODE
+            $report += "pluginval #${i}: code $c"
+            if ($c -ne 0) { $bad++; if ($bad -le 3) { Get-Content "logs\kl-pluginval-$i.log" -Tail 30 | ForEach-Object { $report += "    > $_" } } }
+          }
+          $msg = ($report -join "`n").Replace('%','%25').Replace("`r",'').Replace("`n",'%0A')
+          Write-Host "::notice title=Kick Lock repeated::$msg"
+          if ($bad -gt 0) { exit 1 }
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
