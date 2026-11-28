@@ -2295,3 +2295,34 @@ TEST_CASE ("KL 37. Aim at the collision with Kick Lock Send: the kick's shape fr
     CHECK (std::abs (KickLockDsp::wrap180 (aim[0] - aim[1])) < 10.0);
 }
 
+
+TEST_CASE ("KL 39. As a VST3 validator does it: 22.05 to 384 kHz, the defaults (PRECISE), every precision, odd block sizes, silence / noise, with and without the sidechain", "[kl][stability]")
+{
+    // Windows: Steinberg's validator and pluginval crashed Kick Lock (access
+    // violation) after "Process Format" (its rates up to 384 kHz)
+    for (double sr : { 22050.0, 32000.0, 44100.0, 48000.0, 88200.0, 96000.0, 192000.0, 384000.0 })
+        for (int precision = 0; precision < KickLockDsp::precisionLevels; ++precision)
+            for (bool side : { true, false })
+            {
+                auto p = std::make_unique<KickLockProcessor>();
+                p->setNonRealtime (true);
+                setParam (p->getPrecisionParameter(), (float) precision);
+                p->prepareToPlay (sr, 1024);
+                const double seconds = 1.5;
+                auto b = bass ({ { 0.0, 1.0, 41.2 }, { 0.75, 1.0, 110.0 } }, seconds, sr);
+                juce::Random r (7);
+                for (int i = 0; i < b.getNumSamples() / 3; ++i) // a stretch of noise, then the bass
+                    for (int c = 0; c < b.getNumChannels(); ++c)
+                        b.setSample (c, i, r.nextFloat() * 2.0f - 1.0f);
+                auto k = kicks (seconds, sr, 128.0);
+                k.setSize (2, k.getNumSamples(), true);
+                const auto out = run (*p, b, side ? &k : nullptr, { 1024, 1, 333, 7, 1024, 64, 2, 1000 }, 128.0);
+                bool finite = true;
+                for (int c = 0; c < out.getNumChannels(); ++c)
+                    for (int i = 0; i < out.getNumSamples(); ++i)
+                        finite = finite && std::isfinite (out.getSample (c, i));
+                INFO ("sr " << sr << ", precision " << precision << ", sidechain " << side);
+                CHECK (finite);
+                p->releaseResources();
+            }
+}

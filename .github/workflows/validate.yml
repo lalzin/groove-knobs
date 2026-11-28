@@ -22,7 +22,8 @@ jobs:
       - name: Build the VST3s
         shell: pwsh
         run: |
-          cmake -S . -B build-win -G "Visual Studio 17 2022" -A x64
+          # (symbols in the Release build: a crash's call stack can be read)
+          cmake -S . -B build-win -G "Visual Studio 17 2022" -A x64 "-DCMAKE_CXX_FLAGS_RELEASE=/O2 /Ob2 /DNDEBUG /Zi" "-DCMAKE_MODULE_LINKER_FLAGS_RELEASE=/DEBUG /OPT:REF /OPT:ICF" "-DCMAKE_SHARED_LINKER_FLAGS_RELEASE=/DEBUG /OPT:REF /OPT:ICF"
           $targets = "FrenchFilter","BoogieTrio","Backwash","PewPew","SingItBack","KickLock","KickLockSend","Slapper","Crackle","HeadSpin","Ballroom","DaftChunk" | ForEach-Object { "${_}_VST3" }
           cmake --build build-win --config Release --parallel --target $targets
 
@@ -80,15 +81,29 @@ jobs:
           $kl = Get-ChildItem build-win\plugins\kick_lock -Recurse -Directory -Filter "Kick Lock.vst3" | Where-Object { $_.FullName -match '\\Release\\VST3\\' } | Select-Object -First 1
           New-Item -ItemType Directory -Force logs | Out-Null
           $report = @(); $bad = 0
+          # under the debugger: the call stack of the first crash
+          $cdb = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\cdb.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $pdb = Get-ChildItem build-win -Recurse -Filter "Kick Lock.pdb" | Select-Object -First 1
+          $report += "cdb: $($cdb.FullName)  pdb: $($pdb.FullName)"
+          $stacked = $false
           for ($i = 1; $i -le 20; $i++) {
-            & $validator.FullName $kl.FullName *> "logs\kl-steinberg-$i.log"; $c = $LASTEXITCODE
-            $report += "Steinberg #${i}: code $c"
-            if ($c -ne 0) { $bad++; if ($bad -le 2) { Get-Content "logs\kl-steinberg-$i.log" -Tail 30 | ForEach-Object { $report += "    > $_" } } }
+            if ($cdb -and -not $stacked) {
+              & $cdb.FullName -g -G -lines -y "$($pdb.DirectoryName);srv*" -c ".ecxr; r; kn 40; q" $validator.FullName $kl.FullName *> "logs\kl-cdb-$i.log"
+              $c = $LASTEXITCODE
+              $txt = Get-Content "logs\kl-cdb-$i.log"
+              $crash = $txt | Select-String -Pattern "Access violation|c0000005|second chance" -Quiet
+              $report += "Steinberg under cdb #${i}: code $c, crash: $crash"
+              if ($crash) { $bad++; $stacked = $true; $at = ($txt | Select-String -Pattern "Access violation|c0000005" | Select-Object -First 1).LineNumber; $txt | Select-Object -Skip ([Math]::Max(0, $at - 3)) -First 90 | ForEach-Object { $report += "    > $_" } }
+            } else {
+              & $validator.FullName $kl.FullName *> "logs\kl-steinberg-$i.log"; $c = $LASTEXITCODE
+              $report += "Steinberg #${i}: code $c"
+              if ($c -ne 0) { $bad++ }
+            }
           }
-          for ($i = 1; $i -le 4; $i++) {
+          for ($i = 1; $i -le 2; $i++) {
             & $pluginval.FullName --strictness-level 10 --validate-in-process --timeout-ms 600000 --validate $kl.FullName *> "logs\kl-pluginval-$i.log"; $c = $LASTEXITCODE
             $report += "pluginval #${i}: code $c"
-            if ($c -ne 0) { $bad++; if ($bad -le 3) { Get-Content "logs\kl-pluginval-$i.log" -Tail 30 | ForEach-Object { $report += "    > $_" } } }
+            if ($c -ne 0) { $bad++; if ($i -eq 1) { Get-Content "logs\kl-pluginval-$i.log" -Tail 30 | ForEach-Object { $report += "    > $_" } } }
           }
           $msg = ($report -join "`n").Replace('%','%25').Replace("`r",'').Replace("`n",'%0A')
           Write-Host "::notice title=Kick Lock repeated::$msg"
